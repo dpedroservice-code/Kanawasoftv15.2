@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="pt-AO" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#1a3a5c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kanawa Soft">
+<title>Kanawa Soft ERP v15.2</title>
+<link rel="icon" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="libs/fontawesome.min.css">
+<style>
+/* ============================================================
+   KANAWA SOFT ERP v15.2 — CSS UNIFICADO
+   ============================================================ */
+:root{
+  --primary:#1a3a5c;--primary-dark:#0f2440;--primary-light:#2a5a8c;
+  --secondary:#217346;--secondary-light:#2d9b5e;
+  --danger:#dc3545;--warning:#f59e0b;--info:#3b82f6;
+  --success:#10b981;--purple:#7c3aed;--pink:#ec4899;
+  --text:#1e293b;--text-muted:#64748b;--bg:#f1f5f9;--bg-card:#fff;
+  --bg-hover:#f8fafc;--border:#e2e8f0;
+  --shadow:0 2px 8px rgba(0,0,0,.08);--shadow-hover:0 8px 30px rgba(0,0,0,.12);
+  --radius:14px;--radius-sm:10px;--transition:.2s ease;--sidebar-w:120px;
+}
+[data-theme="dark"]{
+  --text:#e2e8f0;--text-muted:#94a3b8;--bg:#0f172a;--bg-card:#1e293b;
+  --bg-hover:#2d3748;--border:#334155;--shadow:0 2px 8px rgba(0,0,0,.3);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh;font-size:14px}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:var(--bg);border-radius:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+#loadingScreen{position:fixed;inset:0;background:var(--primary);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;color:#fff}
+#loadingScreen.hidden{display:none}
+.loading-logo{width:120px;height:120px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:3.5rem;color:var(--primary);font-weight:800;margin-bottom:20px;overflow:hidden;animation:pulse 1.5s infinite}
+.loading-logo img{width:100%;height:100%;object-fit:cover}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+.loading-bar{width:300px;height:5px;background:rgba(255,255,255,.2);border-radius:3px;overflow:hidden;margin-top:20px}
+.loading-bar div{height:100%;background:#60a5fa;width:0;animation:load 1.5s infinite}
+@keyframes load{0%{width:0}100%{width:100%}}
+#setupWizard{position:fixed;inset:0;background:linear-gradient(135deg,var(--primary),var(--primary-dark));z-index:99998;display:none;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
+#setupWizard.active{display:flex}
+.setup-box{background:var(--bg-card);border-radius:var(--radius);padding:36px;width:100%;max-width:680px;box-shadow:var(--shadow-hover);max-height:92vh;overflow-y:auto}
+.setup-logo{text-align:center;margin-bottom:20px}
+.setup-logo .logo-circle{width:100px;height:100px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:800;margin:0 auto 12px;overflow:hidden}
+.setup-logo .logo-circle img{width:100%;height:100%;object-fit:cover}
+.setup-steps{display:flex;justify-content:center;gap:18px;margin-bottom:22px}
+.setup-step{width:38px;height:38px;border-radius:50%;background:var(--border);color:var(--text-muted);display:flex;align-items:center;justify-content:center;font-weight:700;transition:var(--transition)}
+.setup-step.active{background:var(--primary);color:#fff;transform:scale(1.15)}
+.setup-step.done{background:var(--success);color:#fff}
+#authScreen{position:fixed;inset:0;background:linear-gradient(135deg,var(--primary),var(--primary-dark));display:none;align-items:center;justify-content:center;z-index:9000;padding:20px}
+#authScreen.active{display:flex}
+.auth-box{background:var(--bg-card);border-radius:var(--radius);padding:40px;width:100%;max-width:440px;box-shadow:var(--shadow-hover)}
+.auth-logo{text-align:center;margin-bottom:24px}
+.auth-logo .logo-circle{width:100px;height:100px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:2.5rem;font-weight:800;margin:0 auto 12px;overflow:hidden}
+.auth-logo .logo-circle img{width:100%;height:100%;object-fit:cover}
+.auth-logo h1{font-size:1.7rem;font-weight:800}
+.auth-logo h1 span{color:var(--primary-light)}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:.85rem;font-weight:600;margin-bottom:6px;color:var(--text)}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:12px 16px;border:2px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:.95rem;font-family:inherit;transition:var(--transition)}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,58,92,.15)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-grid .full{grid-column:1/-1}
+.btn{padding:11px 22px;border:none;border-radius:var(--radius-sm);font-size:.9rem;font-weight:600;cursor:pointer;transition:var(--transition);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:inherit;text-decoration:none}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-block{width:100%}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--primary-dark);transform:translateY(-1px)}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover:not(:disabled){background:#059669}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover:not(:disabled){background:#b91c1c}
+.btn-warning{background:var(--warning);color:#fff}
+.btn-warning:hover:not(:disabled){background:#d97706}
+.btn-info{background:var(--info);color:#fff}
+.btn-info:hover:not(:disabled){background:#2563eb}
+.btn-purple{background:var(--purple);color:#fff}
+.btn-secondary{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover:not(:disabled){background:var(--border)}
+.btn-sm{padding:6px 12px;font-size:.78rem}
+.btn-lg{padding:14px 28px;font-size:1rem}
+.alert{padding:12px 18px;border-radius:var(--radius-sm);margin:12px 0;font-size:.9rem;display:none}
+.alert.show{display:block}
+.alert-danger{background:#fee2e2;color:#991b1b}
+.alert-success{background:#d1fae5;color:#065f46}
+#app{display:none;height:100vh;flex-direction:column}
+#app.active{display:flex}
+.topbar{height:70px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 20px;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:100;flex-shrink:0}
+.topbar-left{display:flex;align-items:center;gap:14px}
+.topbar-logo{width:52px;height:52px;border-radius:50%;background:#fff;color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.5rem;overflow:hidden;flex-shrink:0}
+.topbar-logo img{width:100%;height:100%;object-fit:cover}
+.topbar-title h1{font-size:1.15rem;font-weight:700;line-height:1.2}
+.topbar-title p{font-size:.75rem;opacity:.7}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.topbar-btn{width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.15rem;transition:var(--transition);position:relative}
+.topbar-btn:hover{background:rgba(255,255,255,.25)}
+.topbar-user{display:flex;align-items:center;gap:10px;padding:6px 14px;border-radius:26px;background:rgba(255,255,255,.1);cursor:pointer}
+.topbar-user img{width:36px;height:36px;border-radius:50%}
+.topbar-user .info{font-size:.85rem;font-weight:600;line-height:1.2}
+.topbar-user .info small{display:block;font-size:.7rem;opacity:.7;text-transform:capitalize}
+.main-wrap{flex:1;display:flex;overflow:hidden}
+.sidebar{width:var(--sidebar-w);background:var(--bg-card);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:12px 6px;gap:4px;overflow-y:auto;flex-shrink:0}
+.sidebar-item{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px 4px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;border-radius:var(--radius-sm);transition:var(--transition);font-family:inherit;position:relative}
+.sidebar-item:hover{background:var(--bg-hover);color:var(--primary)}
+.sidebar-item.active{background:var(--primary);color:#fff;box-shadow:var(--shadow)}
+.sidebar-item i{font-size:1.6rem}
+.sidebar-item span{font-size:.68rem;font-weight:600;text-align:center;line-height:1.15}
+.content{flex:1;overflow-y:auto;padding:20px;background:var(--bg);-webkit-overflow-scrolling:touch}
+.card{background:var(--bg-card);border-radius:var(--radius);padding:20px;margin-bottom:18px;box-shadow:var(--shadow);border:1px solid var(--border)}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.card-title{font-size:1.05rem;font-weight:700;display:flex;align-items:center;gap:10px}
+.card-title i{color:var(--primary)}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:18px}
+.metric-card{background:var(--bg-card);border-radius:var(--radius);padding:18px;border-left:5px solid var(--primary);box-shadow:var(--shadow);position:relative;overflow:hidden;cursor:pointer;transition:var(--transition)}
+.metric-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+.metric-card .label{font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.metric-card .value{font-size:1.8rem;font-weight:800;margin-top:8px}
+.metric-card .sub{font-size:.8rem;color:var(--text-muted);margin-top:4px}
+.metric-card .icon{position:absolute;top:14px;right:16px;font-size:2.8rem;opacity:.12;color:var(--primary)}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{text-align:left;padding:12px;background:var(--bg);font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);border-bottom:2px solid var(--border);font-weight:700;white-space:nowrap}
+td{padding:12px;border-bottom:1px solid var(--border)}
+tr:hover td{background:var(--bg-hover)}
+.badge{display:inline-block;padding:4px 12px;border-radius:14px;font-size:.72rem;font-weight:700}
+.badge-success{background:#d1fae5;color:#065f46}
+.badge-danger{background:#fee2e2;color:#991b1b}
+.badge-warning{background:#fef3c7;color:#92400e}
+.badge-info{background:#dbeafe;color:#1e40af}
+.badge-primary{background:#dbeafe;color:#1a3a5c}
+.badge-purple{background:#ede9fe;color:#5b21b6}
+.badge-secondary{background:var(--bg);color:var(--text-muted)}
+.pdv-products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.pdv-prod-card{background:var(--bg-card);border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:var(--transition);text-align:center;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.pdv-prod-card:hover{border-color:var(--primary);transform:translateY(-3px);box-shadow:var(--shadow-hover)}
+.pdv-prod-card .img{width:100%;height:150px;background:var(--bg);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:3rem;color:var(--primary);position:relative}
+.pdv-prod-card .img img{width:100%;height:100%;object-fit:cover}
+.pdv-prod-card .info{padding:12px}
+.pdv-prod-card .name{font-size:.95rem;font-weight:700;margin-bottom:4px;line-height:1.25;min-height:2.4em}
+.pdv-prod-card .price{font-size:1.25rem;font-weight:800;color:var(--secondary)}
+.pdv-prod-card .stock{font-size:.75rem;color:var(--text-muted);margin-top:4px}
+.pdv-prod-card .codigo{font-size:.68rem;color:var(--text-muted);margin-top:2px;font-family:monospace}
+.pdv-prod-card .favorite{position:absolute;top:8px;right:8px;font-size:1rem;color:rgba(255,255,255,.8);cursor:pointer;z-index:2;background:rgba(0,0,0,.4);width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.pdv-prod-card .favorite.active{color:var(--warning);background:rgba(255,255,255,.9)}
+.pdv-screen{display:none}
+.pdv-screen.active{display:block}
+.pdv-breadcrumb{display:flex;align-items:center;gap:6px;margin-bottom:16px;padding:10px 14px;background:var(--bg-card);border-radius:var(--radius-sm);box-shadow:var(--shadow);font-size:.75rem;flex-wrap:wrap;overflow-x:auto}
+.pdv-breadcrumb .step{display:flex;align-items:center;gap:5px;color:var(--text-muted);white-space:nowrap}
+.pdv-breadcrumb .step.active{color:var(--primary);font-weight:700}
+.pdv-breadcrumb .step.done{color:var(--success)}
+.pdv-breadcrumb .step .num{width:24px;height:24px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.7rem}
+.pdv-breadcrumb .step.active .num{background:var(--primary);color:#fff}
+.pdv-breadcrumb .step.done .num{background:var(--success);color:#fff}
+.pdv-breadcrumb .sep{color:var(--border);font-size:1rem}
+.pdv-cart-item-full{display:flex;justify-content:space-between;align-items:center;padding:14px;border-bottom:1px solid var(--border);background:var(--bg-card);border-radius:var(--radius-sm);margin-bottom:8px;gap:10px;flex-wrap:wrap}
+.pdv-cart-item-full .qty-ctrl{display:flex;align-items:center;gap:10px}
+.pdv-cart-item-full .qty-ctrl button{width:38px;height:38px;border-radius:50%;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:700;font-size:1.1rem}
+.payment-methods-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.payment-method-card{padding:18px 12px;border:3px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:var(--transition);text-align:center;background:var(--bg-card)}
+.payment-method-card:hover{border-color:var(--primary);transform:translateY(-2px)}
+.payment-method-card.selected{border-color:var(--success);background:#d1fae5;transform:scale(1.02)}
+.payment-method-card i{font-size:2rem;display:block;margin-bottom:8px;color:var(--primary)}
+.payment-method-card span{font-size:.85rem;font-weight:600}
+.total-box{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;border-radius:var(--radius);padding:18px;margin:16px 0}
+.total-box .row{display:flex;justify-content:space-between;padding:6px 0;font-size:.9rem}
+.total-box .row.total{border-top:2px solid rgba(255,255,255,.3);margin-top:8px;padding-top:12px;font-size:1.3rem;font-weight:800}
+.troco-box{background:linear-gradient(135deg,var(--success),var(--secondary));color:#fff;border-radius:var(--radius-sm);padding:16px;margin-top:12px;display:none}
+.troco-box.active{display:block}
+.troco-box .label{font-size:.85rem;opacity:.9}
+.troco-box .value{font-size:2rem;font-weight:800;margin-top:4px}
+#toastContainer{position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:10px;max-width:400px}
+.toast{background:var(--bg-card);color:var(--text);padding:14px 20px;border-radius:var(--radius-sm);box-shadow:var(--shadow-hover);border-left:5px solid var(--primary);display:flex;align-items:center;gap:12px;font-size:.88rem;animation:slideIn .3s;z-index:100000}
+.toast.success{border-left-color:var(--success)}
+.toast.error{border-left-color:var(--danger)}
+.toast.warning{border-left-color:var(--warning)}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:8000;display:none;align-items:center;justify-content:center;padding:16px}
+.modal-overlay.active{display:flex}
+.modal{background:var(--bg-card);border-radius:var(--radius);padding:24px;max-width:900px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-hover)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid var(--border)}
+.modal-header h3{font-size:1.2rem;font-weight:700}
+.modal-close{background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted);line-height:1}
+.modal-large{max-width:1100px}
+.empty{padding:50px 20px;text-align:center;color:var(--text-muted)}
+.empty i{font-size:4rem;opacity:.25;display:block;margin-bottom:14px}
+.api-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:14px;font-size:.7rem;font-weight:600;background:rgba(255,255,255,.15);cursor:pointer}
+.api-badge.online{color:#4ade80}
+.api-badge.offline{color:#f87171}
+.api-badge .dot{width:8px;height:8px;border-radius:50%;animation:pulse 1.5s infinite}
+.api-badge.online .dot{background:#4ade80}
+.api-badge.offline .dot{background:#f87171}
+#scannerReader{width:100%;max-height:400px;overflow:hidden;border-radius:var(--radius-sm);background:#000}
+#scannerReader video{width:100%;height:auto;border-radius:var(--radius-sm)}
+.image-picker{width:100%;height:180px;border:3px dashed var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--bg);transition:var(--transition);position:relative;overflow:hidden}
+.image-picker:hover{border-color:var(--primary);background:var(--bg-hover)}
+.image-picker img{width:100%;height:100%;object-fit:cover}
+.image-picker .placeholder{text-align:center;color:var(--text-muted)}
+.image-picker .placeholder i{font-size:2.5rem;display:block;margin-bottom:6px}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto}
+.tab{padding:10px 18px;border:none;background:transparent;color:var(--text-muted);font-weight:600;font-size:.85rem;cursor:pointer;border-bottom:3px solid transparent;transition:var(--transition);white-space:nowrap;font-family:inherit}
+.tab:hover{color:var(--primary)}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.etiqueta-print{width:280px;padding:10px;border:1px dashed #333;font-family:Arial;text-align:center;margin:6px;display:inline-block;page-break-inside:avoid;background:#fff}
+.sync-indicator{position:fixed;bottom:20px;left:20px;padding:8px 14px;border-radius:20px;font-size:.75rem;font-weight:600;z-index:9000;display:none;align-items:center;gap:8px}
+.sync-indicator.show{display:flex}
+.sync-indicator.online{background:#d1fae5;color:#065f46}
+.sync-indicator.offline{background:#fee2e2;color:#991b1b}
+.sync-indicator.syncing{background:#fef3c7;color:#92400e}
+@media(max-width:900px){.form-grid{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.pdv-products-grid{grid-template-columns:repeat(2,1fr)}.topbar-title h1{font-size:.95rem}.topbar-title p{display:none}}
+@media(max-width:600px){:root{--sidebar-w:80px}.sidebar-item i{font-size:1.3rem}.sidebar-item span{font-size:.6rem}.topbar-user .info{display:none}.metric-grid{grid-template-columns:1fr}.pdv-products-grid{grid-template-columns:repeat(2,1fr)}.pdv-prod-card .img{height:110px}}
+@media print{body{overflow:visible;height:auto}.sidebar,.topbar,.pdv-breadcrumb,.btn,.no-print{display:none!important}}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loadingScreen">
+  <div class="loading-logo" id="loadingLogo"><img src="logo.png" alt="Kanawa" onerror="this.parentElement.textContent='K'"></div>
+  <h2 style="font-weight:700;font-size:1.5rem">Kanawa Soft</h2>
+  <p style="opacity:.7;font-size:.9rem;margin-top:4px">ERP Multi-Empresa v15.2</p>
+  <div class="loading-bar"><div></div></div>
+</div>
+
+<!-- SETUP -->
+<div id="setupWizard">
+  <div class="setup-box">
+    <div class="setup-logo">
+      <div class="logo-circle" id="setupLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
+      <h1 style="font-size:1.6rem;font-weight:800">Bem-vindo ao <span style="color:var(--primary-light)">Kanawa Soft</span></h1>
+      <p style="color:var(--text-muted);font-size:.9rem;margin-top:4px">Vamos configurar a sua empresa</p>
+    </div>
+    <div class="setup-steps">
+      <div class="setup-step active" data-step="1">1</div>
+      <div class="setup-step" data-step="2">2</div>
+      <div class="setup-step" data-step="3">3</div>
+    </div>
+    <div id="setupStep1">
+      <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">📋 Dados da Empresa</h3>
+      <div class="form-grid">
+        <div class="form-group full"><label>Nome da Empresa *</label><input id="setupNome" placeholder="Ex: Kanawa Soft, LDA"></div>
+        <div class="form-group"><label>NIF *</label><input id="setupNif" placeholder="Ex: 006518595L"></div>
+        <div class="form-group"><label>Regime Fiscal</label>
+          <select id="setupRegime">
+            <option value="geral">Regime Geral (IVA 14%)</option>
+            <option value="simplificado">Regime Simplificado (7%)</option>
+            <option value="isento">Isento</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Telefone</label><input id="setupTelefone" placeholder="+244 900 000 000"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="setupEmail" placeholder="contato@empresa.com"></div>
+        <div class="form-group full"><label>Endereço</label><input id="setupEndereco" placeholder="Luanda, Angola"></div>
+        <div class="form-group"><label>Moeda</label>
+          <select id="setupMoeda"><option value="AOA">AOA - Kwanza</option><option value="USD">USD - Dólar</option><option value="EUR">EUR - Euro</option></select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-primary btn-lg" onclick="setupNextStep(2)">Próximo <i class="fas fa-arrow-right"></i></button>
+      </div>
+    </div>
+    <div id="setupStep2" style="display:none">
+      <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">👤 Conta de Administrador</h3>
+      <div class="form-grid">
+        <div class="form-group full"><label>Nome Completo *</label><input id="setupAdminNome" value="Administrador"></div>
+        <div class="form-group"><label>Email *</label><input type="email" id="setupAdminEmail" value="admin@kanawasoft.com"></div>
+        <div class="form-group"><label>Senha *</label><input type="password" id="setupAdminSenha" value="admin123" minlength="6"></div>
+        <div class="form-group"><label>Telefone</label><input id="setupAdminTel" placeholder="+244 900 000 000"></div>
+        <div class="form-group"><label>Perfil</label>
+          <select id="setupAdminPerfil">
+            <option value="admin">Administrador</option>
+            <option value="gerente">Gerente</option>
+            <option value="operador">Operador</option>
+            <option value="caixa">Operador de Caixa</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:16px">
+        <button class="btn btn-secondary" onclick="setupNextStep(1)"><i class="fas fa-arrow-left"></i> Voltar</button>
+        <button class="btn btn-primary btn-lg" onclick="setupNextStep(3)">Próximo <i class="fas fa-arrow-right"></i></button>
+      </div>
+    </div>
+    <div id="setupStep3" style="display:none">
+      <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">✅ Confirmação</h3>
+      <div style="background:var(--bg);border-radius:var(--radius-sm);padding:16px;margin-bottom:14px">
+        <div id="setupResumo" style="font-size:.9rem;line-height:1.9"></div>
+      </div>
+      <div class="form-group"><label><input type="checkbox" id="setupCarregarDemo" checked> Carregar dados de demonstração</label></div>
+      <div style="display:flex;justify-content:space-between;margin-top:16px">
+        <button class="btn btn-secondary" onclick="setupNextStep(2)"><i class="fas fa-arrow-left"></i> Voltar</button>
+        <button class="btn btn-success btn-lg" onclick="finalizarSetup()"><i class="fas fa-check-circle"></i> Concluir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AUTH -->
+<div id="authScreen">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="logo-circle" id="authLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
+      <h1>Kanawa <span>Soft</span></h1>
+      <p style="color:var(--text-muted);font-size:.9rem">ERP Multi-Empresa Angola v15.2</p>
+    </div>
+    <div id="loginError" class="alert alert-danger"></div>
+    <form id="loginForm">
+      <div class="form-group"><label>📧 Email</label><input type="email" id="loginEmail" required value="admin@kanawasoft.com"></div>
+      <div class="form-group"><label>🔒 Senha</label><input type="password" id="loginPassword" required value="admin123"></div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg"><i class="fas fa-sign-in-alt"></i> Entrar</button>
+    </form>
+    <div style="text-align:center;margin-top:16px;font-size:.78rem;color:var(--text-muted)">Demo: admin@kanawasoft.com / admin123</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo" id="topbarLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
+      <div class="topbar-title">
+        <h1 id="topbarEmpresa">Kanawa Soft ERP</h1>
+        <p>v15.2 - Sistema Completo</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="api-badge offline" id="apiStatus" onclick="toggleSync()" title="Clique para sincronizar"><span class="dot"></span><span id="apiStatusText">Offline</span></span>
+      <button class="topbar-btn" onclick="openModule('notificacoes')" title="Notificações">
+        <i class="fas fa-bell"></i>
+        <span id="notifBadge" style="position:absolute;top:2px;right:2px;background:var(--danger);color:#fff;border-radius:50%;padding:1px 6px;font-size:.6rem;display:none;">0</span>
+      </button>
+      <div class="topbar-user" onclick="toggleUserMenu()">
+        <img id="userAvatar" src="logo.png" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2236%22 height=%2236%22><rect width=%2236%22 height=%2236%22 fill=%22%231a3a5c%22/><text x=%2218%22 y=%2224%22 font-size=%2216%22 fill=%22white%22 text-anchor=%22middle%22>A</text></svg>'">
+        <div class="info"><span id="userName">Administrador</span><small id="userRole">admin</small></div>
+      </div>
+      <button class="topbar-btn" onclick="toggleTheme()" title="Tema"><i class="fas fa-moon" id="themeIcon"></i></button>
+      <button class="topbar-btn" onclick="logout()" title="Sair"><i class="fas fa-sign-out-alt"></i></button>
+    </div>
+  </div>
+  <div class="main-wrap">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+<div class="sync-indicator" id="syncIndicator"><i class="fas fa-sync"></i><span id="syncText">Sincronizando...</span></div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent">
+    <div class="modal-header"><h3 id="modalTitle">Detalhes</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="scannerModal">
+  <div class="modal">
+    <div class="modal-header"><h3><i class="fas fa-barcode"></i> Scanner</h3><button class="modal-close" onclick="fecharScanner()">✕</button></div>
+    <div id="scannerReader"></div>
+    <div style="margin-top:12px;text-align:center;font-size:.85rem;color:var(--text-muted)">Aponte a câmera para o código</div>
+  </div>
+</div>
+
+<!-- ============================================================
+     BIBLIOTECAS LOCAIS (funcionam 100% offline)
+     ============================================================ -->
+<script src="libs/qrcode.min.js"></script>
+<script src="libs/jsbarcode.min.js"></script>
+<script src="libs/html5-qrcode.min.js"></script>
+<script src="libs/chart.min.js"></script>
+<script src="libs/jspdf.min.js"></script>
+<script src="libs/jspdf-autotable.min.js"></script>
+<script src="libs/xlsx.min.js"></script>
+
+<!-- App principal -->
+<script src="app.js"></script>
+</body>
+</html>
