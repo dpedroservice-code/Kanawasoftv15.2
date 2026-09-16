@@ -27,6 +27,18 @@ const APP_VERSION = '15.2';
 let httpServer = null;
 let dbInstance = null;
 
+/* ============ CONFIGURAÇÃO SEGURA ============ */
+const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+const JWT_SECRET = process.env.JWT_SECRET || '';
+const CORS_ORIGINS = String(process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map(v => v.trim())
+  .filter(Boolean);
+
+if (IS_PRODUCTION && !JWT_SECRET) {
+  throw new Error('[Kanawa] JWT_SECRET é obrigatório em produção. Configure-o no ambiente do servidor.');
+}
+
 /* ============ GRACEFUL SHUTDOWN ============ */
 function setupGracefulShutdown() {
   let shuttingDown = false;
@@ -74,6 +86,50 @@ function manualLogger(req, res, next) {
   next();
 }
 
+/* ============ CORS SEGURO ============ */
+function corsOptions() {
+  if (!CORS_ORIGINS.length) {
+    return IS_PRODUCTION
+      ? { origin: false }
+      : { origin: true };
+  }
+  return {
+    origin(origin, callback) {
+      if (!origin || CORS_ORIGINS.includes(origin)) return callback(null, true);
+      return callback(new Error('Origem não autorizada pelo CORS'));
+    },
+    credentials: true
+  };
+}
+
+/* ============ JWT MIDDLEWARE ============ */
+function apiAuthMiddleware(req, res, next) {
+  const publicPaths = new Set([
+    '/health', '/ping', '/version',
+    '/auth/login', '/auth/register'
+  ]);
+  if (publicPaths.has(req.path)) return next();
+
+  const authHeader = String(req.headers.authorization || '');
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) return res.status(401).json({ error: 'Autenticação obrigatória' });
+
+  let jwt;
+  try { jwt = require('jsonwebtoken'); } catch (e) {
+    return res.status(503).json({ error: 'Serviço de autenticação indisponível' });
+  }
+
+  if (!JWT_SECRET) return res.status(503).json({ error: 'JWT não configurado no servidor' });
+
+  try {
+    const payload = jwt.verify(match[1], JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Token inválido ou expirado' });
+  }
+}
+
 /* ============================================================
    START SERVER
    Retorna: { port: number, server: http.Server }
@@ -103,7 +159,7 @@ async function startServer(options = {}) {
   }
 
   /* ====== CORS ====== */
-  app.use(cors());
+  app.use(cors(corsOptions()));
 
   /* ====== RATE LIMIT (opcional) ====== */
   if (rateLimit) {
@@ -123,8 +179,8 @@ async function startServer(options = {}) {
   }
 
   /* ====== BODY PARSERS ====== */
-  app.use(express.json({ limit: '200mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
   /* ====== LOG ====== */
   if (morgan) {
@@ -164,6 +220,9 @@ async function startServer(options = {}) {
     uptime: process.uptime()
   }));
 
+  /* ====== AUTENTICAÇÃO DA API ====== */
+  app.use('/api', apiAuthMiddleware);
+
   /* ====== ROTAS CRUD ====== */
   registerRoutes(app, dbInstance);
 
@@ -191,12 +250,14 @@ async function startServer(options = {}) {
   /* ====== ERROR HANDLER ====== */
   app.use((err, req, res, next) => {
     console.error('[Kanawa] Erro API:', err);
-    res.status(500).json({ error: err.message });
+    const message = IS_PRODUCTION ? 'Erro interno do servidor' : err.message;
+    res.status(500).json({ error: message });
   });
 
   /* ====== LISTEN ====== */
   return new Promise((resolve, reject) => {
-    httpServer = app.listen(port, '127.0.0.1', () => {
+    const host = options.host || process.env.HOST || '127.0.0.1';
+    httpServer = app.listen(port, host, () => {
       const actualPort = httpServer.address().port;
 
       console.log('');
@@ -207,7 +268,7 @@ async function startServer(options = {}) {
       console.log('  ██║  ██╗██║  ██║██║ ╚████║██║  ██║╚███╔███╔╝██║  ██║');
       console.log('  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝');
       console.log('');
-      console.log('[Kanawa] Servidor em http://127.0.0.1:' + actualPort);
+      console.log('[Kanawa] Servidor em http://' + host + ':' + actualPort);
       console.log('[Kanawa] Versão ' + APP_VERSION + ' — SQLite · 135 tabelas');
       console.log('');
 
@@ -218,7 +279,7 @@ async function startServer(options = {}) {
     httpServer.on('error', (err) => {
       if (err.code === 'EADDRINUSE' && port !== 0) {
         console.warn('[Kanawa] Porta ' + port + ' em uso, tentando porta aleatória...');
-        httpServer.listen(0, '127.0.0.1');
+        httpServer.listen(0, host);
         return;
       }
       reject(err);
