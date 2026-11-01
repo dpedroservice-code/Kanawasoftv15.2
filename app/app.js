@@ -2101,7 +2101,7 @@ function salvarRegras() {
   toast('✅ Regras salvas', 'success');
 }
 function salvarConfigAPI() { toast('A ligação central é gerida automaticamente pelo Kanawa Soft Cloud.', 'info'); }
-async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? '✅ Servidor Online' : '❌ Servidor Offline', ok ? 'success' : 'warning'); }
+async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? 'Supabase Cloud acessível' : 'Supabase Cloud indisponível', ok ? 'success' : 'warning'); }
 async function limparColecao(s) { if (!confirm('Limpar ' + s + '?')) return; await DB.clear(s); toast('Limpo', 'info'); openModule('config'); }
 async function recarregarDemo() { if (!confirm('Carregar demo?')) return; await seedDemo(); pdvCache.ts = 0; toast('Demo carregado', 'success'); openModule('config'); }
 async function resetTotal() {
@@ -2406,7 +2406,7 @@ async function gerarEtiqueta() {
   await saveData('etiquetas', { codigo: 'ETQ' + Math.random().toString(36).substr(2, 6).toUpperCase(), produto, data: now() });
   toast('Etiqueta gerada', 'success'); openModule('logistica-etiquetas');
 }
-function visualizarEtiqueta(id) { toast('Visualizando etiqueta', 'info'); }
+async function visualizarEtiqueta(id) { return await imprimirEtiquetaIndividual(id); }
 
 async function renderLogisticaPicking() {
   const ecommerceOrders = await getData('ecommercePedidos') || [];
@@ -2919,7 +2919,17 @@ async function renderFrotaDesempenho() {
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Detalhes</h3></div>' +
     (f.length > 0 ? f.map(x => '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><strong>' + esc(x.placa) + '</strong> - ' + esc(x.modelo || '-') + ' ' + badge(x.status || 'ativo', x.status === 'ativo' ? 'success' : 'warning') + '</div>').join('') : 'Nenhum veículo') + '</div>';
 }
-function gerarRelatorioFrota() { toast('Relatório gerado', 'success'); }
+async function gerarRelatorioFrota() {
+  const vehicles=await getData('frotas')||[], gps=await getData('gpsTracking')||[], fuel=await getData('abastecimentos')||[], fines=await getData('multas')||[];
+  const rows=[['Veículo','Matrícula','Modelo','Estado','Latitude GPS','Longitude GPS','Atualização GPS','Abastecimentos','Multas']];
+  vehicles.forEach(v=>{
+    const pos=gps.find(x=>String(x.veiculo_id||'')===String(v.id)||String(x.veiculo||'')===String(v.placa||v.matricula||''));
+    const vehicleFuel=fuel.filter(x=>String(x.veiculo_id||'')===String(v.id)||String(x.veiculo||'')===String(v.placa||v.matricula||''));
+    const vehicleFines=fines.filter(x=>String(x.veiculo_id||'')===String(v.id)||String(x.veiculo||'')===String(v.placa||v.matricula||''));
+    rows.push([v.nome||'',v.placa||v.matricula||'',v.modelo||'',v.status||'',pos&&pos.location_source?pos.lat:'',pos&&pos.location_source?pos.lng:'',pos&&pos.ultimaAtualizacao||'',vehicleFuel.length,vehicleFines.length]);
+  });
+  baixarCSVRelatorio('kanawa-relatorio-frota.csv',rows);
+}
 
 /* OS AVANÇADO */
 async function renderOSManutencao() {
@@ -3131,31 +3141,132 @@ async function renderElearningQuizzes() {
     '<button class="btn btn-success" onclick="novoQuiz()"><i class="fas fa-plus"></i> Novo Quiz</button>', 'fa-question-circle') +
     '<div class="card">' + (q.length > 0 ? q.map(x => '<div style="padding:8px 12px;background:var(--bg);border-radius:var(--radius-sm);margin-bottom:6px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:.8rem">' + esc(x.titulo) + '</strong><div style="font-size:.6rem;color:var(--text-muted)">' + (x.questoes || 0) + ' questões</div></div><div style="display:flex;gap:4px"><button class="btn btn-sm btn-primary" onclick="responderQuiz(' + x.id + ')"><i class="fas fa-play"></i></button><button class="btn btn-sm btn-danger" onclick="excluirItem(\'quizzes\',' + x.id + ')"><i class="fas fa-trash"></i></button></div></div>').join('') : emptyState('fa-question-circle', 'Nenhum quiz disponível')) + '</div>';
 }
-async function novoQuiz() { const t = prompt('Título do quiz:'); if (!t) return; await saveData('quizzes', { titulo: t, questoes: parseInt(prompt('Número de questões:', '5')) || 5, data: now() }); toast('Quiz criado', 'success'); openModule('elearning-quizzes'); }
-function responderQuiz(id) { toast('Iniciando quiz...', 'info'); }
-function renderElearningProgresso() {
-  return header('Progresso do Aluno', 'Acompanhamento de aprendizado', 'var(--primary)', '', 'fa-chart-line') +
-    '<div class="card"><div class="form-grid">' +
-    '<div class="form-group"><label>Aluno</label><select id="progressoAluno"><option value="">Todos</option></select></div>' +
-    '<div class="form-group"><label>Curso</label><select id="progressoCurso"><option value="">Todos</option></select></div></div>' +
-    '<button class="btn btn-primary" onclick="gerarRelatorioProgresso()"><i class="fas fa-chart-bar"></i> Gerar Relatório</button></div>' +
-    '<div id="progressoResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Resultado</h3></div><div id="progressoConteudo"></div></div>';
+async function novoQuiz() {
+  const title = prompt('Título do quiz:');
+  if (!title) return;
+  const course = prompt('Curso associado (opcional):') || '';
+  const countRaw = prompt('Quantas perguntas? (1 a 20)', '5');
+  if (countRaw === null) return;
+  const count = Math.max(1, Math.min(20, parseInt(countRaw, 10) || 1));
+  const questions = [];
+  for (let i = 0; i < count; i++) {
+    const statement = prompt('Pergunta ' + (i + 1) + ' de ' + count + ':');
+    if (!statement) { toast('Criação cancelada: falta a pergunta ' + (i + 1) + '.', 'warning'); return; }
+    const optionsText = prompt('Opções para a pergunta ' + (i + 1) + ', separadas por ponto e vírgula (;):');
+    if (!optionsText) { toast('Criação cancelada: faltam opções.', 'warning'); return; }
+    const options = optionsText.split(';').map(function (x) { return x.trim(); }).filter(Boolean);
+    if (options.length < 2) { toast('Cada pergunta precisa de pelo menos duas opções.', 'warning'); return; }
+    const correct = parseInt(prompt('Número da opção correta (1 a ' + options.length + '):', '1'), 10);
+    if (!Number.isInteger(correct) || correct < 1 || correct > options.length) { toast('Número da resposta correta inválido.', 'warning'); return; }
+    questions.push({ enunciado:statement, opcoes:options, correta:correct - 1 });
+  }
+  try {
+    await saveData('quizzes', { titulo:title.trim(), curso:course.trim(), questoes:questions.length, perguntas:questions, data:now() });
+    toast('Quiz criado com ' + questions.length + ' perguntas.', 'success');
+    openModule('elearning-quizzes');
+  } catch (error) { toast(error.message || 'Não foi possível criar o quiz.', 'error'); }
 }
-function gerarRelatorioProgresso() { toast('Relatório gerado', 'success'); }
+async function responderQuiz(id) {
+  const quiz = await DB.get('quizzes', id);
+  if (!quiz) { toast('Quiz não encontrado.', 'error'); return; }
+  const questions = Array.isArray(quiz.perguntas) ? quiz.perguntas : [];
+  if (!questions.length) { toast('Este quiz ainda não tem perguntas. Crie novamente o quiz com perguntas e opções.', 'warning'); return; }
+  const content = questions.map(function (q, i) {
+    const options = Array.isArray(q.opcoes) ? q.opcoes : [];
+    return '<div class="form-group" style="margin-bottom:16px"><strong>' + (i + 1) + '. ' + esc(q.enunciado || 'Pergunta') + '</strong>' +
+      options.map(function (option, j) { return '<label style="display:block;margin:6px 0"><input type="radio" name="quizAnswer_' + i + '" value="' + j + '"> ' + esc(option) + '</label>'; }).join('') + '</div>';
+  }).join('');
+  openModal(quiz.titulo || 'Quiz', '<div id="quizFormContent">' + content + '</div><button class="btn btn-success" onclick="corrigirQuiz(' + Number(id) + ')">Submeter respostas</button>');
+}
+async function corrigirQuiz(id) {
+  const quiz = await DB.get('quizzes', id);
+  if (!quiz || !Array.isArray(quiz.perguntas)) { toast('Quiz indisponível.', 'error'); return; }
+  let correct = 0; const answers = [];
+  for (let i = 0; i < quiz.perguntas.length; i++) {
+    const selected = document.querySelector('input[name="quizAnswer_' + i + '"]:checked');
+    if (!selected) { toast('Responda à pergunta ' + (i + 1) + ' antes de submeter.', 'warning'); return; }
+    const answer = Number(selected.value), expected = Number(quiz.perguntas[i].correta);
+    const isCorrect = answer === expected;
+    if (isCorrect) correct++;
+    answers.push({ pergunta:i + 1, resposta:answer, correta:isCorrect });
+  }
+  const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+  const result = { quiz_id:id, quiz_title:quiz.titulo || '', curso:quiz.curso || '', aluno:user.nome || user.name || 'Utilizador',
+    corretas:correct, total:quiz.perguntas.length, percentagem:Math.round((correct / quiz.perguntas.length) * 100), respostas:answers, data:now() };
+  try {
+    await saveData('quizResults', result);
+    closeModal();
+    openModal('Resultado do quiz', '<div class="metric-grid"><div class="metric-card"><div class="label">Pontuação</div><div class="value">' + result.percentagem + '%</div></div>' +
+      '<div class="metric-card"><div class="label">Respostas certas</div><div class="value">' + correct + '/' + result.total + '</div></div></div>' +
+      '<p>' + (result.percentagem >= 70 ? 'Resultado aprovado.' : 'Resultado registado. Pode repetir o quiz para melhorar.') + '</p>' +
+      '<button class="btn btn-primary" onclick="closeModal();openModule(\'elearning-quizzes\')">Concluir</button>');
+  } catch (error) { toast(error.message || 'Não foi possível guardar o resultado.', 'error'); }
+}
+
+async function renderElearningProgresso() {
+  const results = await getData('quizResults') || [];
+  const students = Array.from(new Set(results.map(r => r.aluno).filter(Boolean)));
+  const courses = Array.from(new Set(results.map(r => r.curso).filter(Boolean)));
+  return header('Progresso do Aluno', results.length + ' tentativas registadas', 'var(--primary)', '', 'fa-chart-line') +
+    '<div class="card"><div class="form-grid"><div class="form-group"><label>Aluno</label><select id="progressoAluno"><option value="">Todos</option>' +
+    students.map(x => '<option>' + esc(x) + '</option>').join('') + '</select></div><div class="form-group"><label>Curso</label><select id="progressoCurso"><option value="">Todos</option>' +
+    courses.map(x => '<option>' + esc(x) + '</option>').join('') + '</select></div></div><button class="btn btn-primary" onclick="gerarRelatorioProgresso()">Gerar Relatório</button></div>' +
+    '<div id="progressoResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title">Resultado</h3></div><div id="progressoConteudo"></div></div>';
+}
+async function gerarRelatorioProgresso() {
+  const results = await getData('quizResults') || [];
+  const student = $('progressoAluno') ? $('progressoAluno').value : '';
+  const course = $('progressoCurso') ? $('progressoCurso').value : '';
+  const filtered = results.filter(r => (!student || r.aluno === student) && (!course || r.curso === course));
+  const output = $('progressoResultado'), content = $('progressoConteudo');
+  if (!output || !content) return;
+  output.style.display = 'block';
+  if (!filtered.length) { content.innerHTML = '<p class="text-muted">Ainda não existem resultados para os filtros escolhidos.</p>'; return; }
+  const average = Math.round(filtered.reduce((sum, r) => sum + Number(r.percentagem || 0), 0) / filtered.length);
+  content.innerHTML = '<p><strong>' + filtered.length + '</strong> tentativas · média <strong>' + average + '%</strong></p>' +
+    table(['Aluno','Quiz','Curso','Pontuação','Data'], filtered.map(r => [esc(r.aluno || '-'),esc(r.quiz_title || '-'),esc(r.curso || '-'),Number(r.percentagem || 0)+'%',fmtDT(r.data)]));
+}
+
 async function renderElearningRelatorios() {
-  const c = await getData('cursos') || []; const cert = await getData('certificacoes') || []; const q = await getData('quizzes') || []; const f = await getData('funcionarios') || [];
-  return header('Relatórios E-learning', 'Análise de desempenho educacional', 'var(--purple)', '', 'fa-file-alt') +
-    '<div class="metric-grid">' +
-    '<div class="metric-card"><div class="label">Total Cursos</div><div class="value">' + c.length + '</div></div>' +
-    '<div class="metric-card" style="border-left-color:var(--success)"><div class="label">Certificações</div><div class="value">' + cert.length + '</div></div>' +
-    '<div class="metric-card" style="border-left-color:var(--info)"><div class="label">Quizzes</div><div class="value">' + q.length + '</div></div>' +
-    '<div class="metric-card" style="border-left-color:var(--warning)"><div class="label">Alunos</div><div class="value">' + f.length + '</div></div></div>' +
-    '<div class="card"><div class="form-actions">' +
-    '<button class="btn btn-success" onclick="exportarRelatorioElearning()"><i class="fas fa-file-export"></i> Exportar Relatório</button>' +
-    '<button class="btn btn-info" onclick="gerarGraficoElearning()"><i class="fas fa-chart-pie"></i> Gerar Gráfico</button></div></div>';
+  const courses = await getData('cursos') || [], certs = await getData('certificacoes') || [];
+  const quizzes = await getData('quizzes') || [], results = await getData('quizResults') || [];
+  const average = results.length ? Math.round(results.reduce((sum,r)=>sum+Number(r.percentagem||0),0)/results.length) : 0;
+  return header('Relatórios E-learning', 'Indicadores de formação e avaliação', 'var(--purple)', '', 'fa-file-alt') +
+    '<div class="metric-grid"><div class="metric-card"><div class="label">Cursos</div><div class="value">' + courses.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Certificações</div><div class="value">' + certs.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Quizzes</div><div class="value">' + quizzes.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Tentativas</div><div class="value">' + results.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Média</div><div class="value">' + average + '%</div></div></div>' +
+    '<div class="card"><div class="form-actions"><button class="btn btn-success" onclick="exportarRelatorioElearning()">Exportar CSV</button>' +
+    '<button class="btn btn-info" onclick="gerarGraficoElearning()">Gerar gráfico</button></div><div id="elearningGrafico" style="margin-top:16px"></div></div>';
 }
-function exportarRelatorioElearning() { toast('Relatório exportado', 'success'); }
-function gerarGraficoElearning() { toast('Gráfico gerado', 'success'); }
+function baixarCSVRelatorio(filename, rows) {
+  const csv = rows.map(row => row.map(cell => '"' + String(cell == null ? '' : cell).replace(/"/g,'""') + '"').join(';')).join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = filename; link.style.display = 'none'; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function exportarRelatorioElearning() {
+  const courses=await getData('cursos')||[], certs=await getData('certificacoes')||[], quizzes=await getData('quizzes')||[], results=await getData('quizResults')||[];
+  const rows=[['Tipo','Nome','Aluno','Curso','Pontuação','Data']];
+  courses.forEach(x=>rows.push(['Curso',x.nome||x.titulo,'','', '',x.data||'']));
+  certs.forEach(x=>rows.push(['Certificação',x.curso||'',x.aluno||'',x.curso||'','',x.data||'']));
+  quizzes.forEach(x=>rows.push(['Quiz',x.titulo||'','',x.curso||'','',x.data||'']));
+  results.forEach(x=>rows.push(['Resultado',x.quiz_title||'',x.aluno||'',x.curso||'',(x.percentagem||0)+'%',x.data||'']));
+  baixarCSVRelatorio('kanawa-relatorio-elearning.csv',rows);
+}
+async function gerarGraficoElearning() {
+  const results=await getData('quizResults')||[], target=$('elearningGrafico');
+  if(!target)return;
+  if(!results.length){target.innerHTML='<p class="text-muted">Ainda não existem resultados de quizzes para representar.</p>';return;}
+  const groups={};results.forEach(r=>{const key=r.quiz_title||'Quiz';(groups[key]||(groups[key]=[])).push(Number(r.percentagem||0));});
+  target.innerHTML='<h4>Média de pontuação por quiz</h4>'+Object.keys(groups).map(key=>{
+    const average=Math.round(groups[key].reduce((a,b)=>a+b,0)/groups[key].length);
+    return '<div style="margin:10px 0"><div style="display:flex;justify-content:space-between"><span>'+esc(key)+'</span><strong>'+average+'%</strong></div>'+
+      '<div style="height:12px;background:var(--bg);border-radius:8px;overflow:hidden"><div style="height:100%;width:'+average+'%;background:var(--primary);border-radius:8px"></div></div></div>';
+  }).join('');
+}
 
 /* E-COMMERCE PRODUTOS (catálogo) */
 async function renderEcommerceProdutos() {
@@ -3405,7 +3516,7 @@ const EXPORTS = [
   'renderCRMScore','renderCRMRemarketing','executarRemarketing','agendarRemarketing',
   'renderMarketingCampanhas','novaCampanhaMarketing','editarCampanhaMarketing','renderMarketingAnalise',
   'renderElearningCursos','novoCurso','abrirCurso','renderElearningCertificacoes','novaCertificacao',
-  'renderElearningQuizzes','novoQuiz','responderQuiz','renderElearningProgresso','gerarRelatorioProgresso',
+  'renderElearningQuizzes','novoQuiz','responderQuiz','corrigirQuiz','renderElearningProgresso','gerarRelatorioProgresso',
   'renderElearningRelatorios','exportarRelatorioElearning','gerarGraficoElearning',
   'renderEcommerceProdutos','abrirFormProdutoEcommerce','editarProdutoEcommerce','excluirProdutoEcommerce','toggleProdutoEcommerce',
   'renderServicos','novoServico','editarServico'
