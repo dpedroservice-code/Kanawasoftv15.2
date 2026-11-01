@@ -138,6 +138,10 @@ async function getData(store) {
 
 async function saveData(store, item, options) {
   const existed = !!item.id;
+  if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store) && !podeAlterarArmazenamento(store, existed ? 'editar' : 'criar')) {
+    toast('Não tem permissão para esta operação.', 'error');
+    throw new Error('Permissão insuficiente: ' + store);
+  }
   const id = existed ? (await DB.put(store, item), item.id) : await DB.add(store, item);
   const record = Object.assign({}, item, { id: id });
   if (window.KanawaCloud && store === 'empresas' && KanawaCloud.ready) {
@@ -166,6 +170,10 @@ async function saveData(store, item, options) {
 }
 
 async function deleteData(store, id) {
+  if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store) && !podeAlterarArmazenamento(store, 'excluir')) {
+    toast('Não tem permissão para eliminar este registo.', 'error');
+    throw new Error('Permissão insuficiente para eliminar: ' + store);
+  }
   await DB.del(store, id);
   if (window.KanawaCloud && !KanawaCloud.isLocalOnly(store)) {
     if (KanawaCloud.ready) {
@@ -331,6 +339,8 @@ async function activateCloudSession(ctx, migrateLocal) {
     email: ctx.user.email,
     perfil: ctx.role,
     role: ctx.role,
+    permissions: ctx.permissions || {},
+    cloudUserId: ctx.user.id,
     avatar: null
   };
   await DB.put('empresas', company);
@@ -375,7 +385,8 @@ function mostrarAplicacaoAutenticada(ctx) {
     $('userAvatar').onerror = function () { this.src = 'logo.png'; };
   }
   renderSidebar();
-  openModule('dashboard');
+  const firstAllowed = MENU.find(function (item) { return podeAcessar(item.id); });
+  openModule(firstAllowed ? firstAllowed.id : 'perfil');
   updateNotifBadge();
 }
 
@@ -391,9 +402,37 @@ const PERMISSOES = {
   operador: { modulos: ['dashboard','pdv','vendas','produtos','clientes','estoque','notificacoes','perfil','producao','ordens-producao','controle-qualidade','os','os-manutencao','os-checklist','os-calendario','projetos-tarefas','projetos-kanban','tarefas'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 10 },
   caixa: { modulos: ['pdv','vendas','clientes','notificacoes','perfil','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 5 }
 };
-function getPerms() { const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}'); return PERMISSOES[u.role || u.perfil || 'operador'] || PERMISSOES.operador; }
-function podeAcessar(m) { const p = getPerms(); return p.modulos === '*' || p.modulos.indexOf(m) !== -1; }
-function podeFazer(a) { return getPerms().acoes.indexOf(a) !== -1; }
+function getPerms() {
+  const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+  if (u.role === 'admin' || u.perfil === 'admin') return PERMISSOES.admin;
+  if (u.permissions && typeof u.permissions === 'object') {
+    const modules = Object.keys(u.permissions).filter(function (key) {
+      return Array.isArray(u.permissions[key]) && u.permissions[key].length > 0;
+    });
+    return { modulos: modules, acoes: [], byModule: u.permissions, verFinanceiro: !!(u.permissions.financeiro || u.permissions.vendas), excluir: modules.some(function (key) { return (u.permissions[key] || []).includes('excluir'); }), configurar: false, descontoMax: 0 };
+  }
+  return PERMISSOES[u.role || u.perfil || 'operador'] || PERMISSOES.operador;
+}
+function podeAcessar(m) {
+  const p = getPerms();
+  if (p.modulos === '*') return true;
+  if (p.byModule) return Array.isArray(p.byModule[m]) && p.byModule[m].length > 0;
+  return p.modulos.indexOf(m) !== -1;
+}
+function podeFazerModulo(m, action) {
+  const p = getPerms();
+  if (p.modulos === '*') return true;
+  if (p.byModule) return Array.isArray(p.byModule[m]) && p.byModule[m].includes(action);
+  return p.modulos.indexOf(m) !== -1 && p.acoes.indexOf(action) !== -1;
+}
+function podeFazer(a) { return podeFazerModulo(currentModule, a); }
+function moduloDoArmazenamento(store) {
+  const map = { movimentacoesEstoque:'estoque', contasReceber:'financeiro', contasPagar:'financeiro', pagamentos:'financeiro', faturas:'fiscal', documentosFiscais:'fiscal', ecommerceProdutos:'ecommerce-produtos', ecommercePedidos:'ecommerce-pedidos', ecommerceCarrinhos:'ecommerce-carrinho', promocoes:'vendas-promocoes', tabelasPrecos:'tabelas-precos', ordensProducao:'ordens-producao', boms:'bom', custosProducao:'custos-producao', controleQualidade:'controle-qualidade', planosProducao:'planos-producao', ordensServico:'os', ordensManutencao:'os-manutencao', frotas:'frota', cursos:'elearning-cursos', campanhas:'marketing-campanhas', leads:'crm' };
+  return map[store] || store;
+}
+function podeAlterarArmazenamento(store, action) {
+  return podeFazerModulo(moduloDoArmazenamento(store), action);
+}
 
 /* ====== MENU ====== */
 const MENU = [
@@ -1650,22 +1689,171 @@ async function exportarVendasCSV() {
   URL.revokeObjectURL(url); toast('CSV exportado', 'success');
 }
 
-/* ====== USUÁRIOS ====== */
+/* ====== USUÁRIOS E PERMISSÕES ====== */
+function modulosGeriveis() {
+  return MENU.filter(function (m) {
+    return !['usuarios','auditoria','config','modulos'].includes(m.id);
+  });
+}
+function htmlEditorPermissoes(role, selected) {
+  const base = PERMISSOES[role] || PERMISSOES.operador;
+  const actions = ['ver','criar','editar','excluir','exportar','importar','aprovar','cancelar','configurar'];
+  const modules = modulosGeriveis();
+  const rows = modules.map(function (m) {
+    const saved = selected && Array.isArray(selected[m.id]) ? selected[m.id] : null;
+    const defaults = saved || ((base.modulos === '*' || base.modulos.includes(m.id))
+      ? ['ver'].concat(base.acoes || []).filter(function (v, i, a) { return a.indexOf(v) === i; })
+      : []);
+    return '<tr><td style="white-space:nowrap;font-weight:600">' + esc(m.label) + '</td>' +
+      actions.map(function (action) {
+        const checked = defaults.includes(action) ? ' checked' : '';
+        return '<td style="text-align:center"><input type="checkbox" data-perm-module="' + m.id + '" data-perm-action="' + action + '"' + checked + ' aria-label="' + m.label + ' ' + action + '"></td>';
+      }).join('') + '</tr>';
+  }).join('');
+  return '<div class="card" style="padding:10px;margin-top:12px"><h4>Permissões por módulo</h4><p class="text-muted" style="font-size:.8rem">Marque apenas as operações que este funcionário poderá executar.</p><div style="overflow:auto;max-height:340px"><table class="table"><thead><tr><th>Módulo</th>' +
+    actions.map(function (a) { return '<th>' + a + '</th>'; }).join('') +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
+function preencherPermissoesPadrao() {
+  const role = $('uPerfil') ? $('uPerfil').value : 'operador';
+  const base = PERMISSOES[role] || PERMISSOES.operador;
+  document.querySelectorAll('[data-perm-module]').forEach(function (input) {
+    const moduleId = input.getAttribute('data-perm-module');
+    const action = input.getAttribute('data-perm-action');
+    const allowed = base.modulos === '*' || base.modulos.includes(moduleId);
+    input.checked = allowed && (action === 'ver' || (base.acoes || []).includes(action));
+  });
+}
+function recolherPermissoes() {
+  const result = {};
+  document.querySelectorAll('[data-perm-module]:checked').forEach(function (input) {
+    const moduleId = input.getAttribute('data-perm-module');
+    const action = input.getAttribute('data-perm-action');
+    if (!result[moduleId]) result[moduleId] = [];
+    result[moduleId].push(action);
+  });
+  return result;
+}
 async function renderUsuarios() {
-  if (!podeAcessar('usuarios')) return '<div class="card"><h3>Sem permissão</h3></div>';
-  const u = await getData('usuarios');
-  const rows = u.map(x => [x.id, '<strong>' + esc(x.nome) + '</strong>', esc(x.email), badge(x.perfil || 'operador', 'primary'), badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'usuarios\',' + x.id + ')"><i class="fas fa-trash"></i></button>']);
-  return header('Usuários', u.length + ' usuários', 'var(--danger)', '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-plus"></i> Novo</button>', 'fa-user-shield') + '<div class="card">' + table(['#', 'Nome', 'Email', 'Perfil', 'Status', 'Ações'], rows) + '</div>';
+  if (!podeAcessar('usuarios') || !window.KanawaCloud || !KanawaCloud.ready || JSON.parse(localStorage.getItem('kanawa_user') || '{}').role !== 'admin') {
+    return '<div class="card"><h3>Sem permissão</h3><p>Este painel é reservado ao administrador.</p></div>';
+  }
+  const members = await KanawaCloud.listTeamMembers();
+  window.__kanawaTeamMembers = members;
+  const roleNames = { owner:'Administrador', admin:'Administrador', manager:'Gerente', operator:'Operador', cashier:'Caixa', accountant:'Contabilista', viewer:'Consulta' };
+  const rows = members.map(function (m) {
+    const p = m.profile || {};
+    const protectedRole = ['owner','admin'].includes(m.role);
+    const statusLabel = m.status === 'active' ? 'Ativo' : (m.status === 'suspended' ? 'Suspenso' : 'Convidado');
+    const action = protectedRole ? '<span class="text-muted">Conta protegida</span>' :
+      '<button class="btn btn-sm btn-primary" onclick="editarAcessoMembro(\'' + m.user_id + '\')"><i class="fas fa-key"></i> Permissões</button>';
+    return ['<small>' + esc(String(m.user_id).slice(0,8)) + '</small>',
+      '<strong>' + esc(p.full_name || 'Funcionário') + '</strong>',
+      esc(p.email || '-'), badge(roleNames[m.role] || m.role,'primary'),
+      badge(statusLabel, m.status === 'active' ? 'success' : 'danger'), action];
+  });
+  return header('Utilizadores e Permissões', members.length + ' contas da empresa', 'var(--danger)',
+    '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-user-plus"></i> Convidar funcionário</button>', 'fa-user-shield') +
+    '<div class="card"><p>Cada funcionário utiliza a sua própria conta. As permissões são aplicadas na base de dados e atualizadas quando voltar a iniciar sessão.</p>' +
+    table(['ID','Nome','Email','Perfil','Estado','Gestão'], rows) + '</div>';
 }
 function abrirModalUsuario() {
-  openModal('Novo Usuário',
-    '<div class="form-group"><label>Nome *</label><input id="uNome"></div>' +
-    '<div class="form-group"><label>Email *</label><input id="uEmail" type="email"></div>' +
-    '<div class="form-group"><label>Senha *</label><input id="uSenha" type="password" minlength="6"></div>' +
-    '<div class="form-group"><label>Perfil</label><select id="uPerfil"><option value="admin">Administrador</option><option value="gerente">Gerente</option><option value="operador">Operador</option><option value="caixa">Operador de Caixa</option></select></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarUsuario()">Salvar</button>');
+  openModal('Convidar funcionário',
+    '<div class="form-grid"><div class="form-group"><label>Nome completo *</label><input id="uNome" autocomplete="name"></div>' +
+    '<div class="form-group"><label>Email individual *</label><input id="uEmail" type="email" autocomplete="email"></div>' +
+    '<div class="form-group full"><label>Perfil</label><select id="uPerfil" onchange="preencherPermissoesPadrao()"><option value="gerente">Gerente</option><option value="operador" selected>Operador</option><option value="caixa">Caixa</option><option value="contabilista">Contabilista</option><option value="consulta">Consulta</option></select></div></div>' +
+    htmlEditorPermissoes('operador', null) +
+    '<p class="text-muted" style="font-size:.8rem">O funcionário receberá um código individual para ativar a conta e escolher a sua própria palavra-passe. O código expira em 72 horas.</p>' +
+    '<button class="btn btn-primary btn-block" onclick="salvarUsuario()">Gerar convite e chave de ativação</button>');
 }
-async function salvarUsuario() { const n = $('uNome').value.trim(), e = $('uEmail').value.trim(), s = $('uSenha').value; if (!n || !e || s.length < 6) { toast('Preencha todos os campos', 'warning'); return; } await saveData('usuarios', { nome: n, email: e, senha: s, perfil: $('uPerfil').value, ativo: true, dataCriacao: now() }); toast('Usuário criado', 'success'); closeModal(); openModule('usuarios'); }
+async function salvarUsuario() {
+  const name = $('uNome').value.trim();
+  const email = $('uEmail').value.trim();
+  const roleMap = { gerente:'manager', operador:'operator', caixa:'cashier', contabilista:'accountant', consulta:'viewer' };
+  const role = roleMap[$('uPerfil').value] || 'operator';
+  if (!name || !email || !email.includes('@')) { toast('Preencha nome e email válidos.', 'warning'); return; }
+  const permissions = recolherPermissoes();
+  if (!Object.keys(permissions).length) { toast('Selecione pelo menos um módulo e uma operação.', 'warning'); return; }
+  try {
+    const invite = await KanawaCloud.createTeamInvitation({ fullName:name, email:email, role:role, permissions:permissions, expiresHours:72 });
+    closeModal();
+    openModal('Convite criado', '<div class="alert alert-success">O convite foi criado. Envie este código ao funcionário; ele deverá escolher “Ativar convite” no ecrã de entrada.</div>' +
+      '<div class="form-group"><label>Email</label><input readonly value="' + esc(invite.email) + '"></div>' +
+      '<div class="form-group"><label>Chave individual de ativação (utilização única)</label><textarea id="codigoConvite" rows="3" readonly>' + esc(invite.invitation_code) + '</textarea></div>' +
+      '<p class="text-muted">Válido até ' + new Date(invite.expires_at).toLocaleString('pt-AO') + '. Não partilhe este código com outras pessoas.</p>' +
+      '<button class="btn btn-primary btn-block" onclick="copiarCodigoConvite()">Copiar chave</button>');
+  } catch (e) { toast('Não foi possível criar o convite: ' + (e.message || e), 'error'); }
+}
+async function copiarCodigoConvite() {
+  const input = $('codigoConvite');
+  if (!input) return;
+  input.select();
+  try { await navigator.clipboard.writeText(input.value); toast('Chave copiada.', 'success'); }
+  catch (e) { document.execCommand('copy'); toast('Chave copiada.', 'success'); }
+}
+async function editarAcessoMembro(userId) {
+  const members = window.__kanawaTeamMembers || await KanawaCloud.listTeamMembers();
+  const member = members.find(function (m) { return m.user_id === userId; });
+  if (!member) { toast('Funcionário não encontrado.', 'error'); return; }
+  const profile = member.profile || {};
+  const roleMap = { manager:'gerente', operator:'operador', cashier:'caixa', accountant:'contabilista', viewer:'consulta' };
+  const localRole = roleMap[member.role] || 'operador';
+  const html = '<div><strong>' + esc(profile.full_name || profile.email || 'Funcionário') + '</strong><p>' + esc(profile.email || '') + '</p></div>' +
+    '<div class="form-grid"><div class="form-group"><label>Perfil</label><select id="editPerfil">' +
+    '<option value="gerente"' + (localRole==='gerente'?' selected':'') + '>Gerente</option>' +
+    '<option value="operador"' + (localRole==='operador'?' selected':'') + '>Operador</option>' +
+    '<option value="caixa"' + (localRole==='caixa'?' selected':'') + '>Caixa</option>' +
+    '<option value="contabilista"' + (localRole==='contabilista'?' selected':'') + '>Contabilista</option>' +
+    '<option value="consulta"' + (localRole==='consulta'?' selected':'') + '>Consulta</option></select></div>' +
+    '<div class="form-group"><label>Estado</label><select id="editEstado"><option value="active"' + (member.status==='active'?' selected':'') + '>Ativo</option><option value="suspended"' + (member.status==='suspended'?' selected':'') + '>Suspenso</option></select></div></div>' +
+    htmlEditorPermissoes(localRole, member.permissions || {}) +
+    '<button class="btn btn-primary btn-block" onclick="guardarAcessoMembro(\'' + userId + '\')">Guardar permissões</button>';
+  openModal('Gerir acesso do funcionário', html);
+}
+async function guardarAcessoMembro(userId) {
+  const roleMap = { gerente:'manager', operador:'operator', caixa:'cashier', contabilista:'accountant', consulta:'viewer' };
+  const role = roleMap[$('editPerfil').value] || 'operator';
+  const status = $('editEstado').value;
+  const permissions = recolherPermissoes();
+  try {
+    await KanawaCloud.updateTeamMemberAccess({ userId:userId, role:role, status:status, permissions:permissions });
+    toast('Permissões atualizadas. O funcionário terá os novos acessos na próxima atualização da sessão.', 'success');
+    closeModal();
+    openModule('usuarios');
+  } catch (e) { toast('Não foi possível atualizar: ' + (e.message || e), 'error'); }
+}
+function abrirAceitarConvite() {
+  openModal('Ativar conta de funcionário',
+    '<p>Introduza o código individual recebido do administrador.</p>' +
+    '<div class="form-group"><label>Nome completo</label><input id="inviteNome" autocomplete="name"></div>' +
+    '<div class="form-group"><label>Email convidado</label><input id="inviteEmail" type="email" autocomplete="email"></div>' +
+    '<div class="form-group"><label>Chave de ativação</label><input id="inviteCode" autocomplete="one-time-code"></div>' +
+    '<div class="form-group"><label>Criar palavra-passe (mínimo 8 caracteres)</label><input id="invitePassword" type="password" minlength="8" autocomplete="new-password"></div>' +
+    '<button class="btn btn-primary btn-block" onclick="aceitarConvite()">Ativar a minha conta</button>');
+}
+async function aceitarConvite() {
+  const details = {
+    fullName: $('inviteNome').value.trim(),
+    email: $('inviteEmail').value.trim(),
+    invitationCode: $('inviteCode').value.trim(),
+    password: $('invitePassword').value
+  };
+  if (!details.fullName || !details.email || !details.invitationCode || details.password.length < 8) {
+    toast('Preencha todos os campos. A palavra-passe deve ter pelo menos 8 caracteres.', 'warning');
+    return;
+  }
+  try {
+    const result = await KanawaCloud.acceptTeamInvitation(details);
+    closeModal();
+    if (result.session && KanawaCloud.context) {
+      await activateCloudSession(KanawaCloud.context, false);
+      mostrarAplicacaoAutenticada(KanawaCloud.context);
+      toast('Conta ativada com sucesso.', 'success');
+    } else {
+      toast('Conta criada. Confirme o email e depois entre com a sua palavra-passe.', 'success');
+    }
+  } catch (e) { toast('Não foi possível ativar a conta: ' + (e.message || e), 'error'); }
+}
 
 /* ====== AUDITORIA ====== */
 async function renderAuditoria() {
