@@ -159,7 +159,7 @@ async function prepareCloudPayload(store, item, companyId) {
       });
       if (error) throw error;
       payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + path;
-    } else if (refs[field] && typeof value === 'string' && /^https?:\/\//i.test(value)) {
+    } else if (refs[field] && typeof value === 'string' && value.includes('/storage/v1/object/sign/')) {
       payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + refs[field];
     }
   }
