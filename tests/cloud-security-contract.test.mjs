@@ -194,12 +194,12 @@ test('SaaS dashboard, license activation telemetry and globalization are integra
  assert.match(app,/ks_company_locales/); assert.match(app,/ks_tax_rules/); assert.match(app,/ks_exchange_rates/);
 });
 test('Logistics route calculation uses geocoding and road-network routing APIs', async () => {
- const app=await read('app/app.js'); assert.match(app,/photon\\.komoot\\.io/);
- assert.match(app,/route\\/v1\\/driving/); assert.match(app,/distance\\/1000/); assert.match(app,/guardarRotaReal/);
+ const app=await read('app/app.js'); assert.ok(app.includes('photon.komoot.io'));
+ assert.ok(app.includes('/route/v1/driving/')); assert.ok(app.includes('distance/1000')); assert.ok(app.includes('guardarRotaReal'));
 });
 test('License expiry gates local writes and the platform admin UI is role-gated', async () => {
  const app=await read('app/app.js'); assert.match(app,/ksAssertWritableStore/);
- assert.match(app,/KS_ENTITLEMENTS\\.read_only/); assert.match(app,/if \\(m === 'saas'\\) return KS_PLATFORM_ADMIN/);
+ assert.ok(app.includes('KS_ENTITLEMENTS.read_only')); assert.ok(app.includes("if (m === 'saas') return KS_PLATFORM_ADMIN"));
 });
 
 test('SaaS quotas are enforced server-side for seats, products, installations and invoices', async () => {
