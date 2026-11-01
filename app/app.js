@@ -727,7 +727,7 @@ function abrirGavetaAutomatico() {
     }
   } catch (e) { }
 }
-/* ====== FATURA COM QR CODE + AGT ====== */
+/* ====== DOCUMENTO COMERCIAL COM QR INTERNO ====== */
 async function abrirFatura(venda) {
   const emp = venda.empresa || JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logo = (emp.logo && emp.logo.indexOf('data:') === 0) ? emp.logo : (emp.logo || 'logo.png');
@@ -751,7 +751,7 @@ async function abrirFatura(venda) {
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f8fafc;padding:10px;border-radius:6px;margin-bottom:12px;font-size:.78rem">' +
     '<div style="line-height:1.6"><strong style="color:#1a3a5c;display:block;margin-bottom:2px">CLIENTE</strong><div>Nome: ' + esc(venda.clienteNome || 'Consumidor Final') + '</div>' +
     (venda.clienteNif ? '<div>NIF: ' + esc(venda.clienteNif) + '</div>' : '') + (venda.clienteTelefone ? '<div>Tel: ' + esc(venda.clienteTelefone) + '</div>' : '') + '</div>' +
-    '<div style="line-height:1.6"><strong style="color:#1a3a5c;display:block;margin-bottom:2px">OPERAÇÃO</strong><div>Pagamento: ' + esc(venda.pagamento || '-') + '</div><div>Regime: ' + esc(venda.regime || 'geral') + '</div><div>Tipo Doc: Fatura-Recibo</div></div></div>' +
+    '<div style="line-height:1.6"><strong style="color:#1a3a5c;display:block;margin-bottom:2px">OPERAÇÃO</strong><div>Pagamento: ' + esc(venda.pagamento || '-') + '</div><div>Regime: ' + esc(venda.regime || 'geral') + '</div><div>Tipo Doc: Documento comercial</div></div></div>' +
     '<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr style="background:#1a3a5c;color:#fff"><th style="padding:6px;text-align:left;font-size:.75rem">#</th><th style="padding:6px;text-align:left;font-size:.75rem">Descrição</th><th style="padding:6px;text-align:center;font-size:.75rem">Qtd</th><th style="padding:6px;text-align:right;font-size:.75rem">Preço Unit.</th><th style="padding:6px;text-align:right;font-size:.75rem">Total</th></tr></thead><tbody>' + itensHTML + '</tbody></table>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">' +
     '<div style="text-align:center"><div id="qrcodeContainer" style="display:inline-block;padding:6px;background:#fff;border:2px solid #1a3a5c;border-radius:6px;min-width:130px;min-height:130px"></div>' +
@@ -770,7 +770,7 @@ async function abrirFatura(venda) {
     '<div style="margin-top:14px;padding:10px;border:1px solid #d97706;background:#fffbeb;border-radius:6px;font-size:.65rem;color:#78350f;line-height:1.5"><strong>AVISO — ESTADO DE VALIDAÇÃO FISCAL</strong><br>• Kanawa Soft ERP v' + APP_VERSION + ' ainda não possui certificação/validação AGT.<br>• O QR e o código apresentado são apenas identificadores internos; não constituem assinatura digital JWS/RS256 nem autenticação AGT.<br>• Esta impressão não deve ser apresentada como factura electrónica emitida por software certificado pela AGT.</div>' +
     '<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:.7rem;color:#777"><strong>Obrigado pela preferência!</strong><br><span style="font-size:.65rem">' + esc(emp.firma || emp.nome || 'KANAWA SOFT') + ' — ' + new Date().getFullYear() + '</span></div></div>';
   window._vendaAtual = venda;
-  openModal('🖨️ Fatura / Recibo — ' + venda.numeroFatura,
+  openModal('🖨️ Documento comercial — ' + venda.numeroFatura,
     '<div style="max-height:65vh;overflow-y:auto;background:#fff;padding:0;border-radius:var(--radius-sm)">' + faturaHTML + '</div>' +
     '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">' +
     '<button class="btn btn-success" onclick="imprimirFatura()"><i class="fas fa-print"></i> A4</button>' +
