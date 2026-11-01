@@ -55,3 +55,13 @@ test('frontend permissions map read-only and accounting members correctly', asyn
   assert.match(app, /viewer: \{ modulos: \[[^\]]+\], acoes: \['ver'\]/);
   assert.match(app, /contabilista: \{ modulos: \[[^\]]+'financeiro'[^\]]+\]/);
 });
+
+test('company images use private Supabase Storage with company-folder RLS', async () => {
+  const app = await read('app/app.js');
+  const migration = await read('supabase/migrations/20261101200000_company_media_storage.sql');
+  assert.match(app, /CLOUD_MEDIA_BUCKET = 'ks-company-media'/);
+  assert.match(app, /createSignedUrl\(path, 3600\)/);
+  assert.match(migration, /public = false/);
+  assert.match(migration, /private\.ks_is_company_member/);
+  assert.match(migration, /private\.ks_has_company_role/);
+});
