@@ -43,6 +43,7 @@ The repository now contains a standalone Node.js RS256 JWS utility at `server/ag
 - Never prints the private key. The public key path is shown for submission through the producer portal.
 - Signs the complete JSON payload using RS256 and compact JWS, and includes local verification support for regression tests.
 - Requires a real `softwareValidationNumber`; the application must not invent one. The number is only populated after the AGT assigns/approves it.
+- The printout has been relabelled as an internal commercial document and no longer claims AGT certification or digital signatures. The QR is an internal reference only.
 - The current implementation is a signing primitive, not a complete AGT connector. It is not yet wired to production invoices or homologation endpoints, and no private key was generated in this repository environment.
 
 Before generating a production key, the software producer must control the machine and backup process. Store the private key securely, restrict access, keep it out of Git, and rotate/revoke it through the AGT portal if compromised.
