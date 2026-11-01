@@ -289,10 +289,16 @@
       record.lat !== null && record.lat !== undefined && record.lng !== null && record.lng !== undefined &&
       Number.isFinite(Number(record.lat)) && Number.isFinite(Number(record.lng));
   }
-  function trackingPermissionModule() { return 'logistica-rastreio'; }
+  function trackingPermissionModule() {
+    return currentModule === 'ecommerce-rastreio' ? 'ecommerce-rastreio' : 'logistica-rastreio';
+  }
+  function trackingStore() {
+    return currentModule === 'ecommerce-rastreio' ? 'ecommerceRastreios' : 'rastreios';
+  }
 
   async function renderTracking(title) {
-    const records = await getData('rastreios') || [];
+    const store = trackingStore();
+    const records = await getData(store) || [];
     const permissionModule = trackingPermissionModule();
     const canCreate = podeFazerModulo(permissionModule,'criar');
     const canEdit = podeFazerModulo(permissionModule,'editar');
@@ -309,7 +315,7 @@
       '<div class="card"><div id="kanawaTrackingMap" style="height:360px;width:100%;border-radius:10px;z-index:1"></div>' +
       '<p class="text-muted" style="margin-top:8px;font-size:.78rem">A posição vem do GPS do dispositivo autorizado. O rastreio ao vivo exige a aplicação aberta e permissão de localização.</p></div>' +
       '<div class="card">' + table(['Código','Pedido','Produto','Estado','Localização','Atualizado','Ações'], records.map(function (r) {
-        const has = Number.isFinite(Number(r.lat)) && Number.isFinite(Number(r.lng));
+        const has = hasVerifiedPosition(r);
         const loc = has ? Number(r.lat).toFixed(5)+', '+Number(r.lng).toFixed(5) : 'Sem posição GPS';
         const actions = canEdit ? '<button class="btn btn-sm btn-primary" onclick="atualizarLocalizacaoEncomenda('+Number(r.id)+')">Atualizar GPS</button> <button class="btn btn-sm btn-info" onclick="iniciarGPSRastreio('+Number(r.id)+')">GPS ao vivo</button>' : '';
         return ['<strong>'+safe(r.codigo || '-')+'</strong>',safe(r.pedido_ref || '-'),safe(r.produto || '-'),badge(r.status || 'pendente',r.status==='entregue'?'success':'warning'),safe(loc),fmtDT(r.ultimaAtualizacao || r.data),actions];
@@ -317,7 +323,7 @@
   }
   async function renderEcommerceTracking() { return await renderTracking('Rastreio de Encomendas E-commerce'); }
   async function initTrackingMap() {
-    const records = await getData('rastreios') || [];
+    const records = await getData(trackingStore()) || [];
     try {
       await ensureLeaflet();
       const map = maps.kanawaTrackingMap || createMap('kanawaTrackingMap');
@@ -329,19 +335,23 @@
     } catch(error) { const el=document.getElementById('kanawaTrackingMap'); if(el)el.textContent='Mapa indisponível: '+error.message; }
   }
   async function createTracking() {
+    if (!podeFazerModulo(trackingPermissionModule(),'criar')) { notify('Sem permissão para criar rastreios neste módulo.','error'); return; }
+    const store = trackingStore();
     const code=text(document.getElementById('rastreioCodigo') && document.getElementById('rastreioCodigo').value).trim();
     const order=text(document.getElementById('rastreioPedido') && document.getElementById('rastreioPedido').value).trim();
     const product=text(document.getElementById('rastreioProduto') && document.getElementById('rastreioProduto').value).trim();
     if(!code){notify('Indique um código de rastreio.','warning');return;}
-    const records=await getData('rastreios')||[];
+    const records=await getData(store)||[];
     if(records.some(r=>text(r.codigo).toLowerCase()===code.toLowerCase())){notify('Já existe um rastreio com esse código.','warning');return;}
-    try{await saveData('rastreios',{codigo:code,pedido_ref:order,produto:product,status:'preparando',ultimaAtualizacao:now(),data:now()});notify('Rastreio criado. A localização será registada quando o motorista partilhar o GPS.','success');openModule(currentModule);}
+    try{await saveData(store,{codigo:code,pedido_ref:order,produto:product,status:'preparando',ultimaAtualizacao:now(),data:now()});notify('Rastreio criado. A localização será registada quando o motorista partilhar o GPS.','success');openModule(currentModule);}
     catch(e){notify(e.message||'Não foi possível criar o rastreio.','error');}
   }
   async function searchTracking() {
+    if (!podeFazerModulo(trackingPermissionModule(),'ver')) { notify('Sem permissão para consultar rastreios.','error'); return; }
+    const store = trackingStore();
     const code=text(document.getElementById('rastreioCodigo')&&document.getElementById('rastreioCodigo').value).trim();
     if(!code){notify('Informe o código de rastreio.','warning');return;}
-    const records=await getData('rastreios')||[];
+    const records=await getData(store)||[];
     const r=records.find(x=>text(x.codigo).toLowerCase()===code.toLowerCase());
     const out=document.getElementById('rastreioResultado');
     if(!r){if(out){out.style.display='block';out.textContent='Não foi encontrado nenhum registo com este código.';}return;}
@@ -351,21 +361,21 @@
   async function updateTrackingLocation(id) {
     if(!podeFazerModulo(trackingPermissionModule(),'editar')){notify('Precisa de permissão para atualizar o GPS.','error');return;}
     try{
-      const record=await DB.get('rastreios',id);if(!record)throw new Error('Encomenda não encontrada.');
+      const record=await DB.get(trackingStore(),id);if(!record)throw new Error('Encomenda não encontrada.');
       const p=await getPosition();record.lat=p.lat;record.lng=p.lng;record.gps_accuracy_m=Math.round(p.accuracy);
-      record.location_source='device_gps';record.ultimaAtualizacao=now();await saveData('rastreios',record);
+      record.location_source='device_gps';record.ultimaAtualizacao=now();await saveData(trackingStore(),record);
       notify('Localização da encomenda atualizada.','success');openModule(currentModule);
     }catch(e){notify(e.message||'Não foi possível atualizar o GPS.','error');}
   }
   function startLiveTracking(id) {
     if(!podeFazerModulo(trackingPermissionModule(),'editar')){notify('Precisa de permissão para iniciar o GPS ao vivo.','error');return;}
     if(!navigator.geolocation){notify('Este dispositivo não disponibiliza GPS.','warning');return;}
-    stopLiveTracking();trackingTargetId=id;lastTrackingWrite=0;
+    stopLiveTracking();trackingTargetId=id;const targetStore=trackingStore();lastTrackingWrite=0;
     trackingWatchId=navigator.geolocation.watchPosition(async function(position){
       const t=Date.now();if(t-lastTrackingWrite<30000)return;lastTrackingWrite=t;
-      try{const r=await DB.get('rastreios',trackingTargetId);if(!r)return;r.lat=position.coords.latitude;r.lng=position.coords.longitude;
+      try{const r=await DB.get(targetStore,trackingTargetId);if(!r)return;r.lat=position.coords.latitude;r.lng=position.coords.longitude;
         r.gps_accuracy_m=Math.round(position.coords.accuracy);r.location_source='device_gps_live';r.ultimaAtualizacao=now();
-        await saveData('rastreios',r);await initTrackingMap();
+        await saveData(targetStore,r);await initTrackingMap();
       }catch(e){console.warn('GPS de encomenda:',e);}
     },function(error){notify('GPS ao vivo interrompido: '+error.message,'error');stopLiveTracking();},
     {enableHighAccuracy:true,maximumAge:5000,timeout:20000});
