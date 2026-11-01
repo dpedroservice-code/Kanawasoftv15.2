@@ -119,8 +119,8 @@
     async verifyOtp(email, token) {
       if (!client) throw new Error('Biblioteca de ligação à base de dados não carregou. Atualize a página.');
       const normalizedEmail = String(email || '').trim().toLowerCase();
-      const code = String(token || '').replace(/\\s/g, '');
-      if (!/^\\d{6}$/.test(code)) throw new Error('Introduza o código de 6 dígitos recebido por email.');
+      const code = String(token || '').replace(/\s/g, '');
+      if (!/^\d{6}$/.test(code)) throw new Error('Introduza o código de 6 dígitos recebido por email.');
       const result = await client.auth.verifyOtp({
         email: normalizedEmail,
         token: code,
