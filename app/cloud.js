@@ -107,6 +107,33 @@
       }
     },
 
+    async requestLoginCode(email, captchaToken) {
+      if (!client) throw new Error('Biblioteca de ligação à base de dados não carregou. Atualize a página.');
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      if (!normalizedEmail) throw new Error('Introduza o e-mail da sua conta.');
+      const options = { shouldCreateUser: false };
+      if (captchaToken) options.captchaToken = captchaToken;
+      const result = await client.auth.signInWithOtp({ email: normalizedEmail, options: options });
+      if (result.error) throw result.error;
+      return true;
+    },
+
+    async verifyLoginCode(email, token) {
+      if (!client) throw new Error('Biblioteca de ligação à base de dados não carregou. Atualize a página.');
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      const code = String(token || '').trim();
+      if (!/^\\d{6}$/.test(code)) throw new Error('Introduza o código de segurança completo com 6 dígitos.');
+      const result = await client.auth.verifyOtp({ email: normalizedEmail, token: code, type: 'email' });
+      if (result.error) throw result.error;
+      try {
+        return await loadContext(result.data.user);
+      } catch (contextError) {
+        await client.auth.signOut();
+        context = null;
+        throw new Error('Esta conta não está ativa numa empresa Kanawa Soft. Contacte o administrador.');
+      }
+    },
+
     async signIn(email, password) {
       if (!client) throw new Error('Biblioteca de ligação à base de dados não carregou. Atualize a página.');
       const result = await client.auth.signInWithPassword({ email: email, password: password });
