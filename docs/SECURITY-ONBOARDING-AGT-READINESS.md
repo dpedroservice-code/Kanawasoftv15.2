@@ -4,7 +4,7 @@
 - Autenticação cloud: Supabase Auth, sem conta administrativa padrão no formulário público.
 - Cadastro inicial: cria conta de utilizador e empresa no mesmo fluxo de onboarding.
 - NIF: opcional no cadastro inicial; a empresa pode completar os dados fiscais mais tarde.
-- Isolamento cloud: perfis, empresas, associações e registos ERP em `ks_records`, com Row Level Security por empresa.
+- Isolamento cloud: perfis, empresas, associações e registos ERP em `ks_records`, com Row Level Security por empresa e permissões de escrita/eliminação baseadas no papel do membro.
 - Sincronização: os módulos elegíveis são sincronizados para Supabase; IndexedDB local é separado por ID da empresa.
 - Credenciais padrão: a criação automática do administrador foi removida; a conta antiga só é desactivada automaticamente se ainda usar a senha pública `admin123`.
 - Estado fiscal: separado da existência da empresa (not_configured, in_preparation, sandbox, submitted, certified, rejected).
