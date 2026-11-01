@@ -201,6 +201,15 @@ async function syncCloudRecord(store, item) {
     company_id: companyId, store_key: store, record_id: String(item.id), payload
   }, { onConflict: 'company_id,store_key,record_id' });
   if (error) throw error;
+  // Keep stable private Storage paths locally; signed URLs expire.
+  if (Object.keys(prepared.mediaRefs).length) {
+    const wasEnabled = DB.cloudSyncEnabled;
+    DB.cloudSyncEnabled = false;
+    try {
+      const current = await DB.get(store, item.id);
+      if (current) await DB.put(store, { ...current, _cloudMediaRefs: prepared.mediaRefs });
+    } finally { DB.cloudSyncEnabled = wasEnabled; }
+  }
   return true;
 }
 async function clearCloudStore(store) {
@@ -218,14 +227,6 @@ async function clearAllCloudRecords() {
   if (!companyId) throw new Error('Empresa cloud não identificada.');
   const { error } = await CLOUD_AUTH.from('ks_records').delete().eq('company_id', companyId);
   if (error) throw error;
-  if (Object.keys(prepared.mediaRefs).length) {
-    const wasEnabled = DB.cloudSyncEnabled;
-    DB.cloudSyncEnabled = false;
-    try {
-      const current = await DB.get(store, item.id);
-      if (current) await DB.put(store, { ...current, _cloudMediaRefs: prepared.mediaRefs });
-    } finally { DB.cloudSyncEnabled = wasEnabled; }
-  }
   return true;
 }
 async function deleteCloudRecord(store, id) {
@@ -256,11 +257,13 @@ async function queueCloudDelete(store, id) {
 async function syncTenantRecords() {
   if (!CLOUD_AUTH || !currentCloudCompanyId()) return 0;
   DB.cloudSyncEnabled = false;
+  const companyId = currentCloudCompanyId();
   let total = 0, offset = 0;
   try {
     while (true) {
       const { data, error } = await CLOUD_AUTH.from('ks_records')
         .select('store_key,record_id,payload')
+        .eq('company_id', companyId)
         .order('updated_at', { ascending: true })
         .range(offset, offset + 499);
       if (error) throw error;
@@ -595,9 +598,9 @@ async function renderPerfil() {
     '<div style="margin-top:12px"><button class="btn btn-sm btn-danger" onclick="removerAvatarPerfil()"><i class="fas fa-trash"></i> Remover foto</button></div></div>' +
     '<div><div class="form-grid">' +
     '<div class="form-group full"><label>Nome Completo *</label><input id="perfilNome" value="' + esc(user.nome || '') + '"></div>' +
-    '<div class="form-group"><label>Email *</label><input id="perfilEmail" type="email" value="' + esc(user.email || '') + '"></div>' +
+    '<div class="form-group"><label>Email *</label><input id="perfilEmail" type="email" value="' + esc(user.email || '') + '"' + (CLOUD_AUTH ? ' readonly aria-readonly="true"' : '') + '></div>' +
     '<div class="form-group"><label>Telefone</label><input id="perfilTel" value="' + esc(user.telefone || '') + '"></div>' +
-    '<div class="form-group"><label>Perfil / Cargo</label><select id="perfilRole">' + ['admin', 'gerente', 'operador', 'caixa'].map(r => '<option value="' + r + '" ' + (user.role === r ? 'selected' : '') + '>' + r.charAt(0).toUpperCase() + r.slice(1) + '</option>').join('') + '</select></div>' +
+    '<div class="form-group"><label>Perfil / Cargo</label><select id="perfilRole"' + (CLOUD_AUTH ? ' disabled aria-disabled="true"' : '') + '>' + ['admin', 'gerente', 'operador', 'caixa'].map(r => '<option value="' + r + '" ' + (user.role === r ? 'selected' : '') + '>' + r.charAt(0).toUpperCase() + r.slice(1) + '</option>').join('') + '</select>' + (CLOUD_AUTH ? '<small style="color:var(--text-muted)">A função é gerida pelas permissões da empresa.</small>' : '') + '</div>' +
     '<div class="form-group"><label>NIF</label><input id="perfilNif" value="' + esc(user.nif || '') + '"></div>' +
     '</div></div></div></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-lock"></i> Alterar Senha</h3></div>' +
@@ -621,17 +624,40 @@ function removerAvatarPerfil() { localStorage.removeItem('kanawa_avatar_temp'); 
 async function salvarPerfil() {
   const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const nome = $('perfilNome').value.trim(), email = $('perfilEmail').value.trim();
+  const telefone = $('perfilTel').value.trim();
   if (!nome || !email) { toast('Preencha nome e email', 'warning'); return; }
-  user.nome = nome; user.email = email; user.telefone = $('perfilTel').value; user.role = $('perfilRole').value; user.nif = $('perfilNif').value;
+  if (CLOUD_AUTH) {
+    if (email.toLowerCase() !== String(user.email || '').toLowerCase()) {
+      toast('A alteração do email exige confirmação própria. O email actual foi mantido.', 'warning');
+      $('perfilEmail').value = user.email || '';
+    }
+    const { error } = await CLOUD_AUTH.from('ks_profiles')
+      .update({ full_name: nome, phone: telefone || null })
+      .eq('user_id', user.auth_user_id);
+    if (error) { toast('Não foi possível guardar o perfil: ' + error.message, 'error'); return; }
+    user.nome = nome; user.telefone = telefone;
+    // Cloud roles are controlled by ks_company_memberships/RLS, never localStorage.
+  } else {
+    user.nome = nome; user.email = email; user.telefone = telefone;
+    user.role = $('perfilRole').value; user.nif = $('perfilNif').value;
+    try {
+      const users = await DB.getAll('usuarios');
+      const match = users.find(u => u.email === user.email || u.id === 1);
+      if (match) {
+        match.nome = nome; match.email = email; match.telefone = telefone;
+        match.perfil = user.role; match.nif = user.nif;
+        await DB.put('usuarios', match);
+      }
+    } catch (e) { }
+  }
   if (localStorage.getItem('kanawa_avatar_temp')) { user.avatar = localStorage.getItem('kanawa_avatar_temp'); localStorage.removeItem('kanawa_avatar_temp'); }
   if (localStorage.getItem('kanawa_avatar_remove')) { delete user.avatar; localStorage.removeItem('kanawa_avatar_remove'); }
   localStorage.setItem('kanawa_user', JSON.stringify(user));
-  try { const users = await DB.getAll('usuarios'); const match = users.find(u => u.email === user.email || u.id === 1); if (match) { match.nome = nome; match.email = email; match.telefone = user.telefone; match.perfil = user.role; match.nif = user.nif; if (user.avatar) match.avatar = user.avatar; await DB.put('usuarios', match); } } catch (e) { }
   if ($('userName')) $('userName').textContent = nome;
   if ($('userRole')) $('userRole').textContent = user.role;
   if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-  await registrarAuditoria('editar', 'perfil', { nome, email });
-  toast('✅ Perfil atualizado', 'success');
+  await registrarAuditoria('editar', 'perfil', { nome });
+  toast('Perfil actualizado.', 'success');
   openModule('perfil');
 }
 async function alterarSenhaPerfil() {
@@ -639,14 +665,21 @@ async function alterarSenhaPerfil() {
   const atual = $('perfilSenhaAtual').value, nova = $('perfilNovaSenha').value, conf = $('perfilConfSenha').value;
   if (!atual || !nova || !conf) { toast('Preencha todos os campos', 'warning'); return; }
   if (nova !== conf) { toast('Senhas não coincidem', 'error'); return; }
-  if (nova.length < 6) { toast('Senha muito curta', 'warning'); return; }
-  const users = await DB.getAll('usuarios');
-  const match = users.find(u => u.email === user.email || u.id === 1);
-  if (match && match.senha && match.senha !== atual) { toast('Senha atual incorreta', 'error'); return; }
-  if (match) { match.senha = nova; await DB.put('usuarios', match); }
+  if (nova.length < 10) { toast('A nova senha deve ter pelo menos 10 caracteres.', 'warning'); return; }
+  if (CLOUD_AUTH) {
+    const { error: authError } = await CLOUD_AUTH.auth.signInWithPassword({ email: user.email, password: atual });
+    if (authError) { toast('Senha actual incorrecta.', 'error'); return; }
+    const { error } = await CLOUD_AUTH.auth.updateUser({ password: nova });
+    if (error) { toast('Não foi possível alterar a senha: ' + error.message, 'error'); return; }
+  } else {
+    const users = await DB.getAll('usuarios');
+    const match = users.find(u => u.email === user.email || u.id === 1);
+    if (match && match.senha && match.senha !== atual) { toast('Senha actual incorrecta', 'error'); return; }
+    if (match) { match.senha = nova; await DB.put('usuarios', match); }
+  }
   $('perfilSenhaAtual').value = ''; $('perfilNovaSenha').value = ''; $('perfilConfSenha').value = '';
   await registrarAuditoria('editar', 'senha', {});
-  toast('✅ Senha alterada', 'success');
+  toast('Senha alterada com sucesso.', 'success');
 }
 
 /* ====== DISPOSITIVOS ====== */
@@ -1925,6 +1958,22 @@ async function finalizarSetup() {
     toast(error.message || 'Não foi possível criar a conta.', 'error');
   } finally { if (button) button.disabled = false; }
 }
+function abrirModalNovaSenhaRecuperacao() {
+  openModal('Definir nova senha',
+    '<div class="form-group"><label>Nova senha (mínimo 10 caracteres)</label><input id="recoveryPassword" type="password" minlength="10" autocomplete="new-password"></div>' +
+    '<div class="form-group"><label>Confirmar nova senha</label><input id="recoveryPasswordConfirm" type="password" minlength="10" autocomplete="new-password"></div>' +
+    '<button class="btn btn-primary btn-block" onclick="guardarNovaSenhaRecuperacao()">Actualizar senha</button>');
+}
+async function guardarNovaSenhaRecuperacao() {
+  const password = $('recoveryPassword') && $('recoveryPassword').value;
+  const confirmPassword = $('recoveryPasswordConfirm') && $('recoveryPasswordConfirm').value;
+  if (!password || password.length < 10) { toast('A senha deve ter pelo menos 10 caracteres.', 'warning'); return; }
+  if (password !== confirmPassword) { toast('As senhas não coincidem.', 'error'); return; }
+  const { error } = await CLOUD_AUTH.auth.updateUser({ password });
+  if (error) { toast('Não foi possível actualizar a senha: ' + error.message, 'error'); return; }
+  closeModal();
+  toast('Senha actualizada com sucesso.', 'success');
+}
 async function recuperarSenha() {
   if (!CLOUD_AUTH) { toast('Serviço de autenticação indisponível.', 'error'); return; }
   const email = $('loginEmail').value.trim().toLowerCase();
@@ -2833,6 +2882,12 @@ async function init() {
     API.checkHealth().catch(() => { });
     const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
     if (!CLOUD_AUTH) throw new Error('Biblioteca de autenticação cloud não carregou.');
+    CLOUD_AUTH.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        // Avoid awaiting Supabase calls inside the auth state callback.
+        window.setTimeout(() => abrirModalNovaSenhaRecuperacao(), 0);
+      }
+    });
     const hasSession = await restaurarSessaoCloud();
     if (!hasSession && $('authScreen')) $('authScreen').classList.add('active');
     const loginForm = $('loginForm');
@@ -2874,7 +2929,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','recuperarSenha','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','recuperarSenha','abrirModalNovaSenhaRecuperacao','guardarNovaSenhaRecuperacao','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',

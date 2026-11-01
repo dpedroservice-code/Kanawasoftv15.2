@@ -88,3 +88,43 @@ test('non-certified printouts do not claim AGT approval or digital signatures', 
   assert.match(app, /não constituem assinatura digital JWS\/RS256/);
   assert.doesNotMatch(app, /Programa certificado Kanawa Soft|Código de Autenticação AGT|quiosqueagt\.minfin\.gov\.ao|gerarAssinatura\(|Assinatura: '\s*\+|Hash de assinatura/);
 });
+
+test('cloud hydration is explicitly scoped to the selected company', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /from\('ks_records'\)[\s\S]{0,180}\.eq\('company_id', companyId\)/);
+});
+
+test('cloud media references are persisted after successful upload', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /stable private Storage paths locally/);
+  assert.match(app, /_cloudMediaRefs: prepared\.mediaRefs/);
+});
+
+test('reset-all does not reference undefined media variables', async () => {
+  const app = await read('app/app.js');
+  const start = app.indexOf('async function clearAllCloudRecords()');
+  const end = app.indexOf('async function deleteCloudRecord', start);
+  const fn = app.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(fn, /prepared|store, item/);
+});
+
+test('password recovery callback supports a real password update', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /event === 'PASSWORD_RECOVERY'/);
+  assert.match(app, /auth\.updateUser\(\{ password \}\)/);
+  assert.match(app, /guardarNovaSenhaRecuperacao/);
+});
+
+test('cloud profile cannot self-assign a company role or change email locally', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /perfilRole"\s*\+ \(CLOUD_AUTH \? ' disabled/);
+  assert.match(app, /Cloud roles are controlled by ks_company_memberships\/RLS/);
+  assert.match(app, /email actual foi mantido/);
+});
+
+test('cloud password change reauthenticates the current password', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /auth\.signInWithPassword\(\{ email: user\.email, password: atual \}\)/);
+  assert.match(app, /auth\.updateUser\(\{ password: nova \}\)/);
+});
