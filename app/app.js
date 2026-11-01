@@ -1715,9 +1715,25 @@ async function renderConfig() {
 async function salvarConfigEmpresa() {
   const empAtual = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logoAtual = empAtual.logo || 'logo.png';
-  const logoNovo = localStorage.getItem('kanawa_logo_temp') || logoAtual;
+  const tempLogo = localStorage.getItem('kanawa_logo_temp');
+  const logoNovo = tempLogo === '__default__' ? 'logo.png' : (tempLogo || logoAtual);
   const e = { ...empAtual, firma: $('cfgFirma').value, nome: $('cfgNome').value, nif: $('cfgNif').value, alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value, email: $('cfgEmail').value, endereco: $('cfgEnd').value, website: $('cfgSite').value, banco: $('cfgBanco').value, iban: $('cfgIban').value, logo: logoNovo };
   if (CLOUD_AUTH && e.cloud_id) {
+    let logoPath = empAtual.logo_path || null;
+    if (typeof logoNovo === 'string' && /^data:image\//i.test(logoNovo)) {
+      const logoResponse = await fetch(logoNovo);
+      if (!logoResponse.ok) { toast('Não foi possível ler o logótipo.', 'error'); return; }
+      const logoBlob = await logoResponse.blob();
+      if (logoBlob.size > 5 * 1024 * 1024) { toast('O logótipo deve ter no máximo 5 MB.', 'warning'); return; }
+      const logoExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[logoBlob.type];
+      if (!logoExt) { toast('Formato de logótipo não suportado.', 'warning'); return; }
+      const logoHash = await hashCloudBlob(logoBlob);
+      logoPath = e.cloud_id + '/company/logo-' + logoHash + '.' + logoExt;
+      const { error: uploadError } = await CLOUD_AUTH.storage.from(CLOUD_MEDIA_BUCKET).upload(logoPath, logoBlob, { contentType: logoBlob.type, upsert: true, cacheControl: '3600' });
+      if (uploadError) { toast('Falha ao enviar o logótipo: ' + uploadError.message, 'error'); return; }
+    } else if (logoNovo === 'logo.png') {
+      logoPath = null;
+    }
     const { error } = await CLOUD_AUTH.from('ks_companies').update({
       legal_name: e.nome || e.firma,
       trade_name: e.firma || e.nome,
@@ -1725,9 +1741,11 @@ async function salvarConfigEmpresa() {
       tax_regime: e.regime || 'not_configured',
       phone: e.telefone || null,
       email: e.email || null,
-      address: e.endereco || null
+      address: e.endereco || null,
+      logo_path: logoPath
     }).eq('id', e.cloud_id);
     if (error) { toast('Dados locais mantidos, mas a actualização cloud falhou: ' + error.message, 'error'); return; }
+    e.logo_path = logoPath;
   }
   localStorage.setItem('kanawa_empresa', JSON.stringify(e));
   localStorage.removeItem('kanawa_logo_temp');
@@ -1750,7 +1768,7 @@ function escolherLogoEmpresa(input) {
   reader.readAsDataURL(file);
 }
 function removerLogoEmpresa() {
-  localStorage.removeItem('kanawa_logo_temp');
+  localStorage.setItem('kanawa_logo_temp', '__default__');
   const prev = $('cfgLogoPreview'); const ph = $('cfgLogoPlaceholder');
   if (prev) { prev.src = 'logo.png'; prev.style.display = 'none'; }
   if (ph) ph.style.display = 'block';
@@ -1814,7 +1832,7 @@ async function restaurarSessaoCloud() {
   const membership = memberships[0];
   const { data: company, error: companyError } = await CLOUD_AUTH
     .from('ks_companies')
-    .select('id,legal_name,trade_name,tax_id,country_code,currency_code,tax_regime,fiscal_status,phone,email,address')
+    .select('id,legal_name,trade_name,tax_id,country_code,currency_code,tax_regime,fiscal_status,phone,email,address,logo_path')
     .eq('id', membership.company_id)
     .maybeSingle();
   if (companyError || !company) return false;
@@ -1824,6 +1842,11 @@ async function restaurarSessaoCloud() {
   // the first tenant's offline records. Legacy data remains untouched.
   await DB.openTenant(company.id);
 
+  let companyLogo = 'logo.png';
+  if (company.logo_path) {
+    const logoResult = await CLOUD_AUTH.storage.from(CLOUD_MEDIA_BUCKET).createSignedUrl(company.logo_path, 3600);
+    if (!logoResult.error && logoResult.data) companyLogo = logoResult.data.signedUrl;
+  }
   const profileResult = await CLOUD_AUTH.from('ks_profiles')
     .select('full_name,phone').eq('user_id', authUser.id).maybeSingle();
   const profile = profileResult.data || {};
@@ -1842,7 +1865,8 @@ async function restaurarSessaoCloud() {
     regime: company.tax_regime, moeda: company.currency_code,
     fiscal_status: company.fiscal_status,
     telefone: company.phone || '', email: company.email || '',
-    endereco: company.address || ''
+    endereco: company.address || '', logo_path: company.logo_path || null,
+    logo: companyLogo
   };
   await DB.put('empresas', empresa);
   await DB.put('usuarios', user);
