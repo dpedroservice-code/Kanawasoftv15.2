@@ -86,5 +86,5 @@ test('non-certified printouts do not claim AGT approval or digital signatures', 
   assert.match(app, /DOCUMENTO COMERCIAL \/ RECIBO/);
   assert.match(app, /não possui certificação\/validação AGT/);
   assert.match(app, /não constituem assinatura digital JWS\/RS256/);
-  assert.doesNotMatch(app, /Programa certificado Kanawa Soft|Código de Autenticação AGT|quiosqueagt\.minfin\.gov\.ao|gerarAssinatura\(/);
+  assert.doesNotMatch(app, /Programa certificado Kanawa Soft|Código de Autenticação AGT|quiosqueagt\.minfin\.gov\.ao|gerarAssinatura\(|Assinatura: '\s*\+|Hash de assinatura/);
 });
