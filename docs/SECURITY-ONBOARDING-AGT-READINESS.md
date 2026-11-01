@@ -33,6 +33,26 @@ A chave usada no navegador é uma chave publishable/anon, própria para exposiç
 - A integração da loja, webhooks de stock/encomendas e API pública ainda exige backend real, contrato de API e testes ponta a ponta.
 - Não executar restauro ou migração de dados em produção sem backup e plano de reversão.
 
+
+## AGT signing readiness implemented in this branch
+
+The repository now contains a standalone Node.js RS256 JWS utility at `server/agt/jws.js` and a local key-pair generator at `scripts/agt/generate-software-keypair.js`.
+
+- Generates a 4096-bit RSA pair locally; AGT documentation requires at least 2048 bits and recommends 4096.
+- Writes the private key outside the repository by default, with restrictive file permissions where supported; refuses to overwrite existing key files.
+- Never prints the private key. The public key path is shown for submission through the producer portal.
+- Signs the complete JSON payload using RS256 and compact JWS, and includes local verification support for regression tests.
+- Requires a real `softwareValidationNumber`; the application must not invent one. The number is only populated after the AGT assigns/approves it.
+- The current implementation is a signing primitive, not a complete AGT connector. It is not yet wired to production invoices or homologation endpoints, and no private key was generated in this repository environment.
+
+Before generating a production key, the software producer must control the machine and backup process. Store the private key securely, restrict access, keep it out of Git, and rotate/revoke it through the AGT portal if compromised.
+
+Official technical references:
+- AGT Partner Portal and current Schema 2 notice: https://portaldoparceiro.minfin.gov.ao/
+- AGT key management: https://portaldoparceiro.minfin.gov.ao/doc-agt/doc-agt/2/gestao.html
+- AGT JWS structure and RS256: https://portaldoparceiro.minfin.gov.ao/doc-agt/doc-agt/2/estrutura.html
+- AGT software/series service requirements: https://portaldoparceiro.minfin.gov.ao/doc-agt/doc-agt/2/servicos/servicos_solicitar_criacao.html
+
 ## Preparação para certificação AGT
 A certificação deve ser solicitada pelo produtor de software no Portal do Parceiro. O software deve implementar e demonstrar, entre outros requisitos aplicáveis:
 - Modelo técnico e Schema 2 em vigor, formatos e validações de documentos;
