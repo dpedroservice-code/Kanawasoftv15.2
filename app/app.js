@@ -511,9 +511,9 @@ function podeFazerModulo(m, action) {
 }
 function podeFazer(a) { return podeFazerModulo(currentModule, a); }
 const STORE_MODULE_MAP = Object.freeze({
-  produtos:'produtos', unidades:'produtos', avaliacoes:'produtos-avaliacoes',
+  produtos:'produtos', unidades:'produtos', categorias:'categorias', servicos:'servicos', avaliacoes:'produtos-avaliacoes',
   clientes:'clientes', clientesPortal:'portal-cliente', fornecedores:'fornecedores', transportadoras:'transportadoras',
-  vendas:'vendas', devolucoes:'vendas', vendasConsignadas:'vendas-consignadas', promocoes:'vendas-promocoes',
+  vendas:'vendas', devolucoes:'vendas', vendasConsignadas:'vendas-consignadas', promocoes:'vendas-promocoes', tabelasPrecos:'tabelas-precos',
   orcamentos:'orcamentos', compras:'compras', recebimentos:'compras', aprovacoes:'compras',
   estoque:'estoque', movimentacoesEstoque:'estoque', transferencias:'estoque', inventarios:'estoque', lotes:'estoque', pecasEstoque:'estoque',
   contasReceber:'financeiro', contasPagar:'financeiro', pagamentos:'financeiro', planoContas:'financeiro',
