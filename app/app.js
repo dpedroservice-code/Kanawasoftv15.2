@@ -6,6 +6,11 @@ const CLOUD_SUPABASE_URL = 'https://jiehrswweoyesbabrpjf.supabase.co';
 const CLOUD_PUBLISHABLE_KEY = 'sb_publishable_l9HL3zMMJ5rN7vnXUZPa1g_9ZA1q7PO';
 const CLOUD_AUTH = window.supabase && window.supabase.createClient(CLOUD_SUPABASE_URL, CLOUD_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 let CLOUD_COMPANIES = [];
+let KS_PLATFORM_ADMIN = false;
+let KS_ENTITLEMENTS = null;
+let KS_LOCALE_SETTINGS = null;
+let KS_MAP_SETTINGS = null;
+let KS_LAST_ROUTE = null;
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
 let API_TOKEN = localStorage.getItem('kanawa_api_token') || null;
@@ -24,10 +29,14 @@ const AGT_CONFIG = { iva: 0.14, ivaReduzido: 0.07, irt: { faixas: [
 ]}};
 
 /* ====== UTILITÁRIOS ====== */
-const fmt = v => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(Number(v) || 0);
-const fmtN = v => new Intl.NumberFormat('pt-AO').format(Number(v) || 0);
-const fmtD = d => d ? new Date(d).toLocaleDateString('pt-AO') : '-';
-const fmtDT = d => d ? new Date(d).toLocaleString('pt-AO') : '-';
+function ksLocaleConfig() {
+  try { const saved=JSON.parse(localStorage.getItem('kanawa_locale')||'{}'); const company=JSON.parse(localStorage.getItem('kanawa_empresa')||'{}'); return {locale:saved.locale||'pt-AO',currency:saved.currency_code||company.moeda||'AOA',timezone:saved.timezone||'Africa/Luanda'}; }
+  catch { return {locale:'pt-AO',currency:'AOA',timezone:'Africa/Luanda'}; }
+}
+const fmt = v => { const c=ksLocaleConfig(); try{return new Intl.NumberFormat(c.locale,{style:'currency',currency:c.currency}).format(Number(v)||0);}catch{return new Intl.NumberFormat(c.locale).format(Number(v)||0)+' '+c.currency;} };
+const fmtN = v => new Intl.NumberFormat(ksLocaleConfig().locale).format(Number(v)||0);
+const fmtD = d => d ? new Intl.DateTimeFormat(ksLocaleConfig().locale,{timeZone:ksLocaleConfig().timezone}).format(new Date(d)) : '-';
+const fmtDT = d => d ? new Intl.DateTimeFormat(ksLocaleConfig().locale,{dateStyle:'short',timeStyle:'short',timeZone:ksLocaleConfig().timezone}).format(new Date(d)) : '-';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
@@ -91,6 +100,13 @@ const DB_STORES = [
   'produtos','clientes','fornecedores','vendas','compras','estoque','contasReceber','contasPagar','funcionarios','categorias','projetos','tarefas','ativos','frotas','ordensServico','notificacoes','documentos','mensagens','cursos','leads','campanhas','eventos','devolucoes','faturas','pagamentos','empresas','usuarios','movimentacoesEstoque','promocoes','ecommerce','auditoria','orcamentos','transportadoras','contratos','aprovacoes','sincronizacao','tickets','dispositivos','_sync_queue',
   'producao','ordensProducao','mrp','boms','custosProducao','controleQualidade','planosProducao','planoContas','budgets','forecasts','conciliacoes','transacoesBancarias','previsoesVendas','tendencias','folhasPagamento','turnos','ferias','vagas','candidatos','desempenhoRH','beneficios','planosCarreira','onboarding','pontoDigital','rescisoes','automacoes','scoreLeads','campanhasMarketing','segmentacoes','cupons','fidelidade','ganttProjetos','timesheets','manutencoes','ordensManutencao','garantias','pecasEstoque','checklistsInspecao','calendarioManutencoes','gpsTracking','abastecimentos','multas','tecnicos','roteirizacao','etiquetas','transferencias','inventarios','lotes','rastreios','recebimentos','ecommerceProdutos','ecommerceCarrinhos','ecommercePedidos','avaliacoes','pagamentosEcommerce','vendasConsignadas','tabelasPrecos','assinaturasDigitais','documentosFiscais','certificacoes','quizzes','mensagensChat','mensagensWhatsApp','eventosCalendar','unidades','servicos','clientesPortal','acessos','politicasSenha','tentativasLogin','sessoes','sms2FA','integracoesAGT','ivas','irts','backups','backupsAgendados','backupsNuvem','audiobooks','ddgHistorico','bingHistorico','dashboardsCustom','modulosPersonalizados','departamentos','frequencias','feriasFuncionarios','pagamentosFuncionarios','motoristas','manutencoesAtivos','depreciacoes','historicoOS','contatosWhatsApp','templatesWhatsApp','carrinhosSalvos','feedbacks','logsSeguranca','seguranca','migracoes','tarefasProjetos','membrosProjetos','atividadesProjetos','gruposUsuarios','config','armazens'
 ];
+function ksAssertWritableStore(store) {
+  const internal=String(store).startsWith('_') || ['notificacoes','logsSeguranca','auditoria'].includes(store);
+  if(!internal && KS_ENTITLEMENTS && KS_ENTITLEMENTS.read_only) {
+    toast('Licença expirada ou limite do plano atingido. O ERP está em modo de leitura.','warning');
+    throw new Error('A licença não permite alterações neste momento.');
+  }
+}
 const DB = {
   name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES, cloudSyncEnabled: false,
   init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; this.db.onversionchange = () => this.db.close(); res(this.db); }; req.onerror = e => rej(e.target.error); }); },
@@ -102,12 +118,12 @@ const DB = {
     return this.init();
   },
   _tx(s, m) { return this.db.transaction(s, m || 'readonly').objectStore(s); },
-  add(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => { const id = r.result; if (this.cloudSyncEnabled) queueCloudUpsert(s, { ...i, id: i.id || id }); res(id); }; r.onerror = () => rej(r.error); }); },
-  put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudUpsert(s, i); res(r.result); }; r.onerror = () => rej(r.error); }); },
+  add(s, i) { ksAssertWritableStore(s); return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => { const id = r.result; if (this.cloudSyncEnabled) queueCloudUpsert(s, { ...i, id: i.id || id }); res(id); }; r.onerror = () => rej(r.error); }); },
+  put(s, i) { ksAssertWritableStore(s); return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudUpsert(s, i); res(r.result); }; r.onerror = () => rej(r.error); }); },
   get(s, id) { return new Promise((res, rej) => { const r = this._tx(s).get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   getAll(s) { return new Promise((res, rej) => { const r = this._tx(s).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); },
-  del(s, id) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').delete(id); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudDelete(s, id); res(); }; r.onerror = () => rej(r.error); }); },
-  clear(s) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').clear(); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); },
+  del(s, id) { ksAssertWritableStore(s); return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').delete(id); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudDelete(s, id); res(); }; r.onerror = () => rej(r.error); }); },
+  clear(s) { ksAssertWritableStore(s); return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').clear(); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); },
   count(s) { return new Promise((res, rej) => { const r = this._tx(s).count(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 };
 
@@ -354,6 +370,7 @@ async function saveData(store, item) { const id = item.id ? (await DB.put(store,
 async function deleteData(s, id) { await DB.del(s, id); if (API_ONLINE) { try { await API.del('/' + s + '/' + id); } catch (e) { queueSync(s, 'delete', { id }); } } else { queueSync(s, 'delete', { id }); } }
 async function queueSync(entity, action, payload) { try { await DB.add('_sync_queue', { entity, action, payload, data: now(), synced: false }); } catch (e) { } }
 async function finalizeCloudSale(payload) {
+  if (KS_ENTITLEMENTS && KS_ENTITLEMENTS.read_only) throw new Error('Licença em modo de leitura.');
   if (!CLOUD_AUTH || !currentCloudCompanyId()) throw new Error('Sessão cloud não disponível.');
   const { data, error } = await CLOUD_AUTH.rpc('ks_finalize_sale', {
     p_company_id: currentCloudCompanyId(), p_sale: payload.sale, p_items: payload.items
@@ -402,7 +419,7 @@ async function syncNow(flag) {
   return true;
 }
 function toggleSync() { syncNow(true); }
-function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(async () => { if (API_ONLINE || CLOUD_AUTH) await processSyncQueue(); }, 30000); }
+function startAutoSync() { if (syncTimer) clearInterval(syncTimer); let lastLicenseRefresh=0; syncTimer = setInterval(async () => { if (API_ONLINE || CLOUD_AUTH) await processSyncQueue(); if(CLOUD_AUTH&&currentCloudCompanyId()&&Date.now()-lastLicenseRefresh>300000){lastLicenseRefresh=Date.now();await carregarContextoSaaS(currentCloudCompanyId());} }, 30000); }
 
 /* ====== PERMISSÕES ====== */
 const PERMISSOES = {
@@ -414,12 +431,14 @@ const PERMISSOES = {
   viewer: { modulos: ['dashboard','vendas','produtos','clientes','relatorios','perfil'], acoes: ['ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 0 }
 };
 function getPerms() { const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}'); return PERMISSOES[u.role || u.perfil || 'operador'] || PERMISSOES.operador; }
-function podeAcessar(m) { const p = getPerms(); return p.modulos === '*' || p.modulos.indexOf(m) !== -1; }
+function podeAcessar(m) { if (m === 'saas') return KS_PLATFORM_ADMIN; if (m === 'globalizacao') return ['admin','gerente','contabilista'].includes((JSON.parse(localStorage.getItem('kanawa_user')||'{}').role||'')); const p = getPerms(); return p.modulos === '*' || p.modulos.indexOf(m) !== -1; }
 function podeFazer(a) { return getPerms().acoes.indexOf(a) !== -1; }
 
 /* ====== MENU ====== */
 const MENU = [
   { id: 'dashboard', icon: 'fa-chart-pie', label: 'Dashboard' },
+  { id: 'saas', icon: 'fa-crown', label: 'Admin SaaS' },
+  { id: 'globalizacao', icon: 'fa-globe', label: 'Globalização' },
   { id: 'pdv', icon: 'fa-cash-register', label: 'PDV' },
   { id: 'vendas', icon: 'fa-receipt', label: 'Vendas' },
   { id: 'orcamentos', icon: 'fa-file-invoice', label: 'Orçamentos' },
@@ -528,7 +547,7 @@ async function openModule(id) {
   const c = $('content');
   c.innerHTML = '<div style="text-align:center;padding:60px"><i class="fas fa-spinner fa-spin" style="font-size:3rem;color:var(--primary)"></i></div>';
   const R = {
-    dashboard: renderDashboard, pdv: renderPDV, vendas: renderVendas, orcamentos: renderOrcamentos,
+    dashboard: renderDashboard, saas: renderSaaSAdmin, globalizacao: renderGlobalizacao, pdv: renderPDV, vendas: renderVendas, orcamentos: renderOrcamentos,
     produtos: renderProdutos, categorias: renderCategorias, ecommerce: renderEcommerce,
     estoque: renderEstoque, compras: renderCompras, clientes: renderClientes,
     fornecedores: renderFornecedores, transportadoras: renderTransportadoras, crm: renderCRM,
@@ -568,11 +587,129 @@ async function openModule(id) {
   };
   try {
     c.innerHTML = R[id] ? await R[id]() : '<div class="card"><h3>Módulo ' + id + '</h3></div>';
+    if (KS_ENTITLEMENTS) c.innerHTML = '<div class="card" style="border-left:4px solid '+(KS_ENTITLEMENTS.read_only?'var(--danger)':'var(--success)')+'"><strong>Plano '+esc(KS_ENTITLEMENTS.plan||'Starter')+'</strong> • Estado: '+esc(KS_ENTITLEMENTS.status||'')+' • Vencimento: '+fmtDT(KS_ENTITLEMENTS.period_end)+(KS_ENTITLEMENTS.read_only?' • Modo de leitura — contacte a D.Pedro Soluções para renovar.':'')+'</div>' + c.innerHTML;
     c.scrollTop = 0;
+    if (id === 'logistica-roteirizacao') initRoteirizacaoMap();
   } catch (e) { console.error(e); c.innerHTML = '<div class="card"><h3>Erro</h3><p>' + esc(e.message) + '</p></div>'; }
 }
 
 /* ====== UI HELPERS ====== */
+
+/* ====== SAAS, LICENCIAMENTO E GLOBALIZAÇÃO ====== */
+function ksDeviceLabel(){const ua=navigator.userAgent||'';const platform=/android/i.test(ua)?'Android':/iphone|ipad/i.test(ua)?'iOS':/windows/i.test(ua)?'Windows':/macintosh/i.test(ua)?'macOS':/linux/i.test(ua)?'Linux':'Web';return{platform,device_name:platform+' • '+(window.kanawaNative&&window.kanawaNative.isDesktop?'Desktop':'Browser')};}
+async function carregarContextoSaaS(companyId,userId){
+ try{const [ent,locale]=await Promise.all([CLOUD_AUTH.rpc('ks_get_company_entitlements',{p_company_id:companyId}),CLOUD_AUTH.from('ks_company_locales').select('locale,timezone,currency_code,date_format,decimal_separator,thousands_separator').eq('company_id',companyId).maybeSingle()]);
+ if(!ent.error)KS_ENTITLEMENTS=ent.data;if(!locale.error&&locale.data){KS_LOCALE_SETTINGS=locale.data;localStorage.setItem('kanawa_locale',JSON.stringify(locale.data));}
+ if(KS_ENTITLEMENTS&&KS_ENTITLEMENTS.read_only)toast('A licença está em modo de leitura. Actualize a subscrição para voltar a editar.','warning');
+ }catch(e){console.warn('[Kanawa SaaS] Contexto:',e.message);}
+}
+async function registarInstalacaoCloud(companyId,userId){
+ try{const keyName='kanawa_installation_'+companyId;let key=localStorage.getItem(keyName);if(!key){key=window.crypto&&crypto.randomUUID?crypto.randomUUID():'ks-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);localStorage.setItem(keyName,key);}
+ const d=ksDeviceLabel();const {error}=await CLOUD_AUTH.from('ks_installations').upsert({company_id:companyId,installation_key:key,user_id:userId,device_name:d.device_name,platform:d.platform,app_version:APP_VERSION,install_status:'active',last_seen_at:new Date().toISOString()},{onConflict:'company_id,installation_key'});if(error)throw error;
+ }catch(e){console.warn('[Kanawa Installations] Telemetria pendente:',e.message);}
+}
+async function renderSaaSAdmin(){
+ if(!KS_PLATFORM_ADMIN)return '<div class="card"><h3>Acesso reservado ao administrador da plataforma.</h3></div>';
+ try{await CLOUD_AUTH.rpc('ks_refresh_license_alerts');}catch(e){console.warn(e);}
+ const [co,lic,mem,inst,demo,plans,notifs,payments]=await Promise.all([
+ CLOUD_AUTH.from('ks_companies').select('id,legal_name,trade_name,country_code,currency_code,created_at').order('created_at',{ascending:false}),
+ CLOUD_AUTH.from('ks_company_licenses').select('id,company_id,plan_code,license_key,status,starts_at,expires_at,grace_until,created_at').order('created_at',{ascending:false}),
+ CLOUD_AUTH.from('ks_company_memberships').select('company_id,user_id,role,status'),
+ CLOUD_AUTH.from('ks_installations').select('company_id,user_id,installation_key,device_name,platform,install_status,last_seen_at'),
+ CLOUD_AUTH.from('ks_demo_requests').select('id,company_name,contact_name,email,phone,country_code,preferred_plan,status,requested_at').order('requested_at',{ascending:false}),
+ CLOUD_AUTH.from('ks_saas_plans').select('code,name,monthly_price_usd,annual_price_usd,max_users,max_products,max_invoices_month,max_monthly_revenue_usd,storage_mb,allowed_modules,is_public').order('monthly_price_usd'),
+ CLOUD_AUTH.from('ks_platform_notifications').select('id,event_type,severity,title,message,company_id,read_at,delivered_at,created_at').order('created_at',{ascending:false}).limit(15),
+ CLOUD_AUTH.from('ks_payment_provider_settings').select('provider_code,display_name,enabled,mode,supported_countries').order('display_name')
+ ]);
+ for(const r of [co,lic,mem,inst,demo,plans,notifs,payments])if(r.error)throw r.error;
+ const companies=co.data||[],licenses=lic.data||[],members=mem.data||[],installations=inst.data||[],demos=demo.data||[],planOptions=plans.data||[],alerts=notifs.data||[],providers=payments.data||[];
+ const activeMembers=members.filter(x=>x.status==='active'),activeInstallations=installations.filter(x=>x.install_status==='active');
+ const installedSet=new Set(activeInstallations.map(x=>x.company_id+':'+x.user_id));
+ const needsInstall=activeMembers.filter(x=>!installedSet.has(x.company_id+':'+x.user_id)).length;
+ const expiring=licenses.filter(x=>x.expires_at&&new Date(x.expires_at).getTime()<=Date.now()+7*86400000&&new Date(x.expires_at).getTime()>=Date.now()).length;
+ const pendingDemos=demos.filter(x=>['new','scheduled'].includes(x.status)).length,companyMap=new Map(companies.map(x=>[x.id,x.trade_name||x.legal_name]));
+ const licenseRows=licenses.map(l=>[esc(companyMap.get(l.company_id)||l.company_id),esc(l.license_key),esc(l.plan_code),badge(l.status,l.status==='active'?'success':l.status==='trial'?'info':l.status==='expired'?'danger':'warning'),fmtDT(l.expires_at),'<button class="btn btn-sm btn-primary" onclick="copiarLicencaSaaS(\''+esc(l.license_key)+'\')">Copiar</button>']);
+ const demoRows=demos.map(d=>[esc(d.company_name),esc(d.contact_name),esc(d.email),esc(d.country_code),badge(d.status,d.status==='new'?'warning':'info'),'<select onchange="actualizarDemoSaaS(\''+d.id+'\',this.value)"><option value="new" '+(d.status==='new'?'selected':'')+'>Nova</option><option value="contacted" '+(d.status==='contacted'?'selected':'')+'>Contactada</option><option value="scheduled" '+(d.status==='scheduled'?'selected':'')+'>Agendada</option><option value="converted" '+(d.status==='converted'?'selected':'')+'>Convertida</option><option value="closed" '+(d.status==='closed'?'selected':'')+'>Fechada</option></select>']);
+ const planRows=planOptions.map(p=>[esc(p.name),esc(p.code),p.max_users??'Ilimitado',p.max_invoices_month??'Ilimitado',p.max_products??'Ilimitado',p.monthly_price_usd==null?'Sob consulta':'$'+p.monthly_price_usd,'<button class="btn btn-sm btn-primary" onclick="editarPlanoSaaS(\''+p.code+'\')">Editar</button>']);
+ const providerRows=providers.map(p=>[esc(p.display_name),badge(p.mode,p.mode==='live'?'success':p.mode==='manual'?'info':'warning'),'<label><input type="checkbox" '+(p.enabled?'checked':'')+' onchange="actualizarGatewaySaaS(\''+p.provider_code+'\',this.checked)"> Activar</label>']);
+ const alertRows=alerts.map(n=>['<strong>'+esc(n.title)+'</strong><br><small>'+esc(n.message)+'</small>',badge(n.severity,n.severity==='critical'?'danger':'warning'),fmtDT(n.created_at),n.read_at?'Lida':'<button class="btn btn-sm btn-success" onclick="marcarAlertaSaaS(\''+n.id+'\')">Lida</button>']);
+ return header('Centro SaaS — D.Pedro Soluções','Licenças, clientes, instalações, utilizadores, demonstrações e pagamentos','var(--primary)','<button class="btn btn-success" onclick="document.getElementById(\'ksLicenseForm\').scrollIntoView({behavior:\'smooth\'})">Criar licença</button>','fa-crown')+
+ '<div class="metric-grid"><div class="metric-card"><div class="label">Empresas clientes</div><div class="value">'+companies.length+'</div><div class="sub">Contas registadas</div></div>'+
+ '<div class="metric-card"><div class="label">Pessoas / utilizadores</div><div class="value">'+activeMembers.length+'</div><div class="sub">Membros activos</div></div>'+
+ '<div class="metric-card"><div class="label">Instalações activas</div><div class="value">'+activeInstallations.length+'</div><div class="sub">Dispositivos que abriram o ERP</div></div>'+
+ '<div class="metric-card"><div class="label">Precisam instalar</div><div class="value">'+needsInstall+'</div><div class="sub">Utilizadores sem instalação registada</div></div>'+
+ '<div class="metric-card"><div class="label">Demos pendentes</div><div class="value">'+pendingDemos+'</div><div class="sub">Pedidos novos ou agendados</div></div>'+
+ '<div class="metric-card"><div class="label">Licenças a vencer</div><div class="value">'+expiring+'</div><div class="sub">Nos próximos 7 dias</div></div></div>'+
+ '<div class="card" id="ksLicenseForm"><h3 class="card-title">Criar / atribuir licença</h3><p style="color:var(--text-muted);margin:8px 0 16px">Cada nova empresa recebe automaticamente uma licença Starter de demonstração por 14 dias. Aqui pode emitir ou renovar uma licença paga sem escrever códigos manualmente.</p>'+
+ '<div class="form-grid"><div class="form-group"><label>Empresa</label><select id="ksLicenseCompany">'+companies.map(c=>'<option value="'+c.id+'">'+esc(c.trade_name||c.legal_name)+'</option>').join('')+'</select></div>'+
+ '<div class="form-group"><label>Plano</label><select id="ksLicensePlan">'+planOptions.map(p=>'<option value="'+esc(p.code)+'">'+esc(p.name)+'</option>').join('')+'</select></div>'+
+ '<div class="form-group"><label>Estado</label><select id="ksLicenseStatus"><option value="active">Activa</option><option value="trial">Demonstração</option><option value="past_due">Pagamento pendente</option></select></div>'+
+ '<div class="form-group"><label>Duração (dias)</label><input id="ksLicenseDays" type="number" min="1" max="730" value="30"></div>'+
+ '<div class="form-group full"><label>Observações</label><input id="ksLicenseNotes" placeholder="Referência de pagamento, contrato ou observações"></div></div>'+
+ '<button class="btn btn-primary" onclick="criarLicencaSaaS()">Gerar licença automaticamente</button></div>'+
+ '<div class="card"><h3 class="card-title">Licenças emitidas</h3>'+table(['Empresa','Código','Plano','Estado','Expira','Acção'],licenseRows)+'</div>'+
+ '<div class="card"><h3 class="card-title">Planos e limites</h3>'+table(['Plano','Código','Utilizadores','Facturas/mês','Produtos','Preço/mês','Acção'],planRows)+'</div>'+
+ '<div class="card"><h3 class="card-title">Pedidos de demonstração</h3>'+table(['Empresa','Contacto','Email','País','Estado','Actualizar'],demoRows)+'</div>'+
+ '<div class="card"><h3 class="card-title">Métodos de pagamento</h3><p style="color:var(--text-muted);margin:8px 0">Stripe, PayPal, Paddle, Multicaixa Express e Unitel Money só ficam operacionais depois de credenciais e webhooks serem configurados no servidor. Não coloque chaves secretas no navegador.</p>'+table(['Método','Configuração','Activar'],providerRows)+'</div>'+
+ '<div class="card"><h3 class="card-title">Alertas para o site institucional</h3><p style="color:var(--text-muted);margin:8px 0">Os eventos ficam numa caixa de saída segura. A API com dpedrosolucoes.shop será ligada numa fase própria.</p>'+table(['Evento','Prioridade','Data','Estado'],alertRows)+'</div>'+
+ '<div class="card"><h3 class="card-title">Instalações recentes</h3>'+table(['Empresa','Dispositivo','Plataforma','Última actividade'],activeInstallations.slice(0,30).map(i=>[esc(companyMap.get(i.company_id)||'-'),esc(i.device_name||'-'),esc(i.platform||'-'),fmtDT(i.last_seen_at)]))+'</div>';
+}
+function copiarLicencaSaaS(key){if(navigator.clipboard)navigator.clipboard.writeText(key).then(()=>toast('Código copiado','success'));else prompt('Código da licença',key);}
+async function criarLicencaSaaS(){
+ const companyId=$('ksLicenseCompany')?.value,plan=$('ksLicensePlan')?.value,status=$('ksLicenseStatus')?.value,days=Math.max(1,Math.min(730,int($('ksLicenseDays')?.value,30)));
+ if(!companyId||!plan){toast('Seleccione empresa e plano.','warning');return;}
+ const start=new Date(),end=new Date(start.getTime()+days*86400000),grace=new Date(end.getTime()+5*86400000);
+ const userResult=await CLOUD_AUTH.auth.getUser();
+ const {data:license,error}=await CLOUD_AUTH.from('ks_company_licenses').insert({company_id:companyId,plan_code:plan,status,starts_at:start.toISOString(),expires_at:end.toISOString(),grace_until:grace.toISOString(),notes:$('ksLicenseNotes')?.value||null,created_by:userResult.data.user.id}).select('id,license_key').single();
+ if(error){toast('Não foi possível emitir a licença: '+error.message,'error');return;}
+ const {data:company}=await CLOUD_AUTH.from('ks_companies').select('currency_code').eq('id',companyId).single();
+ const subStatus=status==='trial'?'trialing':status==='active'?'active':'past_due';
+ const {error:subError}=await CLOUD_AUTH.from('ks_subscriptions').insert({company_id:companyId,plan_code:plan,billing_interval:'monthly',status:subStatus,currency:company?.currency_code||'AOA',provider:'manual',current_period_start:start.toISOString(),current_period_end:end.toISOString(),grace_until:grace.toISOString(),trial_ends_at:status==='trial'?end.toISOString():null,license_id:license.id,payment_method:'manual_transfer'});
+ if(subError)toast('Licença emitida, mas subscrição não foi criada: '+subError.message,'warning');else toast('Licença criada: '+license.license_key,'success');
+ if($('ksLicenseNotes'))$('ksLicenseNotes').value='';openModule('saas');
+}
+async function editarPlanoSaaS(code){
+ const {data:p,error}=await CLOUD_AUTH.from('ks_saas_plans').select('*').eq('code',code).single();if(error){toast(error.message,'error');return;}
+ openModal('Editar plano '+p.name,'<div class="form-grid"><div class="form-group"><label>Preço mensal (USD)</label><input id="ksPlanMonthly" type="number" min="0" step=".01" value="'+(p.monthly_price_usd??'')+'"></div>'+
+ '<div class="form-group"><label>Preço anual (USD)</label><input id="ksPlanAnnual" type="number" min="0" step=".01" value="'+(p.annual_price_usd??'')+'"></div>'+
+ '<div class="form-group"><label>Máx. utilizadores</label><input id="ksPlanUsers" type="number" min="1" value="'+(p.max_users??'')+'"></div>'+
+ '<div class="form-group"><label>Máx. produtos</label><input id="ksPlanProducts" type="number" min="1" value="'+(p.max_products??'')+'"></div>'+
+ '<div class="form-group"><label>Facturas/mês</label><input id="ksPlanInvoices" type="number" min="1" value="'+(p.max_invoices_month??'')+'"></div>'+
+ '<div class="form-group"><label>Armazenamento MB</label><input id="ksPlanStorage" type="number" min="1" value="'+(p.storage_mb??'')+'"></div></div><button class="btn btn-primary btn-block" onclick="guardarPlanoSaaS(\''+code+'\')">Guardar plano</button>');
+}
+async function guardarPlanoSaaS(code){const n=id=>$(id).value===''?null:Number($(id).value);const {error}=await CLOUD_AUTH.from('ks_saas_plans').update({monthly_price_usd:n('ksPlanMonthly'),annual_price_usd:n('ksPlanAnnual'),max_users:n('ksPlanUsers'),max_products:n('ksPlanProducts'),max_invoices_month:n('ksPlanInvoices'),storage_mb:n('ksPlanStorage'),updated_at:new Date().toISOString()}).eq('code',code);if(error){toast(error.message,'error');return;}closeModal();toast('Plano actualizado.','success');openModule('saas');}
+async function actualizarDemoSaaS(id,status){const {error}=await CLOUD_AUTH.from('ks_demo_requests').update({status,updated_at:new Date().toISOString()}).eq('id',id);if(error)toast(error.message,'error');else{toast('Pedido actualizado','success');openModule('saas');}}
+async function actualizarGatewaySaaS(code,enabled){const {error}=await CLOUD_AUTH.from('ks_payment_provider_settings').update({enabled,updated_at:new Date().toISOString()}).eq('provider_code',code);if(error)toast(error.message,'error');else toast('Registo actualizado. A ligação do gateway ainda depende das credenciais do servidor.','info');}
+async function marcarAlertaSaaS(id){const {error}=await CLOUD_AUTH.from('ks_platform_notifications').update({read_at:new Date().toISOString()}).eq('id',id);if(error)toast(error.message,'error');else openModule('saas');}
+
+async function renderGlobalizacao(){
+ const companyId=currentCloudCompanyId();
+ const [loc,tax,fx,map]=await Promise.all([CLOUD_AUTH.from('ks_company_locales').select('*').eq('company_id',companyId).maybeSingle(),CLOUD_AUTH.from('ks_tax_rules').select('*').eq('company_id',companyId).order('tax_code'),CLOUD_AUTH.from('ks_exchange_rates').select('*').eq('company_id',companyId).order('observed_at',{ascending:false}).limit(20),CLOUD_AUTH.from('ks_map_provider_settings').select('*').eq('company_id',companyId).maybeSingle()]);
+ for(const r of [loc,tax,fx,map])if(r.error)throw r.error;
+ const l=loc.data||{locale:'pt-AO',timezone:'Africa/Luanda',currency_code:'AOA',date_format:'dd/MM/yyyy'};
+ KS_LOCALE_SETTINGS=l;KS_MAP_SETTINGS=map.data||{provider:'osrm',routing_endpoint:'https://router.project-osrm.org',geocoding_endpoint:'https://photon.komoot.io/api',is_demo_endpoint:true};
+ const taxRows=(tax.data||[]).map(t=>[esc(t.tax_code),esc(t.tax_name),(Number(t.rate)*100).toFixed(3)+'%',esc(t.country_code),badge(t.active?'Activo':'Inactivo',t.active?'success':'secondary')]);
+ const fxRows=(fx.data||[]).map(x=>[esc(x.base_currency+'/'+x.quote_currency),Number(x.rate),esc(x.source),fmtDT(x.observed_at)]);
+ return header('Globalização e regras locais','Idioma, moeda, fuso horário, impostos, câmbios e mapas por empresa','var(--info)','','fa-globe')+
+ '<div class="card"><h3 class="card-title">Idioma e formatos</h3><div class="form-grid"><div class="form-group"><label>Idioma / Região</label><select id="ksLocale"><option value="pt-AO" '+(l.locale==='pt-AO'?'selected':'')+'>Português — Angola</option><option value="en-US" '+(l.locale==='en-US'?'selected':'')+'>English — United States</option><option value="fr-FR" '+(l.locale==='fr-FR'?'selected':'')+'>Français — France</option><option value="es-ES" '+(l.locale==='es-ES'?'selected':'')+'>Español — España</option></select></div>'+
+ '<div class="form-group"><label>Moeda ISO 4217</label><input id="ksCurrency" maxlength="3" value="'+esc(l.currency_code)+'" placeholder="AOA, USD, EUR"></div>'+
+ '<div class="form-group"><label>Fuso horário IANA</label><input id="ksTimezone" value="'+esc(l.timezone)+'" placeholder="Africa/Luanda"></div>'+
+ '<div class="form-group"><label>Formato de data</label><select id="ksDateFormat"><option value="dd/MM/yyyy" '+(l.date_format==='dd/MM/yyyy'?'selected':'')+'>DD/MM/AAAA</option><option value="MM/dd/yyyy" '+(l.date_format==='MM/dd/yyyy'?'selected':'')+'>MM/DD/YYYY</option><option value="yyyy-MM-dd" '+(l.date_format==='yyyy-MM-dd'?'selected':'')+'>AAAA-MM-DD</option></select></div></div><button class="btn btn-primary" onclick="guardarGlobalizacao()">Guardar localização</button></div>'+
+ '<div class="card"><h3 class="card-title">Engine de impostos</h3><div class="form-grid"><div class="form-group"><label>Código</label><input id="ksTaxCode" placeholder="VAT_STANDARD"></div><div class="form-group"><label>Nome do imposto</label><input id="ksTaxName" placeholder="VAT / IVA / Sales Tax"></div><div class="form-group"><label>Taxa (%)</label><input id="ksTaxRate" type="number" min="0" max="100" step=".001"></div><div class="form-group"><label>País ISO</label><input id="ksTaxCountry" maxlength="2" value="'+(l.currency_code==='AOA'?'AO':'US')+'"></div></div><button class="btn btn-success" onclick="guardarRegraImposto()">Adicionar regra</button>'+table(['Código','Imposto','Taxa','País','Estado'],taxRows)+'</div>'+
+ '<div class="card"><h3 class="card-title">Taxas de câmbio</h3><div class="form-grid"><div class="form-group"><label>Moeda base</label><input id="ksFxBase" maxlength="3" value="'+esc(l.currency_code)+'"></div><div class="form-group"><label>Moeda de destino</label><input id="ksFxQuote" maxlength="3" value="USD"></div><div class="form-group"><label>Taxa</label><input id="ksFxRate" type="number" min="0.0000000001" step="any"></div><div class="form-group"><label>Fonte</label><input id="ksFxSource" value="manual"></div></div><button class="btn btn-success" onclick="guardarCambio()">Guardar taxa</button>'+table(['Par','Taxa','Fonte','Actualizada'],fxRows)+'</div>'+
+ '<div class="card"><h3 class="card-title">API de mapas e rotas</h3><p style="color:var(--text-muted);margin:8px 0">Photon + OSRM + OpenStreetMap calculam rotas rodoviárias. Endpoints públicos são de demonstração, sem SLA; para produção internacional configure infraestrutura própria ou fornecedor contratado. Não coloque chaves privadas no navegador.</p><div class="form-grid"><div class="form-group"><label>Fornecedor</label><select id="ksMapProvider"><option value="osrm" '+(KS_MAP_SETTINGS.provider==='osrm'?'selected':'')+'>OSRM / OpenStreetMap</option><option value="custom" '+(KS_MAP_SETTINGS.provider==='custom'?'selected':'')+'>Endpoint próprio</option></select></div><div class="form-group"><label>Endpoint de rotas</label><input id="ksRouteEndpoint" value="'+esc(KS_MAP_SETTINGS.routing_endpoint)+'"></div><div class="form-group full"><label>Endpoint de geocodificação</label><input id="ksGeoEndpoint" value="'+esc(KS_MAP_SETTINGS.geocoding_endpoint)+'"></div></div><button class="btn btn-primary" onclick="guardarConfiguracaoMapa()">Guardar API de mapas</button></div>';
+}
+async function guardarGlobalizacao(){const companyId=currentCloudCompanyId(),payload={company_id:companyId,locale:$('ksLocale').value,currency_code:$('ksCurrency').value.trim().toUpperCase(),timezone:$('ksTimezone').value.trim(),date_format:$('ksDateFormat').value};if(!/^[A-Z]{3}$/.test(payload.currency_code)){toast('A moeda deve usar código ISO de três letras.','warning');return;}try{Intl.DateTimeFormat(payload.locale,{timeZone:payload.timezone});}catch(e){toast('Idioma ou fuso horário inválido.','error');return;}const {error}=await CLOUD_AUTH.from('ks_company_locales').upsert(payload,{onConflict:'company_id'});if(error){toast(error.message,'error');return;}localStorage.setItem('kanawa_locale',JSON.stringify(payload));KS_LOCALE_SETTINGS=payload;toast('Localização guardada.','success');openModule('globalizacao');}
+async function guardarRegraImposto(){const code=$('ksTaxCode').value.trim().toUpperCase(),name=$('ksTaxName').value.trim(),rate=Number($('ksTaxRate').value),country=$('ksTaxCountry').value.trim().toUpperCase();if(!code||!name||!country||!Number.isFinite(rate)||rate<0||rate>100){toast('Preencha código, nome, país e taxa válida.','warning');return;}const {error}=await CLOUD_AUTH.from('ks_tax_rules').upsert({company_id:currentCloudCompanyId(),country_code:country,tax_code:code,tax_name:name,rate:rate/100,active:true},{onConflict:'company_id,tax_code'});if(error)toast(error.message,'error');else{toast('Regra de imposto guardada.','success');openModule('globalizacao');}}
+async function guardarCambio(){const base=$('ksFxBase').value.trim().toUpperCase(),quote=$('ksFxQuote').value.trim().toUpperCase(),rate=Number($('ksFxRate').value),source=$('ksFxSource').value.trim()||'manual';if(!/^[A-Z]{3}$/.test(base)||!/^[A-Z]{3}$/.test(quote)||!Number.isFinite(rate)||rate<=0){toast('Informe moedas ISO e uma taxa positiva.','warning');return;}const {error}=await CLOUD_AUTH.from('ks_exchange_rates').insert({company_id:currentCloudCompanyId(),base_currency:base,quote_currency:quote,rate,source});if(error)toast(error.message,'error');else{toast('Taxa guardada.','success');openModule('globalizacao');}}
+async function guardarConfiguracaoMapa(){const data={company_id:currentCloudCompanyId(),provider:$('ksMapProvider').value,routing_endpoint:$('ksRouteEndpoint').value.trim().replace(/\\/$/,''),geocoding_endpoint:$('ksGeoEndpoint').value.trim().replace(/\\/$/,''),is_demo_endpoint:$('ksMapProvider').value==='osrm'&&$('ksRouteEndpoint').value.includes('router.project-osrm.org'),attribution:'© OpenStreetMap contributors'};const {error}=await CLOUD_AUTH.from('ks_map_provider_settings').upsert(data,{onConflict:'company_id'});if(error)toast(error.message,'error');else{KS_MAP_SETTINGS=data;toast('API de mapas guardada.','success');openModule('globalizacao');}}
+
+async function ensureLeaflet(){if(window.L)return;if(!document.getElementById('ks-leaflet-css')){const link=document.createElement('link');link.id='ks-leaflet-css';link.rel='stylesheet';link.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(link);}await new Promise((resolve,reject)=>{const old=document.getElementById('ks-leaflet-js');if(old){if(window.L)return resolve();old.addEventListener('load',resolve,{once:true});old.addEventListener('error',reject,{once:true});return;}const script=document.createElement('script');script.id='ks-leaflet-js';script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.onload=resolve;script.onerror=()=>reject(new Error('Biblioteca de mapas indisponível.'));document.head.appendChild(script);});}
+async function obterCoordenadasEndereco(query){const endpoint=(KS_MAP_SETTINGS&&KS_MAP_SETTINGS.geocoding_endpoint)||'https://photon.komoot.io/api';const response=await fetch(endpoint+'/?q='+encodeURIComponent(query)+'&limit=1&lang='+encodeURIComponent(ksLocaleConfig().locale.slice(0,2)));if(!response.ok)throw new Error('Falha ao localizar endereço: '+query);const data=await response.json(),feature=data.features&&data.features[0];if(!feature||!feature.geometry||!feature.geometry.coordinates)throw new Error('Endereço não encontrado: '+query);return{lon:feature.geometry.coordinates[0],lat:feature.geometry.coordinates[1],label:[feature.properties.name,feature.properties.street,feature.properties.city,feature.properties.country].filter(Boolean).join(', ')};}
+async function initRoteirizacaoMap(){const el=$('ksRouteMap');if(!el)return;try{await ensureLeaflet();if(!window.KS_ROUTE_MAP||window.KS_ROUTE_MAP.getContainer()!==el){if(window.KS_ROUTE_MAP){window.KS_ROUTE_MAP.remove();window.KS_ROUTE_MAP=null;}window.KS_ROUTE_MAP=L.map(el).setView([-8.8383,13.2344],11);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(window.KS_ROUTE_MAP);window.KS_ROUTE_LAYERS=L.layerGroup().addTo(window.KS_ROUTE_MAP);}setTimeout(()=>{if(window.KS_ROUTE_MAP)window.KS_ROUTE_MAP.invalidateSize();},150);}catch(e){el.innerHTML='<div class="empty">Mapa indisponível offline. Pesquisa e cálculo de rota precisam de internet.</div>';}}
+async function calcularRotaReal(){const origin=$('rotaOrigem')?.value.trim(),destination=$('rotaDestino')?.value.trim();if(!origin||!destination){toast('Informe origem e destino.','warning');return;}const button=$('ksCalcRoute');if(button)button.disabled=true;try{const [a,b]=await Promise.all([obterCoordenadasEndereco(origin),obterCoordenadasEndereco(destination)]);const endpoint=(KS_MAP_SETTINGS&&KS_MAP_SETTINGS.routing_endpoint)||'https://router.project-osrm.org';const response=await fetch(endpoint+'/route/v1/driving/'+a.lon+','+a.lat+';'+b.lon+','+b.lat+'?overview=full&geometries=geojson&steps=true');if(!response.ok)throw new Error('O serviço de rotas não respondeu.');const data=await response.json();if(data.code!=='Ok'||!data.routes||!data.routes[0])throw new Error('Não foi possível calcular esta rota.');const route=data.routes[0];KS_LAST_ROUTE={origem:a.label||origin,destino:b.label||destination,distancia:(route.distance/1000).toFixed(2)+' km',distancia_m:route.distance,duracao_s:route.duration,tempo:Math.round(route.duration/60)+' min',geometry:route.geometry,origem_coord:[a.lat,a.lon],destino_coord:[b.lat,b.lon],veiculo:$('rotaVeiculo')?.value||'',entrega_ref:$('rotaEntrega')?.value||'',data:now(),provider:'OSRM'};const info=$('ksRouteResult');if(info)info.innerHTML='<strong>'+KS_LAST_ROUTE.distancia+'</strong> • '+KS_LAST_ROUTE.tempo+' estimados • percurso rodoviário';if(window.KS_ROUTE_MAP&&window.L){window.KS_ROUTE_LAYERS.clearLayers();window.KS_ROUTE_LINE=L.geoJSON(route.geometry,{style:{weight:5,opacity:.85}}).addTo(window.KS_ROUTE_LAYERS);window.KS_ROUTE_MAP.fitBounds(window.KS_ROUTE_LINE.getBounds(),{padding:[25,25]});L.marker([a.lat,a.lon]).addTo(window.KS_ROUTE_LAYERS).bindPopup('Origem: '+esc(a.label));L.marker([b.lat,b.lon]).addTo(window.KS_ROUTE_LAYERS).bindPopup('Destino: '+esc(b.label));}toast('Rota calculada com dados rodoviários.','success');}catch(e){toast(e.message||'Erro ao calcular rota.','error');}finally{if(button)button.disabled=false;}}
+async function guardarRotaReal(){if(!KS_LAST_ROUTE){toast('Calcule a rota antes de guardar.','warning');return;}await saveData('roteirizacao',KS_LAST_ROUTE);toast('Rota e dados da entrega guardados.','success');KS_LAST_ROUTE=null;openModule('logistica-roteirizacao');}
+
 function header(title, subtitle, color, buttons, icon) {
   return '<div class="card" style="background:linear-gradient(135deg,' + (color || 'var(--primary)') + ',var(--primary-dark));color:#fff;border:none">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
@@ -2027,6 +2164,8 @@ async function restaurarSessaoCloud(selectedCompanyId = null) {
   const { data: sessionData, error: sessionError } = await CLOUD_AUTH.auth.getSession();
   if (sessionError || !sessionData.session) return false;
   const authUser = sessionData.session.user;
+  const platformAdminResult = await CLOUD_AUTH.from('ks_platform_admins').select('role').eq('user_id',authUser.id).maybeSingle();
+  KS_PLATFORM_ADMIN = !!platformAdminResult.data;
   const { data: memberships, error: membershipError } = await CLOUD_AUTH
     .from('ks_company_memberships')
     .select('company_id,role,status')
@@ -2050,6 +2189,8 @@ async function restaurarSessaoCloud(selectedCompanyId = null) {
   // This prevents a second tenant in the same browser profile from reading
   // the first tenant's offline records. Legacy data remains untouched.
   await DB.openTenant(company.id);
+  await carregarContextoSaaS(company.id, authUser.id);
+  await registarInstalacaoCloud(company.id, authUser.id);
 
   let companyLogo = 'logo.png';
   if (company.logo_path) {
@@ -2365,23 +2506,13 @@ async function editarPlanoProducao(id) { const p = await DB.get('planosProducao'
 
 /* LOGÍSTICA */
 async function renderLogisticaRoteirizacao() {
-  const rotas = await getData('roteirizacao') || [];
-  return header('Roteirização', rotas.length + ' rotas', 'var(--primary)',
-    '<button class="btn btn-success" onclick="abrirModalRota()"><i class="fas fa-plus"></i> Nova Rota</button>' +
-    '<button class="btn btn-info" onclick="otimizarRotas()"><i class="fas fa-robot"></i> Otimizar</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || '-'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
+ const rotas=await getData('roteirizacao')||[];try{await ensureLeaflet();}catch(e){}
+ const rows=rotas.slice().reverse().map(r=>[esc(r.origem||'-'),esc(r.destino||'-'),esc(r.distancia||'-'),esc(r.tempo||'-'),esc(r.veiculo||'-'),'<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\','+r.id+')">Excluir</button>']);
+ return header('Rotas e entregas','Geocodificação, percurso, distância e tempo','var(--primary)','','fa-route')+
+ '<div class="card"><h3 class="card-title">Calcular rota rodoviária</h3><div class="form-grid"><div class="form-group"><label>Origem / recolha</label><input id="rotaOrigem" placeholder="Morada, cidade ou referência"></div><div class="form-group"><label>Destino / cliente</label><input id="rotaDestino" placeholder="Morada de entrega"></div><div class="form-group"><label>Veículo / motorista</label><input id="rotaVeiculo" placeholder="Viatura ou responsável"></div><div class="form-group"><label>Referência da entrega</label><input id="rotaEntrega" placeholder="Nº do pedido / guia"></div></div>'+
+ '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="ksCalcRoute" onclick="calcularRotaReal()">Calcular rota</button><button class="btn btn-success" onclick="guardarRotaReal()">Guardar rota / entrega</button></div><p id="ksRouteResult" style="margin:12px 0;color:var(--secondary);font-weight:700">Aguardando cálculo</p><div id="ksRouteMap" style="height:380px;border-radius:12px;border:1px solid var(--border);overflow:hidden;background:var(--bg)"></div><p style="font-size:.78rem;color:var(--text-muted);margin-top:8px">Mapas © OpenStreetMap. Roteamento OSRM e geocodificação Photon. Endpoints públicos são para demonstração e não oferecem SLA; para produção comercial de grande escala, use infraestrutura própria ou fornecedor contratado.</p></div>'+
+ '<div class="card"><h3 class="card-title">Rotas guardadas</h3>'+table(['Origem','Destino','Distância','Tempo','Veículo','Acções'],rows)+'</div>';
 }
-function abrirModalRota() {
-  openModal('Nova Rota',
-    '<div class="form-group"><label>Origem *</label><input id="rotaOrigem"></div>' +
-    '<div class="form-group"><label>Destino *</label><input id="rotaDestino"></div>' +
-    '<div class="form-group"><label>Distância</label><input id="rotaDistancia" placeholder="Ex: 15 km"></div>' +
-    '<div class="form-group"><label>Veículo</label><input id="rotaVeiculo"></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarRota()">Salvar</button>');
-}
-async function salvarRota() { const o = $('rotaOrigem').value.trim(); const d = $('rotaDestino').value.trim(); if (!o || !d) { toast('Preencha origem e destino', 'warning'); return; } await saveData('roteirizacao', { origem: o, destino: d, distancia: $('rotaDistancia').value, veiculo: $('rotaVeiculo').value, data: now() }); toast('Rota criada', 'success'); closeModal(); openModule('logistica-roteirizacao'); }
-function otimizarRotas() { toast('Rotas otimizadas', 'success'); }
 
 async function renderLogisticaEtiquetas() {
   const etiquetas = await getData('etiquetas') || [];
