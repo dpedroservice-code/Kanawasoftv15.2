@@ -662,6 +662,10 @@ function renderSidebar() {
 
 async function openModule(id) {
   if (!podeAcessar(id)) { toast('🔒 Sem permissão', 'error'); return; }
+  if (window.KanawaMaps) {
+    if (currentModule !== id && ['logistica-rastreio','ecommerce-rastreio'].includes(currentModule)) window.KanawaMaps.stopLiveTracking();
+    window.KanawaMaps.destroy();
+  }
   currentModule = id;
   $$('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   const c = $('content');
@@ -708,6 +712,11 @@ async function openModule(id) {
   try {
     c.innerHTML = R[id] ? await R[id]() : '<div class="card"><h3>Módulo ' + id + '</h3></div>';
     c.scrollTop = 0;
+    if (window.KanawaMaps) {
+      if (id === 'logistica-roteirizacao' || id === 'frota-rotas') await window.KanawaMaps.initRouteMap();
+      if (id === 'logistica-rastreio' || id === 'ecommerce-rastreio') await window.KanawaMaps.initTrackingMap();
+      if (id === 'frota-gps') await window.KanawaMaps.initGpsMap();
+    }
   } catch (e) { console.error(e); c.innerHTML = '<div class="card"><h3>Erro</h3><p>' + esc(e.message) + '</p></div>'; }
 }
 
@@ -2376,24 +2385,12 @@ async function salvarPlanoProducao() { const p = $('planoProduto').value.trim();
 async function editarPlanoProducao(id) { const p = await DB.get('planosProducao', id); if (!p) return; const s = prompt('Status (pendente, ativo, concluido):', p.status); if (s) { p.status = s; await saveData('planosProducao', p); toast('Atualizado', 'success'); openModule('planos-producao'); } }
 
 /* LOGÍSTICA */
-async function renderLogisticaRoteirizacao() {
-  const rotas = await getData('roteirizacao') || [];
-  return header('Roteirização', rotas.length + ' rotas', 'var(--primary)',
-    '<button class="btn btn-success" onclick="abrirModalRota()"><i class="fas fa-plus"></i> Nova Rota</button>' +
-    '<button class="btn btn-info" onclick="otimizarRotas()"><i class="fas fa-robot"></i> Otimizar</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || '-'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-function abrirModalRota() {
-  openModal('Nova Rota',
-    '<div class="form-group"><label>Origem *</label><input id="rotaOrigem"></div>' +
-    '<div class="form-group"><label>Destino *</label><input id="rotaDestino"></div>' +
-    '<div class="form-group"><label>Distância</label><input id="rotaDistancia" placeholder="Ex: 15 km"></div>' +
-    '<div class="form-group"><label>Veículo</label><input id="rotaVeiculo"></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarRota()">Salvar</button>');
-}
-async function salvarRota() { const o = $('rotaOrigem').value.trim(); const d = $('rotaDestino').value.trim(); if (!o || !d) { toast('Preencha origem e destino', 'warning'); return; } await saveData('roteirizacao', { origem: o, destino: d, distancia: $('rotaDistancia').value, veiculo: $('rotaVeiculo').value, data: now() }); toast('Rota criada', 'success'); closeModal(); openModule('logistica-roteirizacao'); }
-function otimizarRotas() { toast('Rotas otimizadas', 'success'); }
+async function renderLogisticaRoteirizacao() { return await window.KanawaMaps.renderRoutes(); }
+function abrirModalRota() { const input = $('rotaOrigem'); if (input) input.focus(); }
+async function calcularRotaLogistica() { return await window.KanawaMaps.calculateRoute(); }
+function usarLocalizacaoAtualComoOrigem() { return window.KanawaMaps.useCurrentLocation(); }
+async function salvarRota() { return await window.KanawaMaps.saveRoute(); }
+async function otimizarRotas() { return await window.KanawaMaps.optimizeRoutes(); }
 
 async function renderLogisticaEtiquetas() {
   const etiquetas = await getData('etiquetas') || [];
@@ -2441,18 +2438,13 @@ function renderLogisticaCrossdocking() {
 }
 function realizarCrossdocking() { toast('Cross-docking realizado', 'success'); }
 
-async function renderLogisticaRastreio() {
-  const rastreios = await getData('rastreios') || [];
-  return header('Rastreio', rastreios.length + ' encomendas', 'var(--success)',
-    '<button class="btn btn-primary" onclick="buscarRastreio()"><i class="fas fa-search"></i> Buscar</button>', 'fa-map-marked-alt') +
-    '<div class="card">' + table(['Código', 'Produto', 'Status', 'Última Atualização'],
-      rastreios.map(r => ['<strong>' + esc(r.codigo) + '</strong>', esc(r.produto || '-'), badge(r.status || 'pendente', r.status === 'entregue' ? 'success' : 'warning'), fmtDT(r.ultimaAtualizacao || r.data)])) + '</div>';
-}
-async function buscarRastreio() {
-  const codigo = prompt('Código de rastreio:'); if (!codigo) return;
-  await saveData('rastreios', { codigo, produto: 'Produto', status: 'em_transito', ultimaAtualizacao: now() });
-  toast('Rastreio adicionado', 'success'); openModule('logistica-rastreio');
-}
+async function renderLogisticaRastreio() { return await window.KanawaMaps.renderTracking(); }
+async function buscarRastreio() { return await window.KanawaMaps.searchTracking(); }
+async function criarRastreioEncomenda() { return await window.KanawaMaps.createTracking(); }
+async function rastrearEncomenda() { return await window.KanawaMaps.searchTracking(); }
+async function atualizarLocalizacaoEncomenda(id) { return await window.KanawaMaps.updateTrackingLocation(id); }
+function iniciarGPSRastreio(id) { return window.KanawaMaps.startLiveTracking(id); }
+function pararGPSRastreio() { return window.KanawaMaps.stopLiveTracking(); }
 
 /* E-COMMERCE AVANÇADO */
 async function renderEcommerceVitrine() {
@@ -2522,18 +2514,7 @@ function renderEcommercePagamento() {
 }
 function configurarPagamento() { toast('Gateway configurado', 'success'); }
 function testarPagamento() { toast('Teste concluído', 'success'); }
-function renderEcommerceRastreio() {
-  return header('Rastreio de Encomendas', 'Acompanhe seus pedidos', 'var(--info)',
-    '<button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i> Rastrear</button>', 'fa-map-marker-alt') +
-    '<div class="card"><div class="form-group"><label>Código de Rastreio</label><div style="display:flex;gap:8px"><input type="text" id="rastreioCodigo" placeholder="Ex: BR123456789" style="flex:1"><button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i></button></div></div></div>' +
-    '<div id="rastreioResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Resultado</h3></div><div id="rastreioConteudo"></div></div>';
-}
-function rastrearEncomenda() {
-  const codigo = $('rastreioCodigo') ? $('rastreioCodigo').value : '';
-  if (!codigo) { toast('Informe o código', 'warning'); return; }
-  const r = $('rastreioResultado'), c = $('rastreioConteudo');
-  if (r && c) { r.style.display = 'block'; c.innerHTML = '<div class="alert alert-info">📦 Rastreio: ' + esc(codigo) + '</div><div style="font-size:.8rem">Status: Em trânsito<br>Última atualização: ' + fmtDT(now()) + '</div>'; }
-}
+async function renderEcommerceRastreio() { return await window.KanawaMaps.renderEcommerceTracking(); }
 
 /* RH AVANÇADO */
 async function renderRHRecrutamento() {
@@ -2714,23 +2695,12 @@ async function renderFrotaManutencao() {
 }
 async function novaManutencaoFrota() { const v = prompt('Placa do veículo:'); if (!v) return; await saveData('manutencoes', { veiculo: v, data: now(), custo: parseFloat(prompt('Custo:', '0')) || 0, status: 'pendente' }); toast('Manutenção registrada', 'success'); openModule('frota-manutencao'); }
 async function concluirManutencaoFrota(id) { const m = await DB.get('manutencoes', id); if (m) { m.status = 'concluida'; await saveData('manutencoes', m); toast('Manutenção concluída', 'success'); openModule('frota-manutencao'); } }
-async function renderFrotaRotas() {
-  const r = await getData('roteirizacao') || [];
-  return header('Rotas', r.length + ' rotas', 'var(--info)',
-    '<button class="btn btn-success" onclick="novaRotaFrota()"><i class="fas fa-plus"></i> Nova Rota</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      r.map(x => [esc(x.origem || '-'), esc(x.destino || '-'), esc(x.distancia || '-'), esc(x.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaRotaFrota() { const o = prompt('Origem:'); if (!o) return; await saveData('roteirizacao', { origem: o, destino: prompt('Destino:') || 'Não especificado', distancia: prompt('Distância:', '0 km') || '0 km', veiculo: prompt('Veículo:') || 'Não alocado', data: now() }); toast('Rota criada', 'success'); openModule('frota-rotas'); }
-async function renderFrotaGPS() {
-  const g = await getData('gpsTracking') || [];
-  return header('GPS Tracking', g.length + ' veículos', 'var(--success)',
-    '<button class="btn btn-success" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Adicionar</button>', 'fa-satellite') +
-    '<div class="card"><div class="gps-map" style="height:300px;background:var(--bg);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;color:var(--text-muted);border:1px solid var(--border)"><div style="text-align:center"><i class="fas fa-map" style="font-size:3rem;opacity:0.3"></i><p style="font-size:.8rem">Mapa de rastreamento GPS</p></div></div></div>' +
-    '<div class="card">' + table(['Veículo', 'Latitude', 'Longitude', 'Última Atualização'],
-      g.map(x => ['<strong>' + esc(x.veiculo) + '</strong>', esc(x.lat || '-'), esc(x.lng || '-'), fmtDT(x.ultimaAtualizacao)])) + '</div>';
-}
-async function adicionarGPS() { const v = prompt('Placa do veículo:'); if (!v) return; await saveData('gpsTracking', { veiculo: v, lat: '-8.8391', lng: '13.2894', ultimaAtualizacao: now() }); toast('Veículo adicionado ao GPS', 'success'); openModule('frota-gps'); }
+async function renderFrotaRotas() { return await window.KanawaMaps.renderRoutes('Rotas da Frota'); }
+
+async function renderFrotaGPS() { return await window.KanawaMaps.renderFleetGPS(); }
+async function adicionarGPS() { return await window.KanawaMaps.addGPSVehicle(); }
+async function atualizarGPSVeiculo(id) { return await window.KanawaMaps.updateGPSVehicle(id); }
+
 async function renderFrotaCombustivel() {
   const a = await getData('abastecimentos') || [];
   return header('Consumo de Combustível', a.length + ' abastecimentos', 'var(--warning)',
@@ -3223,10 +3193,10 @@ const EXPORTS = [
   'renderCustosProducao','abrirModalCustoProducao','salvarCustoProducao','editarCustoProducao',
   'renderControleQualidade','abrirModalQualidade','salvarQualidade','editarQualidade',
   'renderPlanosProducao','abrirModalPlanoProducao','salvarPlanoProducao','editarPlanoProducao',
-  'renderLogisticaRoteirizacao','abrirModalRota','salvarRota','otimizarRotas',
+  'renderLogisticaRoteirizacao','abrirModalRota','salvarRota','otimizarRotas','calcularRotaLogistica','usarLocalizacaoAtualComoOrigem',
   'renderLogisticaEtiquetas','gerarEtiqueta','visualizarEtiqueta',
   'renderLogisticaPicking','iniciarPicking','renderLogisticaArmazens','novoArmazem',
-  'renderLogisticaCrossdocking','realizarCrossdocking','renderLogisticaRastreio','buscarRastreio',
+  'renderLogisticaCrossdocking','realizarCrossdocking','renderLogisticaRastreio','buscarRastreio','criarRastreioEncomenda','rastrearEncomenda','atualizarLocalizacaoEncomenda','iniciarGPSRastreio','pararGPSRastreio',
   'renderEcommerceVitrine','adicionarAoCarrinhoEcommerce','sincronizarProdutosEcommerce',
   'renderEcommerceCarrinho','removerDoCarrinhoEcommerce','limparCarrinhoEcommerce','finalizarPedidoEcommerce',
   'renderEcommercePedidos','detalharPedidoEcommerce','atualizarStatusPedidoEcommerce','exportarPedidosEcommerce',
@@ -3242,7 +3212,7 @@ const EXPORTS = [
   'renderAtivosDepreciacao','renderAtivosManutencao','novaManutencaoAtivo','concluirManutencaoAtivo',
   'renderAtivosGarantia','novaGarantia',
   'renderFrotaManutencao','novaManutencaoFrota','concluirManutencaoFrota','renderFrotaRotas','novaRotaFrota',
-  'renderFrotaGPS','adicionarGPS','renderFrotaCombustivel','novoAbastecimento',
+  'renderFrotaGPS','adicionarGPS','atualizarGPSVeiculo','renderFrotaCombustivel','novoAbastecimento',
   'renderFrotaDocumentos','salvarDocumentoFrota','renderFrotaMultas','novaMulta','pagarMulta',
   'renderFrotaDesempenho','gerarRelatorioFrota',
   'renderOSManutencao','novaOrdemManutencao','concluirOSManutencao','renderOSChecklist','novoChecklist','aprovarChecklist',
