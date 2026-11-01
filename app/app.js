@@ -1523,8 +1523,8 @@ async function resetTotal() {
 
 /* ====== SETUP / AUTH ====== */
 function setupNextStep(s) {
-  if (setupStep === 1) { const n = $('setupNome').value.trim(); const nif = $('setupNif').value.trim(); if (!n || !nif) { toast('Preencha nome e NIF', 'warning'); return; } }
-  if (setupStep === 2) { const n = $('setupAdminNome').value.trim(); const e = $('setupAdminEmail').value.trim(); const p = $('setupAdminSenha').value; if (!n || !e || p.length < 6) { toast('Preencha todos os campos', 'warning'); return; } }
+  if (setupStep === 1) { const n = $('setupNome').value.trim(); const nif = $('setupNif').value.trim(); if (!n) { toast('Preencha o nome da empresa', 'warning'); return; } }
+  if (setupStep === 2) { const n = $('setupAdminNome').value.trim(); const e = $('setupAdminEmail').value.trim(); const p = $('setupAdminSenha').value; if (!n || !e || p.length < 10) { toast('Preencha nome, email e uma senha com pelo menos 10 caracteres', 'warning'); return; } }
   if (s === 3) { $('setupResumo').innerHTML = '<div><strong>🏢 Empresa:</strong> ' + esc($('setupNome').value) + '</div><div><strong>📋 NIF:</strong> ' + esc($('setupNif').value) + '</div><div><strong>👤 Admin:</strong> ' + esc($('setupAdminNome').value) + '</div>'; }
   const prev = $('setupStep' + setupStep), next = $('setupStep' + s);
   if (prev) prev.style.display = 'none';
