@@ -142,7 +142,7 @@
   async function initRouteMap() {
     try {
       await ensureMapConfig();
-      const rows = await getData('roteirizacao') || [];
+      const rows = await getData(routeStore()) || [];
       await ensureLeaflet();
       const map = createMap('kanawaRouteMap');
       if (!map) return;
@@ -164,16 +164,18 @@
   }
   async function renderRoutes(title) {
     await ensureMapConfig();
-    const routes = await getData('roteirizacao') || [];
+    const store = routeStore();
+    const canCreate = podeFazerModulo(routePermissionModule(),'criar');
+    const routes = await getData(store) || [];
     window.__kanawaRoutePreview = null;
     return header(title || 'Roteirização e Rotas', routes.length + ' rotas guardadas', 'var(--primary)',
       '<button class="btn btn-info" onclick="usarLocalizacaoAtualComoOrigem()"><i class="fas fa-location-arrow"></i> Usar minha localização</button>' +
-      (routes.length >= 2 ? '<button class="btn btn-warning" onclick="otimizarRotas()"><i class="fas fa-route"></i> Otimizar paragens</button>' : ''), 'fa-route') +
+      (routes.length >= 2 && canCreate ? '<button class="btn btn-warning" onclick="otimizarRotas()"><i class="fas fa-route"></i> Otimizar paragens</button>' : ''), 'fa-route') +
       '<div class="card"><h3>Calcular percurso</h3><div class="form-grid">' +
       '<div class="form-group"><label>Origem (morada, local ou latitude, longitude)</label><input id="rotaOrigem" placeholder="Ex.: Kilamba, Luanda"></div>' +
       '<div class="form-group"><label>Destino (morada, local ou latitude, longitude)</label><input id="rotaDestino" placeholder="Ex.: Talatona, Luanda"></div>' +
       '<div class="form-group"><label>Veículo / motorista (opcional)</label><input id="rotaVeiculo" placeholder="Matrícula ou identificação"></div></div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="rotaCalcularBtn" class="btn btn-primary" onclick="calcularRotaLogistica()">Calcular distância e rota</button><button class="btn btn-success" onclick="salvarRota()">Guardar rota calculada</button></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="rotaCalcularBtn" class="btn btn-primary" onclick="calcularRotaLogistica()">Calcular distância e rota</button>' + (canCreate ? '<button class="btn btn-success" onclick="salvarRota()">Guardar rota calculada</button>' : '') + '</div>' +
       '<p id="rotaMapStatus" class="text-muted" style="margin-top:10px">' +
       (mapConfigIsDemo ? 'Serviços públicos de demonstração (sem SLA). A duração é estimada e não inclui trânsito em tempo real.' : 'Fornecedor de mapas configurado. A duração é estimada e não inclui trânsito em tempo real.') + '</p>' +
       '<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px"><strong>Distância: <span id="rotaDistancia">—</span></strong><strong>Duração: <span id="rotaDuracao">—</span></strong></div></div>' +
@@ -216,6 +218,7 @@
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
   }
   async function saveRoute() {
+    if (!podeFazerModulo(routePermissionModule(),'criar')) { notify('Sem permissão para guardar rotas neste módulo.','error'); return; }
     const origin = document.getElementById('rotaOrigem') && document.getElementById('rotaOrigem').value.trim();
     const destination = document.getElementById('rotaDestino') && document.getElementById('rotaDestino').value.trim();
     const vehicle = document.getElementById('rotaVeiculo') && document.getElementById('rotaVeiculo').value.trim();
@@ -223,7 +226,7 @@
     if (!origin || !destination) { notify('Preencha a origem e o destino.', 'warning'); return; }
     if (!route) { notify('Calcule a rota antes de a guardar.', 'warning'); return; }
     try {
-      await saveData('roteirizacao', {
+      await saveData(routeStore(), {
         origem: origin, destino: destination, veiculo: vehicle || null,
         distancia: route.distanceKm.toFixed(2) + ' km', duracao: Math.round(route.durationMinutes) + ' min',
         origin_lat: route.origin.lat, origin_lon: route.origin.lon,
@@ -236,8 +239,9 @@
     } catch (error) { notify(error.message || 'Não foi possível guardar a rota.', 'error'); }
   }
   async function optimizeRoutes() {
+    if (!podeFazerModulo(routePermissionModule(),'criar')) { notify('Sem permissão para otimizar rotas neste módulo.','error'); return; }
     await ensureMapConfig();
-    const routes = await getData('roteirizacao') || [];
+    const routes = await getData(routeStore()) || [];
     if (routes.length < 2) { notify('Guarde pelo menos duas rotas para otimizar as paragens.', 'warning'); return; }
     try {
       const candidates = [];
@@ -288,6 +292,12 @@
     return !!record && (record.location_source === 'device_gps' || record.location_source === 'device_gps_live') &&
       record.lat !== null && record.lat !== undefined && record.lng !== null && record.lng !== undefined &&
       Number.isFinite(Number(record.lat)) && Number.isFinite(Number(record.lng));
+  }
+  function routePermissionModule() {
+    return currentModule === 'frota-rotas' ? 'frota-rotas' : 'logistica-roteirizacao';
+  }
+  function routeStore() {
+    return currentModule === 'frota-rotas' ? 'frotaRotas' : 'roteirizacao';
   }
   function trackingPermissionModule() {
     return currentModule === 'ecommerce-rastreio' ? 'ecommerce-rastreio' : 'logistica-rastreio';
