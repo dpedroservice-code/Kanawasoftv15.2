@@ -74,6 +74,7 @@
       isPlatformAdmin: !!platformAdmin,
       platformRole: platformAdmin ? platformAdmin.role : null
     };
+    try { localStorage.setItem('kanawa_cloud_context', JSON.stringify(context)); } catch (e) { }
     return context;
   }
 
@@ -89,7 +90,18 @@
       if (result.error) throw result.error;
       const session = result.data && result.data.session;
       if (!session) return null;
-      return await loadContext(session.user);
+      try { return await loadContext(session.user); }
+      catch (networkError) {
+        // Permit an already-authenticated installation to open its local cache while offline.
+        try {
+          const cached = JSON.parse(localStorage.getItem('kanawa_cloud_context') || 'null');
+          if (cached && cached.user && cached.user.id === session.user.id && cached.company && cached.company.id) {
+            context = cached;
+            return context;
+          }
+        } catch (e) { }
+        throw networkError;
+      }
     },
 
     async signIn(email, password) {
@@ -133,6 +145,7 @@
       const result = await client.auth.signOut();
       if (result.error) throw result.error;
       context = null;
+      try { localStorage.removeItem('kanawa_cloud_context'); } catch (e) { }
     },
 
     async check() {
