@@ -88,7 +88,7 @@ const DB_STORES = [
   'producao','ordensProducao','mrp','boms','custosProducao','controleQualidade','planosProducao','planoContas','budgets','forecasts','conciliacoes','transacoesBancarias','previsoesVendas','tendencias','folhasPagamento','turnos','ferias','vagas','candidatos','desempenhoRH','beneficios','planosCarreira','onboarding','pontoDigital','rescisoes','automacoes','scoreLeads','campanhasMarketing','segmentacoes','cupons','fidelidade','ganttProjetos','timesheets','manutencoes','ordensManutencao','garantias','pecasEstoque','checklistsInspecao','calendarioManutencoes','gpsTracking','abastecimentos','multas','tecnicos','roteirizacao','etiquetas','transferencias','inventarios','lotes','rastreios','recebimentos','ecommerceProdutos','ecommerceCarrinhos','ecommercePedidos','avaliacoes','pagamentosEcommerce','vendasConsignadas','tabelasPrecos','assinaturasDigitais','documentosFiscais','certificacoes','quizzes','mensagensChat','mensagensWhatsApp','eventosCalendar','unidades','servicos','clientesPortal','acessos','politicasSenha','tentativasLogin','sessoes','sms2FA','integracoesAGT','ivas','irts','backups','backupsAgendados','backupsNuvem','audiobooks','ddgHistorico','bingHistorico','dashboardsCustom','modulosPersonalizados','departamentos','frequencias','feriasFuncionarios','pagamentosFuncionarios','motoristas','manutencoesAtivos','depreciacoes','historicoOS','contatosWhatsApp','templatesWhatsApp','carrinhosSalvos','feedbacks','logsSeguranca','seguranca','migracoes','tarefasProjetos','membrosProjetos','atividadesProjetos','gruposUsuarios','config','armazens'
 ];
 const DB = {
-  name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES,
+  name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES, cloudSyncEnabled: false,
   init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; this.db.onversionchange = () => this.db.close(); res(this.db); }; req.onerror = e => rej(e.target.error); }); },
   openTenant(companyId) {
     const safeId = String(companyId || '').replace(/[^a-zA-Z0-9_-]/g, '');
@@ -98,14 +98,109 @@ const DB = {
     return this.init();
   },
   _tx(s, m) { return this.db.transaction(s, m || 'readonly').objectStore(s); },
-  add(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
-  put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  add(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => { const id = r.result; if (this.cloudSyncEnabled) queueCloudUpsert(s, { ...i, id: i.id || id }); res(id); }; r.onerror = () => rej(r.error); }); },
+  put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudUpsert(s, i); res(r.result); }; r.onerror = () => rej(r.error); }); },
   get(s, id) { return new Promise((res, rej) => { const r = this._tx(s).get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   getAll(s) { return new Promise((res, rej) => { const r = this._tx(s).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); },
-  del(s, id) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').delete(id); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); },
+  del(s, id) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').delete(id); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudDelete(s, id); res(); }; r.onerror = () => rej(r.error); }); },
   clear(s) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').clear(); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); },
   count(s) { return new Promise((res, rej) => { const r = this._tx(s).count(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 };
+
+const CLOUD_EXCLUDED_STORES = new Set([
+  'empresas','usuarios','config','integracoesAGT','integracoes_agt',
+  'backups','backupsAgendados','backupsNuvem','logsSeguranca','seguranca',
+  'sessoes','sms2FA','politicasSenha','tentativasLogin','acessos',
+  '_sync_queue','certificacoes'
+]);
+const CLOUD_MAX_RECORD_BYTES = 750000;
+function isCloudStoreAllowed(store) {
+  return DB_STORES.includes(store) && !CLOUD_EXCLUDED_STORES.has(store) && !String(store).startsWith('_');
+}
+function sanitizeCloudPayload(value) {
+  if (Array.isArray(value)) return value.map(sanitizeCloudPayload);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (/password|senha|token|secret|api.?key|private.?key|service.?role|authorization|credential/i.test(key)) continue;
+    if (typeof item === 'string' && /^data:image\//i.test(item)) continue;
+    out[key] = sanitizeCloudPayload(item);
+  }
+  return out;
+}
+function currentCloudCompanyId() {
+  try { return JSON.parse(localStorage.getItem('kanawa_empresa') || '{}').cloud_id || null; }
+  catch { return null; }
+}
+async function syncCloudRecord(store, item) {
+  if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId || item == null || item.id == null) throw new Error('Sessão ou empresa cloud não identificada.');
+  const payload = sanitizeCloudPayload(item);
+  const encoded = JSON.stringify(payload);
+  if (new Blob([encoded]).size > CLOUD_MAX_RECORD_BYTES) throw new Error('Registo demasiado grande para sincronização cloud; imagens devem usar armazenamento de ficheiros.');
+  const { error } = await CLOUD_AUTH.from('ks_records').upsert({
+    company_id: companyId, store_key: store, record_id: String(item.id), payload
+  }, { onConflict: 'company_id,store_key,record_id' });
+  if (error) throw error;
+  return true;
+}
+async function deleteCloudRecord(store, id) {
+  if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId) throw new Error('Empresa cloud não identificada.');
+  const { error } = await CLOUD_AUTH.from('ks_records').delete()
+    .eq('company_id', companyId).eq('store_key', store).eq('record_id', String(id));
+  if (error) throw error;
+  return true;
+}
+async function queueCloudUpsert(store, item) {
+  if (!isCloudStoreAllowed(store) || !item || item.id == null) return;
+  try { await syncCloudRecord(store, item); }
+  catch (error) {
+    console.warn('[Kanawa Cloud] Registo pendente:', store, error.message);
+    try { await DB.add('_sync_queue', { entity: 'cloud:' + store, action: 'upsert', payload: item, data: now(), synced: false }); } catch (_) {}
+  }
+}
+async function queueCloudDelete(store, id) {
+  if (!isCloudStoreAllowed(store) || id == null) return;
+  try { await deleteCloudRecord(store, id); }
+  catch (error) {
+    console.warn('[Kanawa Cloud] Eliminação pendente:', store, error.message);
+    try { await DB.add('_sync_queue', { entity: 'cloud:' + store, action: 'delete', payload: { id }, data: now(), synced: false }); } catch (_) {}
+  }
+}
+async function syncTenantRecords() {
+  if (!CLOUD_AUTH || !currentCloudCompanyId()) return 0;
+  DB.cloudSyncEnabled = false;
+  let total = 0, offset = 0;
+  try {
+    while (true) {
+      const { data, error } = await CLOUD_AUTH.from('ks_records')
+        .select('store_key,record_id,payload')
+        .order('updated_at', { ascending: true })
+        .range(offset, offset + 499);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      for (const row of data) {
+        if (!isCloudStoreAllowed(row.store_key) || !row.payload || typeof row.payload !== 'object') continue;
+        const record = { ...row.payload };
+        if (record.id == null) record.id = row.record_id;
+        await DB.put(row.store_key, record);
+        total++;
+      }
+      if (data.length < 500) break;
+      offset += data.length;
+    }
+    DB.cloudSyncEnabled = true;
+    await processSyncQueue();
+    return total;
+  } catch (error) {
+    DB.cloudSyncEnabled = true;
+    console.error('[Kanawa Cloud] Falha ao carregar dados da empresa:', error);
+    throw error;
+  }
+}
 
 /* ====== API ====== */
 const API = {
@@ -134,11 +229,46 @@ async function getData(s) { try { return await DB.getAll(s); } catch (e) { conso
 async function saveData(store, item) { const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item); if (API_ONLINE) { try { if (item.id) await API.put('/' + store + '/' + item.id, item); else await API.post('/' + store, item); } catch (e) { queueSync(store, 'create', item); } } else { queueSync(store, item.id ? 'update' : 'create', item); } return id; }
 async function deleteData(s, id) { await DB.del(s, id); if (API_ONLINE) { try { await API.del('/' + s + '/' + id); } catch (e) { queueSync(s, 'delete', { id }); } } else { queueSync(s, 'delete', { id }); } }
 async function queueSync(entity, action, payload) { try { await DB.add('_sync_queue', { entity, action, payload, data: now(), synced: false }); } catch (e) { } }
-async function processSyncQueue() { if (!API_ONLINE) return 0; const q = await DB.getAll('_sync_queue'); const p = q.filter(x => !x.synced); if (!p.length) return 0; let ok = 0; for (const i of p) { try { if (i.action === 'create') await API.post('/' + i.entity, i.payload); else if (i.action === 'update') await API.put('/' + i.entity + '/' + i.payload.id, i.payload); else if (i.action === 'delete') await API.del('/' + i.entity + '/' + i.payload.id); i.synced = true; await DB.put('_sync_queue', i); ok++; } catch (e) { break; } } return ok; }
+async function processSyncQueue() {
+  const q = await DB.getAll('_sync_queue');
+  const pending = q.filter(x => !x.synced);
+  if (!pending.length) return 0;
+  let ok = 0;
+  for (const item of pending) {
+    try {
+      if (String(item.entity).startsWith('cloud:')) {
+        const store = item.entity.slice(6);
+        if (item.action === 'delete') await deleteCloudRecord(store, item.payload.id);
+        else await syncCloudRecord(store, item.payload);
+      } else {
+        if (!API_ONLINE) continue;
+        if (item.action === 'create') await API.post('/' + item.entity, item.payload);
+        else if (item.action === 'update') await API.put('/' + item.entity + '/' + item.payload.id, item.payload);
+        else if (item.action === 'delete') await API.del('/' + item.entity + '/' + item.payload.id);
+      }
+      item.synced = true; await DB.put('_sync_queue', item); ok++;
+    } catch (error) { console.warn('[Kanawa Sync] Item pendente:', item.entity, error.message); break; }
+  }
+  return ok;
+}
 async function pullFromServer() { if (!API_ONLINE) return 0; let t = 0; const stores = DB_STORES.filter(s => !s.startsWith('_')); for (const s of stores) { try { const r = await API.get('/' + s); if (r && !r.offline && Array.isArray(r)) { for (const i of r) { if (!i.id) continue; try { await DB.put(s, i); t++; } catch (e) { } } } } catch (e) { } } return t; }
-async function syncNow(flag) { const on = await API.checkHealth(); if (!on) { if (flag) toast('Servidor offline — dados salvos localmente', 'warning'); return false; } const ind = $('syncIndicator'), txt = $('syncText'); if (ind) ind.className = 'sync-indicator show syncing'; if (txt) txt.textContent = 'Sincronizando...'; const pu = await processSyncQueue(); const pl = await pullFromServer(); if (ind) ind.className = 'sync-indicator show online'; if (txt) txt.textContent = 'Sincronizado ✓'; setTimeout(() => { if (ind) ind.className = 'sync-indicator'; }, 2000); if (flag) toast('✅ Sincronizado (' + pu + ' enviados, ' + pl + ' recebidos)', 'success'); return true; }
+async function syncNow(flag) {
+  const on = await API.checkHealth();
+  const sessionResult = CLOUD_AUTH ? await CLOUD_AUTH.auth.getSession() : { data: { session: null } };
+  const cloudOnline = !!(sessionResult.data && sessionResult.data.session);
+  if (!on && !cloudOnline) { if (flag) toast('Sem ligação ao servidor cloud — os dados ficam guardados localmente.', 'warning'); return false; }
+  const ind = $('syncIndicator'), txt = $('syncText');
+  if (ind) ind.className = 'sync-indicator show syncing';
+  if (txt) txt.textContent = 'Sincronizando...';
+  const sent = await processSyncQueue();
+  const received = on ? await pullFromServer() : 0;
+  if (ind) ind.className = 'sync-indicator show online';
+  if (txt) txt.textContent = 'Sincronizado ✓';
+  if (flag) toast('Sincronização concluída (' + sent + ' pendentes enviados, ' + received + ' recebidos do servidor legado).', 'success');
+  return true;
+}
 function toggleSync() { syncNow(true); }
-function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(async () => { if (API_ONLINE) await processSyncQueue(); }, 30000); }
+function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(async () => { if (API_ONLINE || CLOUD_AUTH) await processSyncQueue(); }, 30000); }
 
 /* ====== PERMISSÕES ====== */
 const PERMISSOES = {
@@ -1608,6 +1738,7 @@ async function restaurarSessaoCloud() {
   };
   await DB.put('empresas', empresa);
   await DB.put('usuarios', user);
+  await syncTenantRecords();
   localStorage.setItem('kanawa_user', JSON.stringify(user));
   localStorage.setItem('kanawa_empresa', JSON.stringify(empresa));
   localStorage.setItem('kanawa_setup_done', 'true');
