@@ -81,6 +81,19 @@ insert into public.ks_payment_provider_settings(provider_code,display_name,mode,
  ('paypal','PayPal','not_configured',array['*']),('stripe','Stripe','not_configured',array['*']),('paddle','Paddle','not_configured',array['*'])
 on conflict(provider_code) do nothing;
 
+create or replace function private.ks_is_company_member(p_company_id uuid)
+returns boolean language sql stable security definer set search_path='' as $
+ select exists(select 1 from public.ks_company_memberships m where m.company_id=p_company_id and m.user_id=(select auth.uid()) and m.status='active');
+$;
+revoke all on function private.ks_is_company_member(uuid) from public,anon;
+grant execute on function private.ks_is_company_member(uuid) to authenticated;
+create or replace function private.ks_has_company_role(p_company_id uuid,p_allowed_roles text[])
+returns boolean language sql stable security definer set search_path='' as $
+ select exists(select 1 from public.ks_company_memberships m where m.company_id=p_company_id and m.user_id=(select auth.uid()) and m.status='active' and m.role=any(p_allowed_roles));
+$;
+revoke all on function private.ks_has_company_role(uuid,text[]) from public,anon;
+grant execute on function private.ks_has_company_role(uuid,text[]) to authenticated;
+
 create or replace function private.ks_is_company_or_platform_admin(p_company_id uuid)
 returns boolean language sql stable security definer set search_path='' as $$
  select private.ks_is_platform_admin() or private.ks_is_company_member(p_company_id);
