@@ -625,6 +625,7 @@ async function renderSaaSAdmin(){
  const companies=co.data||[],licenses=lic.data||[],members=mem.data||[],installations=inst.data||[],demos=demo.data||[],planOptions=plans.data||[],alerts=notifs.data||[],providers=payments.data||[];
  const activeMembers=members.filter(x=>x.status==='active'),activeInstallations=installations.filter(x=>x.install_status==='active');
  const installedSet=new Set(activeInstallations.map(x=>x.company_id+':'+x.user_id));
+ const installedPeople=installedSet.size;
  const needsInstall=activeMembers.filter(x=>!installedSet.has(x.company_id+':'+x.user_id)).length;
  const expiring=licenses.filter(x=>x.expires_at&&new Date(x.expires_at).getTime()<=Date.now()+7*86400000&&new Date(x.expires_at).getTime()>=Date.now()).length;
  const pendingDemos=demos.filter(x=>['new','scheduled'].includes(x.status)).length,companyMap=new Map(companies.map(x=>[x.id,x.trade_name||x.legal_name]));
@@ -636,6 +637,7 @@ async function renderSaaSAdmin(){
  return header('Centro SaaS — D.Pedro Soluções','Licenças, clientes, instalações, utilizadores, demonstrações e pagamentos','var(--primary)','<button class="btn btn-success" onclick="document.getElementById(\'ksLicenseForm\').scrollIntoView({behavior:\'smooth\'})">Criar licença</button>','fa-crown')+
  '<div class="metric-grid"><div class="metric-card"><div class="label">Empresas clientes</div><div class="value">'+companies.length+'</div><div class="sub">Contas registadas</div></div>'+
  '<div class="metric-card"><div class="label">Pessoas / utilizadores</div><div class="value">'+activeMembers.length+'</div><div class="sub">Membros activos</div></div>'+
+ '<div class="metric-card"><div class="label">Pessoas que instalaram</div><div class="value">'+installedPeople+'</div><div class="sub">Utilizadores distintos com sessão</div></div>'+
  '<div class="metric-card"><div class="label">Instalações activas</div><div class="value">'+activeInstallations.length+'</div><div class="sub">Dispositivos que abriram o ERP</div></div>'+
  '<div class="metric-card"><div class="label">Precisam instalar</div><div class="value">'+needsInstall+'</div><div class="sub">Utilizadores sem instalação registada</div></div>'+
  '<div class="metric-card"><div class="label">Demos pendentes</div><div class="value">'+pendingDemos+'</div><div class="sub">Pedidos novos ou agendados</div></div>'+
@@ -2506,7 +2508,9 @@ async function editarPlanoProducao(id) { const p = await DB.get('planosProducao'
 
 /* LOGÍSTICA */
 async function renderLogisticaRoteirizacao() {
- const rotas=await getData('roteirizacao')||[];try{await ensureLeaflet();}catch(e){}
+ const rotas=await getData('roteirizacao')||[];
+ if(!KS_MAP_SETTINGS){try{const mapResult=await CLOUD_AUTH.from('ks_map_provider_settings').select('*').eq('company_id',currentCloudCompanyId()).maybeSingle();if(!mapResult.error&&mapResult.data)KS_MAP_SETTINGS=mapResult.data;}catch(e){console.warn('Configuração de mapas indisponível:',e.message);}}
+ try{await ensureLeaflet();}catch(e){}
  const rows=rotas.slice().reverse().map(r=>[esc(r.origem||'-'),esc(r.destino||'-'),esc(r.distancia||'-'),esc(r.tempo||'-'),esc(r.veiculo||'-'),'<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\','+r.id+')">Excluir</button>']);
  return header('Rotas e entregas','Geocodificação, percurso, distância e tempo','var(--primary)','','fa-route')+
  '<div class="card"><h3 class="card-title">Calcular rota rodoviária</h3><div class="form-grid"><div class="form-group"><label>Origem / recolha</label><input id="rotaOrigem" placeholder="Morada, cidade ou referência"></div><div class="form-group"><label>Destino / cliente</label><input id="rotaDestino" placeholder="Morada de entrega"></div><div class="form-group"><label>Veículo / motorista</label><input id="rotaVeiculo" placeholder="Viatura ou responsável"></div><div class="form-group"><label>Referência da entrega</label><input id="rotaEntrega" placeholder="Nº do pedido / guia"></div></div>'+
