@@ -265,6 +265,7 @@ async function activateCloudSession(ctx, migrateLocal) {
   if (previousCompanyId && previousCompanyId !== companyId) {
     for (const store of DB_STORES) await DB.clear(store);
     localStorage.setItem('kanawa_cloud_company_id', companyId);
+    localStorage.removeItem('kanawa_legacy_company');
   } else if (previousCompanyId !== companyId) {
     let remoteRows = null;
     try { remoteRows = await KanawaCloud.getAllRecords(); }
@@ -1831,7 +1832,15 @@ async function finalizarSetup() {
     });
 
     const existingLocalCompany = await DB.get('empresas', 1);
-    localStorage.setItem('kanawa_legacy_company', JSON.stringify(existingLocalCompany || company));
+    const oldNif = String(existingLocalCompany && (existingLocalCompany.nif || existingLocalCompany.tax_id) || '').replace(/\D/g, '');
+    const newNif = String(company.nif || '').replace(/\D/g, '');
+    const oldName = String(existingLocalCompany && (existingLocalCompany.nome || existingLocalCompany.firma || existingLocalCompany.legal_name) || '').trim().toLowerCase();
+    const newName = String(company.nome || company.firma || '').trim().toLowerCase();
+    const sameLocalCompany = existingLocalCompany && ((oldNif && newNif && oldNif === newNif) || (!oldNif && !newNif && oldName && oldName === newName));
+    if (existingLocalCompany && !sameLocalCompany) {
+      for (const store of DB_STORES) if (!KanawaCloud.isLocalOnly(store)) await DB.clear(store);
+    }
+    localStorage.setItem('kanawa_legacy_company', JSON.stringify(sameLocalCompany ? existingLocalCompany : company));
     await DB.put('empresas', company);
     await DB.put('usuarios', localUser);
     if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
