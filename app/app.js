@@ -259,7 +259,7 @@ async function pullFromServer() {
   for (const row of records) {
     if (!grouped.has(row.store_key)) grouped.set(row.store_key, []);
     const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
-    const id = payload.id !== undefined ? payload.id : (/^\\d+$/.test(row.record_id) ? Number(row.record_id) : row.record_id);
+    const id = payload.id !== undefined ? payload.id : (/^\d+$/.test(row.record_id) ? Number(row.record_id) : row.record_id);
     grouped.get(row.store_key).push(Object.assign({}, payload, { id: id }));
   }
   let total = 0;
