@@ -23,7 +23,7 @@ class KanawaDB {
     }
 
     this.initSchema();
-    this.ensureAdminUser();
+    this.disableInsecureDefaultAdmin();
     this.saveNow();
   }
 
@@ -1607,18 +1607,13 @@ class KanawaDB {
     } catch (e) { }
   }
 
-  ensureAdminUser() {
-    const stmt = this.db.prepare('SELECT id FROM usuarios WHERE email = ?');
-    stmt.bind(['admin@kanawasoft.com']);
-    const exists = stmt.step();
-    stmt.free();
-    if (!exists) {
-      const hash = bcrypt.hashSync('admin123', 10);
-      this.db.run(
-        'INSERT INTO usuarios (nome, email, senha_hash, perfil, avatar) VALUES (?, ?, ?, ?, ?)',
-        ['Administrador', 'admin@kanawasoft.com', hash, 'admin', null]
-      );
-      console.log('👤 Admin criado: admin@kanawasoft.com / admin123');
+  disableInsecureDefaultAdmin() {
+    // Preserve the legacy account row, but deactivate it only when it still
+    // uses the publicly documented factory password. Never recreate it.
+    const user = this.get('SELECT id, senha_hash, ativo FROM usuarios WHERE email = ?', ['admin@kanawasoft.com']);
+    if (user && user.ativo !== 0 && user.senha_hash && bcrypt.compareSync('admin123', user.senha_hash)) {
+      this.db.run('UPDATE usuarios SET ativo = 0 WHERE id = ?', [user.id]);
+      console.warn('[Kanawa] Conta administrativa com senha padrão desativada. Crie um utilizador proprietário com autenticação segura.');
     }
   }
 
