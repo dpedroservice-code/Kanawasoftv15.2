@@ -1,0 +1,32 @@
+name: Kanawa Soft CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - feat/secure-company-onboarding-agt-readiness
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-security-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate JavaScript syntax
+        run: |
+          node --check app/app.js
+          node --check server/server.js
+          node --check server/routes.js
+          node --check server/database.js
+      - name: Run security and cloud-sync regression checks
+        run: node --test tests/*.test.mjs
