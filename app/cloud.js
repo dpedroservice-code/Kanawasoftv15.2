@@ -122,7 +122,7 @@
       if (!client) throw new Error('Biblioteca de ligação à base de dados não carregou. Atualize a página.');
       const normalizedEmail = String(email || '').trim().toLowerCase();
       const code = String(token || '').trim();
-      if (!/^\\d{6}$/.test(code)) throw new Error('Introduza o código de segurança completo com 6 dígitos.');
+      if (!/^\d{6}$/.test(code)) throw new Error('Introduza o código de segurança completo com 6 dígitos.');
       const result = await client.auth.verifyOtp({ email: normalizedEmail, token: code, type: 'email' });
       if (result.error) throw result.error;
       try {
