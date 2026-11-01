@@ -662,6 +662,8 @@ function renderSidebar() {
 
 async function openModule(id) {
   if (!podeAcessar(id)) { toast('🔒 Sem permissão', 'error'); return; }
+  if (currentModule !== id && ['logistica-rastreio','ecommerce-rastreio'].includes(currentModule)) pararGPSRastreio();
+  destroyKanawaMaps();
   currentModule = id;
   $$('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   const c = $('content');
@@ -708,6 +710,9 @@ async function openModule(id) {
   try {
     c.innerHTML = R[id] ? await R[id]() : '<div class="card"><h3>Módulo ' + id + '</h3></div>';
     c.scrollTop = 0;
+    if (id === 'logistica-roteirizacao' || id === 'frota-rotas') await initRouteMap();
+    if (id === 'logistica-rastreio' || id === 'ecommerce-rastreio') await initTrackingMap();
+    if (id === 'frota-gps') await initGpsMap();
   } catch (e) { console.error(e); c.innerHTML = '<div class="card"><h3>Erro</h3><p>' + esc(e.message) + '</p></div>'; }
 }
 
@@ -2375,362 +2380,261 @@ function abrirModalPlanoProducao() {
 async function salvarPlanoProducao() { const p = $('planoProduto').value.trim(); if (!p) { toast('Informe o produto', 'warning'); return; } await saveData('planosProducao', { produto: p, quantidade: int($('planoQtd').value, 1), periodo: $('planoPeriodo').value, status: 'pendente', data: now() }); toast('Plano criado', 'success'); closeModal(); openModule('planos-producao'); }
 async function editarPlanoProducao(id) { const p = await DB.get('planosProducao', id); if (!p) return; const s = prompt('Status (pendente, ativo, concluido):', p.status); if (s) { p.status = s; await saveData('planosProducao', p); toast('Atualizado', 'success'); openModule('planos-producao'); } }
 
+/* ===== MAPAS E SERVIÇOS DE LOCALIZAÇÃO ===== */
+const KANAWA_MAP_ROUTING_API = 'https://router.project-osrm.org';
+const KANAWA_MAP_GEOCODING_API = 'https://photon.komoot.io/api';
+
+function destroyKanawaMaps() {
+  const maps = window.__kanawaMaps || {};
+  Object.keys(maps).forEach(function (key) {
+    try { maps[key].remove(); } catch (e) { }
+  });
+  window.__kanawaMaps = {};
+  window.__kanawaMapMarkers = {};
+}
+
+function ensureLeaflet() {
+  if (window.L && typeof window.L.map === 'function') return Promise.resolve(window.L);
+  if (window.__kanawaLeafletPromise) return window.__kanawaLeafletPromise;
+  window.__kanawaLeafletPromise = new Promise(function (resolve, reject) {
+    if (!document.querySelector('link[data-kanawa-leaflet]')) {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      css.setAttribute('data-kanawa-leaflet', 'true');
+      document.head.appendChild(css);
+    }
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = function () {
+      if (window.L && typeof window.L.map === 'function') resolve(window.L);
+      else reject(new Error('A biblioteca do mapa não ficou disponível.'));
+    };
+    script.onerror = function () { reject(new Error('Não foi possível carregar o mapa. Verifique a ligação à internet.')); };
+    document.head.appendChild(script);
+  }).catch(function (error) {
+    window.__kanawaLeafletPromise = null;
+    throw error;
+  });
+  return window.__kanawaLeafletPromise;
+}
+
+function createKanawaMap(containerId) {
+  const L = window.L;
+  const element = document.getElementById(containerId);
+  if (!L || !element) return null;
+  const map = L.map(element, { scrollWheelZoom: true }).setView([-8.8383, 13.2344], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+  }).addTo(map);
+  window.__kanawaMaps = window.__kanawaMaps || {};
+  window.__kanawaMaps[containerId] = map;
+  window.__kanawaMapMarkers = window.__kanawaMapMarkers || {};
+  window.__kanawaMapMarkers[containerId] = [];
+  setTimeout(function () { try { map.invalidateSize(); } catch (e) { } }, 120);
+  return map;
+}
+
+function clearKanawaMapMarkers(containerId) {
+  const map = window.__kanawaMaps && window.__kanawaMaps[containerId];
+  const markers = window.__kanawaMapMarkers && window.__kanawaMapMarkers[containerId] || [];
+  if (map) markers.forEach(function (layer) { try { map.removeLayer(layer); } catch (e) { } });
+  window.__kanawaMapMarkers[containerId] = [];
+}
+
+function addKanawaMapMarker(containerId, lat, lon, title, details) {
+  const map = window.__kanawaMaps && window.__kanawaMaps[containerId];
+  if (!map || !window.L || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) return null;
+  const marker = window.L.marker([Number(lat), Number(lon)]).addTo(map);
+  marker.bindPopup('<strong>' + esc(title || 'Localização') + '</strong>' + (details ? '<br>' + esc(details) : ''));
+  window.__kanawaMapMarkers[containerId].push(marker);
+  return marker;
+}
+
+async function geocodificarLocalizacao(value) {
+  const query = String(value || '').trim();
+  if (!query) throw new Error('Indique uma morada, localidade ou coordenadas.');
+  const coordinateMatch = query.match(/^(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)$/);
+  if (coordinateMatch) {
+    const lat = Number(coordinateMatch[1]), lon = Number(coordinateMatch[2]);
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error('As coordenadas estão fora dos limites válidos.');
+    return { lat: lat, lon: lon, label: query };
+  }
+  const response = await fetch(KANAWA_MAP_GEOCODING_API + '?q=' + encodeURIComponent(query) + '&limit=1&lang=pt');
+  if (!response.ok) throw new Error('O serviço de pesquisa de moradas está indisponível (' + response.status + ').');
+  const data = await response.json();
+  const feature = data && data.features && data.features[0];
+  if (!feature || !feature.geometry || !Array.isArray(feature.geometry.coordinates)) {
+    throw new Error('Não foi possível localizar: ' + query + '. Indique a cidade ou coordenadas.');
+  }
+  return {
+    lon: Number(feature.geometry.coordinates[0]),
+    lat: Number(feature.geometry.coordinates[1]),
+    label: (feature.properties && (feature.properties.name || feature.properties.street || feature.properties.city)) || query
+  };
+}
+
+async function obterPercurso(origem, destino) {
+  const start = await geocodificarLocalizacao(origem);
+  const end = await geocodificarLocalizacao(destino);
+  const url = KANAWA_MAP_ROUTING_API + '/route/v1/driving/' +
+    start.lon + ',' + start.lat + ';' + end.lon + ',' + end.lat +
+    '?overview=full&geometries=geojson&steps=true';
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('O serviço de cálculo de rotas está indisponível (' + response.status + ').');
+  const data = await response.json();
+  if (!data || data.code !== 'Ok' || !data.routes || !data.routes.length) {
+    throw new Error('Não foi encontrado um percurso rodoviário entre os dois pontos.');
+  }
+  const route = data.routes[0];
+  return {
+    origin: start, destination: end, geometry: route.geometry,
+    distanceMeters: Number(route.distance), durationSeconds: Number(route.duration),
+    distanceKm: Number(route.distance) / 1000, durationMinutes: Number(route.duration) / 60
+  };
+}
+
+function desenharPercursoNoMapa(containerId, preview) {
+  const map = window.__kanawaMaps && window.__kanawaMaps[containerId];
+  if (!map || !preview || !preview.geometry || !window.L) return;
+  clearKanawaMapMarkers(containerId);
+  const coords = (preview.geometry.coordinates || []).map(function (point) { return [point[1], point[0]]; });
+  if (coords.length > 1) {
+    const line = window.L.polyline(coords, { color: '#1677d2', weight: 5, opacity: 0.85 }).addTo(map);
+    window.__kanawaMapMarkers[containerId].push(line);
+    map.fitBounds(line.getBounds(), { padding: [24, 24] });
+  }
+  addKanawaMapMarker(containerId, preview.origin.lat, preview.origin.lon, 'Origem', preview.origin.label);
+  addKanawaMapMarker(containerId, preview.destination.lat, preview.destination.lon, 'Destino', preview.destination.label);
+}
+
+async function obterPosicaoAtual() {
+  return await new Promise(function (resolve, reject) {
+    if (!navigator.geolocation) { reject(new Error('Este dispositivo não disponibiliza GPS/geolocalização.')); return; }
+    navigator.geolocation.getCurrentPosition(
+      function (position) { resolve({ lat: position.coords.latitude, lng: position.coords.longitude, accuracy: position.coords.accuracy }); },
+      function (error) { reject(new Error('Não foi possível obter a localização: ' + error.message)); },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
+    );
+  });
+}
+
+
 /* LOGÍSTICA */
-async function renderLogisticaRoteirizacao() {
+async function initRouteMap() {
+  const routes = await getData('roteirizacao') || [];
+  try {
+    await ensureLeaflet();
+    const map = createKanawaMap('kanawaRouteMap');
+    if (!map) return;
+    const withGeometry = routes.filter(function (r) { return r.route_geometry && Array.isArray(r.route_geometry.coordinates); });
+    if (withGeometry.length) {
+      const last = withGeometry[withGeometry.length - 1];
+      desenharPercursoNoMapa('kanawaRouteMap', {
+        geometry: last.route_geometry,
+        origin: { lat: last.origin_lat, lon: last.origin_lon, label: last.origem },
+        destination: { lat: last.destination_lat, lon: last.destination_lon, label: last.destino }
+      });
+    } else {
+      routes.forEach(function (r) {
+        if (r.origin_lat && r.origin_lon) addKanawaMapMarker('kanawaRouteMap', r.origin_lat, r.origin_lon, 'Origem', r.origem);
+        if (r.destination_lat && r.destination_lon) addKanawaMapMarker('kanawaRouteMap', r.destination_lat, r.destination_lon, 'Destino', r.destino);
+      });
+    }
+  } catch (error) {
+    const status = $('rotaMapStatus');
+    if (status) status.textContent = error.message;
+    else toast(error.message, 'warning');
+  }
+}
+
+async function renderLogisticaRoteirizacao(title) {
   const rotas = await getData('roteirizacao') || [];
-  return header('Roteirização', rotas.length + ' rotas', 'var(--primary)',
-    '<button class="btn btn-success" onclick="abrirModalRota()"><i class="fas fa-plus"></i> Nova Rota</button>' +
-    '<button class="btn btn-info" onclick="otimizarRotas()"><i class="fas fa-robot"></i> Otimizar</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || '-'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-function abrirModalRota() {
-  openModal('Nova Rota',
-    '<div class="form-group"><label>Origem *</label><input id="rotaOrigem"></div>' +
-    '<div class="form-group"><label>Destino *</label><input id="rotaDestino"></div>' +
-    '<div class="form-group"><label>Distância</label><input id="rotaDistancia" placeholder="Ex: 15 km"></div>' +
-    '<div class="form-group"><label>Veículo</label><input id="rotaVeiculo"></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarRota()">Salvar</button>');
-}
-async function salvarRota() { const o = $('rotaOrigem').value.trim(); const d = $('rotaDestino').value.trim(); if (!o || !d) { toast('Preencha origem e destino', 'warning'); return; } await saveData('roteirizacao', { origem: o, destino: d, distancia: $('rotaDistancia').value, veiculo: $('rotaVeiculo').value, data: now() }); toast('Rota criada', 'success'); closeModal(); openModule('logistica-roteirizacao'); }
-function otimizarRotas() { toast('Rotas otimizadas', 'success'); }
-
-async function renderLogisticaEtiquetas() {
-  const etiquetas = await getData('etiquetas') || [];
-  return header('Etiquetas', etiquetas.length + ' etiquetas', 'var(--success)',
-    '<button class="btn btn-success" onclick="gerarEtiqueta()"><i class="fas fa-plus"></i> Gerar Etiqueta</button>' +
-    '<button class="btn btn-primary" onclick="imprimirEtiquetasLote()"><i class="fas fa-print"></i> Imprimir</button>', 'fa-tag') +
-    '<div class="card">' + table(['Código', 'Produto', 'Data', 'Ações'],
-      etiquetas.map(e => ['<strong>' + esc(e.codigo || '-') + '</strong>', esc(e.produto || '-'), fmtD(e.data),
-      '<button class="btn btn-sm btn-primary" onclick="visualizarEtiqueta(' + e.id + ')"><i class="fas fa-eye"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'etiquetas\',' + e.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function gerarEtiqueta() {
-  const produto = prompt('Nome do produto:'); if (!produto) return;
-  await saveData('etiquetas', { codigo: 'ETQ' + Math.random().toString(36).substr(2, 6).toUpperCase(), produto, data: now() });
-  toast('Etiqueta gerada', 'success'); openModule('logistica-etiquetas');
-}
-function visualizarEtiqueta(id) { toast('Visualizando etiqueta', 'info'); }
-
-function renderLogisticaPicking() {
-  return header('Picking', 'Separação de pedidos', 'var(--warning)', '', 'fa-boxes') +
-    '<div class="card">' +
-    '<div class="form-group"><label>Pedido</label><select id="pickingPedido"><option value="">Selecione um pedido...</option></select></div>' +
-    '<div class="form-group"><label>Itens para separar</label><div style="padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-height:60px;color:var(--text-muted)">Selecione um pedido</div></div>' +
-    '<button class="btn btn-success" onclick="iniciarPicking()"><i class="fas fa-play"></i> Iniciar Picking</button></div>';
-}
-function iniciarPicking() { toast('Picking iniciado', 'success'); }
-
-async function renderLogisticaArmazens() {
-  const armazens = await getData('armazens') || [];
-  return header('Armazéns', armazens.length + ' armazéns', 'var(--info)',
-    '<button class="btn btn-success" onclick="novoArmazem()"><i class="fas fa-plus"></i> Novo Armazém</button>', 'fa-warehouse') +
-    '<div class="card"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">' +
-    (armazens.length > 0 ? armazens.map(a => '<div style="background:var(--bg);padding:16px;border-radius:var(--radius-sm);border:1px solid var(--border);text-align:center"><div style="font-size:2rem">🏠</div><h5 style="font-size:.8rem">' + esc(a.nome) + '</h5><p style="font-size:.6rem;color:var(--text-muted)">Capacidade: ' + (a.capacidade || 'N/A') + '</p></div>').join('') : '<div style="text-align:center;padding:20px;color:var(--text-muted)">Nenhum armazém cadastrado</div>') +
-    '</div></div>';
-}
-async function novoArmazem() { const n = prompt('Nome do armazém:'); if (!n) return; await saveData('armazens', { nome: n, data: now() }); toast('Armazém criado', 'success'); openModule('logistica-armazens'); }
-
-function renderLogisticaCrossdocking() {
-  return header('Cross-docking', 'Transferência direta', 'var(--primary)', '', 'fa-exchange-alt') +
-    '<div class="card"><div class="form-grid">' +
-    '<div class="form-group"><label>Produto</label><input id="crossProduto"></div>' +
-    '<div class="form-group"><label>Origem</label><input id="crossOrigem" value="Recebimento"></div>' +
-    '<div class="form-group"><label>Destino</label><input id="crossDestino" value="Expedição"></div>' +
-    '<div class="form-group"><label>Quantidade</label><input id="crossQtd" type="number" value="1" min="1"></div></div>' +
-    '<button class="btn btn-success" onclick="realizarCrossdocking()"><i class="fas fa-exchange-alt"></i> Transferir</button></div>';
-}
-function realizarCrossdocking() { toast('Cross-docking realizado', 'success'); }
-
-async function renderLogisticaRastreio() {
-  const rastreios = await getData('rastreios') || [];
-  return header('Rastreio', rastreios.length + ' encomendas', 'var(--success)',
-    '<button class="btn btn-primary" onclick="buscarRastreio()"><i class="fas fa-search"></i> Buscar</button>', 'fa-map-marked-alt') +
-    '<div class="card">' + table(['Código', 'Produto', 'Status', 'Última Atualização'],
-      rastreios.map(r => ['<strong>' + esc(r.codigo) + '</strong>', esc(r.produto || '-'), badge(r.status || 'pendente', r.status === 'entregue' ? 'success' : 'warning'), fmtDT(r.ultimaAtualizacao || r.data)])) + '</div>';
-}
-async function buscarRastreio() {
-  const codigo = prompt('Código de rastreio:'); if (!codigo) return;
-  await saveData('rastreios', { codigo, produto: 'Produto', status: 'em_transito', ultimaAtualizacao: now() });
-  toast('Rastreio adicionado', 'success'); openModule('logistica-rastreio');
+  window.__kanawaRoutePreview = null;
+  return header(title || 'Roteirização e Rotas', rotas.length + ' rotas guardadas', 'var(--primary)',
+    '<button class="btn btn-info" onclick="usarLocalizacaoAtualComoOrigem()"><i class="fas fa-location-arrow"></i> Usar minha localização</button>', 'fa-route') +
+    '<div class="card"><h3>Calcular percurso</h3><div class="form-grid">' +
+    '<div class="form-group"><label>Origem (morada, local ou latitude, longitude)</label><input id="rotaOrigem" placeholder="Ex.: Kilamba, Luanda"></div>' +
+    '<div class="form-group"><label>Destino (morada, local ou latitude, longitude)</label><input id="rotaDestino" placeholder="Ex.: Talatona, Luanda"></div>' +
+    '<div class="form-group"><label>Veículo / motorista (opcional)</label><input id="rotaVeiculo" placeholder="Matrícula ou identificação"></div></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="rotaCalcularBtn" class="btn btn-primary" onclick="calcularRotaLogistica()">Calcular distância e rota</button>' +
+    '<button class="btn btn-success" onclick="salvarRota()">Guardar rota calculada</button></div>' +
+    '<p id="rotaMapStatus" class="text-muted" style="margin-top:10px">O cálculo usa a rede rodoviária OpenStreetMap. A duração é uma estimativa, sem trânsito em tempo real.</p>' +
+    '<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px"><strong>Distância: <span id="rotaDistancia">—</span></strong><strong>Duração: <span id="rotaDuracao">—</span></strong></div></div>' +
+    '<div class="card"><div id="kanawaRouteMap" style="height:380px;width:100%;border-radius:10px;z-index:1"></div></div>' +
+    '<div class="card">' + table(['Origem','Destino','Distância','Duração','Veículo','Ações'],
+      rotas.map(function (r) { return [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || '-'), esc(r.duracao || '-'), esc(r.veiculo || '-'),
+        '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + Number(r.id) + ')"><i class="fas fa-trash"></i></button>']; })) + '</div>';
 }
 
-/* E-COMMERCE AVANÇADO */
-async function renderEcommerceVitrine() {
-  const produtos = await getData('ecommerceProdutos');
-  const prods = produtos.length > 0 ? produtos : await getData('produtos');
-  const ativos = prods.filter(p => p.ativo !== false);
-  return header('Vitrine Online', ativos.length + ' produtos', 'var(--success)',
-    '<button class="btn btn-info" onclick="sincronizarProdutosEcommerce()"><i class="fas fa-sync"></i> Sincronizar</button>', 'fa-store') +
-    '<div class="product-grid">' +
-    (ativos.length > 0 ? ativos.slice(0, 12).map(p => '<div class="pdv-prod-card" onclick="adicionarAoCarrinhoEcommerce(' + p.id + ')"><div class="img"><img src="' + imgSrc(p) + '" onerror="this.onerror=null;this.src=\'' + PLACEHOLDER + '\'"></div><div class="info"><div class="name">' + esc(p.nome) + '</div><div class="price">' + fmt(p.preco) + '</div><div class="stock">' + badge(p.estoque > 0 ? 'Em estoque' : 'Esgotado', p.estoque > 0 ? 'success' : 'danger') + '</div></div></div>').join('') : emptyState('fa-store', 'Nenhum produto na vitrine')) +
-    '</div>';
-}
-async function adicionarAoCarrinhoEcommerce(id) {
-  const produto = await DB.get('produtos', id) || await DB.get('ecommerceProdutos', id);
-  if (!produto) { toast('Produto não encontrado', 'error'); return; }
-  const carrinho = JSON.parse(localStorage.getItem('kanawa_ecommerce_carrinho') || '[]');
-  const ex = carrinho.find(i => i.id === id);
-  if (ex) ex.quantidade += 1; else carrinho.push({ id: produto.id, nome: produto.nome, preco: produto.preco, quantidade: 1 });
-  localStorage.setItem('kanawa_ecommerce_carrinho', JSON.stringify(carrinho));
-  toast(produto.nome + ' adicionado ao carrinho', 'success');
-}
-async function sincronizarProdutosEcommerce() {
-  const produtos = await getData('produtos'); await DB.clear('ecommerceProdutos');
-  for (const p of produtos) await saveData('ecommerceProdutos', Object.assign({}, p, { ativo: true }));
-  toast(produtos.length + ' produtos sincronizados', 'success'); openModule('ecommerce-vitrine');
-}
-function renderEcommerceCarrinho() {
-  const carrinho = JSON.parse(localStorage.getItem('kanawa_ecommerce_carrinho') || '[]');
-  const total = carrinho.reduce((s, i) => s + (i.preco * i.quantidade), 0);
-  return header('Carrinho', carrinho.length + ' itens', 'var(--warning)',
-    '<button class="btn btn-danger" onclick="limparCarrinhoEcommerce()"><i class="fas fa-trash"></i> Limpar</button>', 'fa-shopping-bag') +
-    '<div class="card">' +
-    (carrinho.length > 0 ? carrinho.map(i => '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><div><strong>' + esc(i.nome) + '</strong><br><small>' + i.quantidade + ' x ' + fmt(i.preco) + '</small></div><div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700">' + fmt(i.preco * i.quantidade) + '</span><button class="btn btn-sm btn-danger" onclick="removerDoCarrinhoEcommerce(' + i.id + ')"><i class="fas fa-trash"></i></button></div></div>').join('') : emptyState('fa-shopping-cart', 'Carrinho vazio')) +
-    (carrinho.length > 0 ? '<div style="margin-top:12px;padding-top:12px;border-top:2px solid var(--border);display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;font-size:1.1rem">Total: ' + fmt(total) + '</span><button class="btn btn-success" onclick="finalizarPedidoEcommerce()"><i class="fas fa-check"></i> Finalizar Pedido</button></div>' : '') + '</div>';
-}
-function removerDoCarrinhoEcommerce(id) { const carrinho = JSON.parse(localStorage.getItem('kanawa_ecommerce_carrinho') || '[]'); localStorage.setItem('kanawa_ecommerce_carrinho', JSON.stringify(carrinho.filter(i => i.id !== id))); toast('Item removido', 'info'); openModule('ecommerce-carrinho'); }
-function limparCarrinhoEcommerce() { localStorage.removeItem('kanawa_ecommerce_carrinho'); toast('Carrinho limpo', 'info'); openModule('ecommerce-carrinho'); }
-async function finalizarPedidoEcommerce() {
-  const carrinho = JSON.parse(localStorage.getItem('kanawa_ecommerce_carrinho') || '[]');
-  if (carrinho.length === 0) { toast('Carrinho vazio', 'warning'); return; }
-  const total = carrinho.reduce((s, i) => s + (i.preco * i.quantidade), 0);
-  const pedido = { cliente: prompt('Nome do cliente:', 'Cliente Anônimo') || 'Cliente Anônimo', itens: carrinho, total, status: 'pendente', data: now() };
-  await saveData('ecommercePedidos', pedido);
-  localStorage.removeItem('kanawa_ecommerce_carrinho');
-  toast('Pedido finalizado: ' + fmt(total), 'success'); openModule('ecommerce-pedidos');
-}
-async function renderEcommercePedidos() {
-  const pedidos = await getData('ecommercePedidos') || [];
-  return header('Pedidos E-commerce', pedidos.length + ' pedidos', 'var(--primary)',
-    '<button class="btn btn-info" onclick="exportarPedidosEcommerce()"><i class="fas fa-file-export"></i> Exportar</button>', 'fa-truck') +
-    '<div class="card">' + table(['#', 'Cliente', 'Itens', 'Total', 'Status', 'Data', 'Ações'],
-      pedidos.map(p => ['#' + p.id, esc(p.cliente || '-'), (p.itens || []).length + ' itens', fmt(p.total || 0), badge(p.status === 'entregue' ? 'Entregue' : p.status === 'enviado' ? 'Enviado' : 'Pendente', p.status === 'entregue' ? 'success' : p.status === 'enviado' ? 'info' : 'warning'), fmtD(p.data),
-      '<button class="btn btn-sm btn-primary" onclick="detalharPedidoEcommerce(' + p.id + ')"><i class="fas fa-eye"></i></button> <button class="btn btn-sm btn-success" onclick="atualizarStatusPedidoEcommerce(' + p.id + ')"><i class="fas fa-sync"></i></button>'])) + '</div>';
-}
-async function detalharPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; alert('Pedido #' + id + '\nCliente: ' + p.cliente + '\nTotal: ' + fmt(p.total) + '\nStatus: ' + p.status); }
-async function atualizarStatusPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; const s = prompt('Status (pendente, enviado, entregue, cancelado):', p.status); if (s) { p.status = s; await saveData('ecommercePedidos', p); toast('Status atualizado', 'success'); openModule('ecommerce-pedidos'); } }
-function exportarPedidosEcommerce() { toast('Exportando pedidos...', 'info'); }
-function renderEcommercePagamento() {
-  return header('Gateway de Pagamento', 'Configure os métodos de pagamento', 'var(--success)', '', 'fa-credit-card') +
-    '<div class="card"><div class="payment-methods">' +
-    '<div class="payment-method selected"><i class="fas fa-credit-card"></i> Cartão</div>' +
-    '<div class="payment-method"><i class="fas fa-money-bill-wave"></i> Dinheiro</div>' +
-    '<div class="payment-method"><i class="fas fa-mobile-alt"></i> Mobile Money</div>' +
-    '<div class="payment-method"><i class="fas fa-university"></i> Transferência</div></div>' +
-    '<div class="form-grid" style="margin-top:12px"><div class="form-group"><label>Banco</label><select><option>BPC</option><option>BIC</option><option>Banco Atlas</option></select></div><div class="form-group"><label>Chave API</label><input type="password" placeholder="Chave de API"></div></div>' +
-    '<div class="form-actions"><button class="btn btn-success" onclick="configurarPagamento()"><i class="fas fa-save"></i> Salvar</button><button class="btn btn-primary" onclick="testarPagamento()"><i class="fas fa-check"></i> Testar</button></div></div>';
-}
-function configurarPagamento() { toast('Gateway configurado', 'success'); }
-function testarPagamento() { toast('Teste concluído', 'success'); }
-function renderEcommerceRastreio() {
-  return header('Rastreio de Encomendas', 'Acompanhe seus pedidos', 'var(--info)',
-    '<button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i> Rastrear</button>', 'fa-map-marker-alt') +
-    '<div class="card"><div class="form-group"><label>Código de Rastreio</label><div style="display:flex;gap:8px"><input type="text" id="rastreioCodigo" placeholder="Ex: BR123456789" style="flex:1"><button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i></button></div></div></div>' +
-    '<div id="rastreioResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Resultado</h3></div><div id="rastreioConteudo"></div></div>';
-}
-function rastrearEncomenda() {
-  const codigo = $('rastreioCodigo') ? $('rastreioCodigo').value : '';
-  if (!codigo) { toast('Informe o código', 'warning'); return; }
-  const r = $('rastreioResultado'), c = $('rastreioConteudo');
-  if (r && c) { r.style.display = 'block'; c.innerHTML = '<div class="alert alert-info">📦 Rastreio: ' + esc(codigo) + '</div><div style="font-size:.8rem">Status: Em trânsito<br>Última atualização: ' + fmtDT(now()) + '</div>'; }
-}
+async function renderFrotaRotas() { return await renderLogisticaRoteirizacao('Rotas da Frota'); }
 
-/* RH AVANÇADO */
-async function renderRHRecrutamento() {
-  const vagas = await getData('vagas') || []; const candidatos = await getData('candidatos') || [];
-  return header('Recrutamento', vagas.length + ' vagas | ' + candidatos.length + ' candidatos', 'var(--primary)',
-    '<button class="btn btn-success" onclick="novaVaga()"><i class="fas fa-plus"></i> Nova Vaga</button>' +
-    '<button class="btn btn-info" onclick="novoCandidato()"><i class="fas fa-user-plus"></i> Novo Candidato</button>', 'fa-user-plus') +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-briefcase"></i> Vagas</h3></div>' +
-    (vagas.length > 0 ? vagas.map(v => '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><strong>' + esc(v.titulo) + '</strong> - ' + esc(v.departamento || '-') + ' ' + badge(v.status || 'aberta', 'success') + '</div>').join('') : 'Nenhuma vaga') + '</div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-users"></i> Candidatos</h3></div>' +
-    (candidatos.length > 0 ? candidatos.map(c => '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><strong>' + esc(c.nome) + '</strong> - ' + esc(c.vaga || '-') + ' ' + badge(c.status || 'novo', 'info') + '</div>').join('') : 'Nenhum candidato') + '</div></div>';
-}
-async function novaVaga() { const t = prompt('Título da vaga:'); if (!t) return; await saveData('vagas', { titulo: t, departamento: prompt('Departamento:', 'Geral') || 'Geral', status: 'aberta', data: now() }); toast('Vaga criada', 'success'); openModule('rh-recrutamento'); }
-async function novoCandidato() { const n = prompt('Nome do candidato:'); if (!n) return; await saveData('candidatos', { nome: n, vaga: prompt('Vaga:') || 'Não especificada', status: 'novo', data: now() }); toast('Candidato registrado', 'success'); openModule('rh-recrutamento'); }
-async function renderRHDesempenho() {
-  const d = await getData('desempenhoRH') || [];
-  return header('Gestão de Desempenho', d.length + ' avaliações', 'var(--info)',
-    '<button class="btn btn-success" onclick="novaAvaliacaoDesempenho()"><i class="fas fa-plus"></i> Nova Avaliação</button>', 'fa-chart-bar') +
-    '<div class="card">' + table(['Funcionário', 'Nota', 'Comentário', 'Data', 'Ações'],
-      d.map(x => [esc(x.funcionario || '-'), '<strong>' + (x.nota || 0) + '/10</strong>', esc((x.comentario || '-').substring(0, 50)), fmtD(x.data), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'desempenhoRH\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaAvaliacaoDesempenho() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('desempenhoRH', { funcionario: f, nota: parseFloat(prompt('Nota (0-10):', '5')) || 5, comentario: prompt('Comentário:') || '', data: now() }); toast('Avaliação registrada', 'success'); openModule('rh-desempenho'); }
-async function renderRHBeneficios() {
-  const b = await getData('beneficios') || [];
-  return header('Benefícios', b.length + ' benefícios', 'var(--success)',
-    '<button class="btn btn-success" onclick="novoBeneficio()"><i class="fas fa-plus"></i> Novo Benefício</button>', 'fa-gift') +
-    '<div class="card">' + table(['Nome', 'Funcionário', 'Valor', 'Status', 'Ações'],
-      b.map(x => ['<strong>' + esc(x.nome) + '</strong>', esc(x.funcionario || '-'), fmt(x.valor || 0), badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger'),
-      '<button class="btn btn-sm btn-primary" onclick="editarBeneficio(' + x.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'beneficios\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novoBeneficio() { const n = prompt('Nome do benefício:'); if (!n) return; await saveData('beneficios', { nome: n, funcionario: prompt('Funcionário:', 'Geral') || 'Geral', valor: parseFloat(prompt('Valor (Kz):', '0')) || 0, ativo: true, data: now() }); toast('Benefício criado', 'success'); openModule('rh-beneficios'); }
-async function editarBeneficio(id) { const b = await DB.get('beneficios', id); if (!b) return; const v = prompt('Novo valor:', b.valor); if (v !== null) { b.valor = parseFloat(v) || 0; await saveData('beneficios', b); toast('Atualizado', 'success'); openModule('rh-beneficios'); } }
-async function renderRHOnboarding() {
-  const o = await getData('onboarding') || [];
-  return header('Onboarding', o.length + ' processos', 'var(--primary)',
-    '<button class="btn btn-success" onclick="novoOnboarding()"><i class="fas fa-plus"></i> Novo Processo</button>', 'fa-user-graduate') +
-    '<div class="card">' + table(['Funcionário', 'Etapa', 'Progresso', 'Status', 'Ações'],
-      o.map(x => [esc(x.funcionario || '-'), esc(x.etapa || 'Início'), '<div style="background:var(--border);height:6px;border-radius:3px;width:100px;overflow:hidden;display:inline-block;vertical-align:middle"><div style="background:var(--success);height:100%;width:' + (x.progresso || 0) + '%"></div></div> ' + (x.progresso || 0) + '%', badge(x.status === 'concluido' ? 'Concluído' : 'Em Andamento', x.status === 'concluido' ? 'success' : 'warning'),
-      '<button class="btn btn-sm btn-primary" onclick="editarOnboarding(' + x.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'onboarding\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novoOnboarding() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('onboarding', { funcionario: f, etapa: 'Integração', progresso: 10, status: 'em_andamento', data: now() }); toast('Processo iniciado', 'success'); openModule('rh-onboarding'); }
-async function editarOnboarding(id) { const i = await DB.get('onboarding', id); if (!i) return; const p = prompt('Progresso (0-100):', i.progresso); if (p !== null) { i.progresso = parseInt(p) || 0; if (i.progresso >= 100) i.status = 'concluido'; await saveData('onboarding', i); toast('Atualizado', 'success'); openModule('rh-onboarding'); } }
-async function renderRHPonto() {
-  const p = await getData('pontoDigital') || [];
-  return header('Controle de Ponto', p.length + ' registros', 'var(--warning)',
-    '<button class="btn btn-success" onclick="registrarPonto()"><i class="fas fa-clock"></i> Registrar Ponto</button>' +
-    '<button class="btn btn-info" onclick="relatorioPonto()"><i class="fas fa-file-alt"></i> Relatório</button>', 'fa-clock') +
-    '<div class="card">' + table(['Funcionário', 'Data', 'Entrada', 'Saída', 'Horas', 'Ações'],
-      p.slice(-10).reverse().map(x => { const e = x.entrada ? new Date('1970-01-01T' + x.entrada) : null; const s = x.saida ? new Date('1970-01-01T' + x.saida) : null; const h = e && s ? ((s - e) / (1000 * 60 * 60)).toFixed(1) : '-'; return [esc(x.funcionario || '-'), fmtD(x.data), esc(x.entrada || '-'), esc(x.saida || '-'), h, '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'pontoDigital\',' + x.id + ')"><i class="fas fa-trash"></i></button>']; })) + '</div>';
-}
-async function registrarPonto() {
-  const f = prompt('Nome do funcionário:'); if (!f) return;
-  const a = new Date();
-  await saveData('pontoDigital', { funcionario: f, data: a.toISOString().split('T')[0], entrada: a.toTimeString().slice(0, 5), saida: '', dataRegistro: now() });
-  toast('Ponto registrado', 'success'); openModule('rh-ponto');
-}
-function relatorioPonto() { toast('Relatório gerado', 'success'); }
-async function renderRHRescisao() {
-  const r = await getData('rescisoes') || [];
-  return header('Cálculo de Rescisão', r.length + ' cálculos', 'var(--danger)',
-    '<button class="btn btn-success" onclick="novaRescisao()"><i class="fas fa-plus"></i> Novo Cálculo</button>', 'fa-file-signature') +
-    '<div class="card">' + table(['Funcionário', 'Data Saída', 'Valor', 'Motivo', 'Ações'],
-      r.map(x => [esc(x.funcionario || '-'), fmtD(x.dataSaida), fmt(x.valor || 0), esc(x.motivo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'rescisoes\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaRescisao() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('rescisoes', { funcionario: f, dataSaida: prompt('Data de saída (YYYY-MM-DD):') || new Date().toISOString().split('T')[0], valor: parseFloat(prompt('Valor da rescisão:', '0')) || 0, motivo: prompt('Motivo:', 'Demissão') || 'Demissão', data: now() }); toast('Cálculo registrado', 'success'); openModule('rh-rescisao'); }
-async function renderRHPlanoCarreira() {
-  const p = await getData('planosCarreira') || [];
-  return header('Plano de Carreira', p.length + ' planos', 'var(--success)',
-    '<button class="btn btn-success" onclick="novoPlanoCarreira()"><i class="fas fa-plus"></i> Novo Plano</button>', 'fa-arrow-up') +
-    '<div class="card">' + table(['Funcionário', 'Posição Atual', 'Próximo Passo', 'Previsão', 'Ações'],
-      p.map(x => [esc(x.funcionario || '-'), esc(x.posicaoAtual || '-'), esc(x.proximoPasso || '-'), esc(x.previsao || '-'),
-      '<button class="btn btn-sm btn-primary" onclick="editarPlanoCarreira(' + x.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'planosCarreira\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novoPlanoCarreira() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('planosCarreira', { funcionario: f, posicaoAtual: prompt('Posição atual:', 'Assistente') || 'Assistente', proximoPasso: prompt('Próximo passo:', 'Analista') || 'Analista', previsao: prompt('Previsão:', '6 meses') || '6 meses', data: now() }); toast('Plano criado', 'success'); openModule('rh-plano-carreira'); }
-async function editarPlanoCarreira(id) { const p = await DB.get('planosCarreira', id); if (!p) return; const n = prompt('Novo próximo passo:', p.proximoPasso); if (n) { p.proximoPasso = n; await saveData('planosCarreira', p); toast('Atualizado', 'success'); openModule('rh-plano-carreira'); } }
-
-/* PROJETOS AVANÇADO */
-async function renderProjetosTarefas() {
-  const t = await getData('tarefas') || [];
-  return header('Tarefas', t.length + ' tarefas', 'var(--warning)',
-    '<button class="btn btn-success" onclick="novaTarefa()"><i class="fas fa-plus"></i> Nova Tarefa</button>', 'fa-tasks') +
-    '<div class="card">' + table(['Título', 'Projeto', 'Status', 'Responsável', 'Ações'],
-      t.map(x => ['<strong>' + esc(x.titulo) + '</strong>', esc(x.projeto || '-'), badge(x.status === 'concluida' ? 'Concluída' : x.status === 'em_andamento' ? 'Em Andamento' : 'Pendente', x.status === 'concluida' ? 'success' : x.status === 'em_andamento' ? 'warning' : 'info'), esc(x.responsavel || '-'),
-      '<button class="btn btn-sm btn-success" onclick="concluirTarefa(' + x.id + ')"><i class="fas fa-check"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'tarefas\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaTarefa() { const t = prompt('Título da tarefa:'); if (!t) return; await saveData('tarefas', { titulo: t, projeto: prompt('Projeto:', 'Geral') || 'Geral', status: 'pendente', responsavel: prompt('Responsável:', 'Não definido') || 'Não definido', data: now() }); toast('Tarefa criada', 'success'); openModule('projetos-tarefas'); }
-async function renderKanban() {
-  const t = await getData('tarefas') || [];
-  const stages = ['pendente', 'em_andamento', 'concluida'];
-  const labels = { pendente: '📋 Pendente', em_andamento: '🔄 Em Andamento', concluida: '✅ Concluída' };
-  return header('Kanban', t.length + ' tarefas', 'var(--primary)', '', 'fa-columns') +
-    '<div class="kanban-columns">' + stages.map(s => { const ts = t.filter(x => x.status === s); return '<div class="kanban-column"><h5>' + (labels[s] || s) + ' (' + ts.length + ')</h5>' + (ts.length > 0 ? ts.map(x => '<div class="kanban-card" onclick="detalharTarefa(' + x.id + ')"><div style="font-weight:600;font-size:.75rem">' + esc(x.titulo) + '</div><div style="font-size:.6rem;color:var(--text-muted)">' + esc(x.responsavel || '-') + '</div></div>').join('') : '<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:.6rem">Vazio</div>') + '</div>'; }).join('') + '</div>';
-}
-async function detalharTarefa(id) { const t = await DB.get('tarefas', id); if (t) toast(t.titulo + ' - ' + (t.responsavel || 'Sem responsável'), 'info'); }
-async function renderProjetosGantt() {
-  const g = await getData('ganttProjetos') || [];
-  return header('Gantt Chart', g.length + ' atividades', 'var(--info)',
-    '<button class="btn btn-success" onclick="novaAtividadeGantt()"><i class="fas fa-plus"></i> Nova Atividade</button>', 'fa-chart-bar') +
-    '<div class="card">' + table(['Atividade', 'Projeto', 'Início', 'Fim', 'Progresso', 'Ações'],
-      g.map(x => ['<strong>' + esc(x.atividade) + '</strong>', esc(x.projeto || '-'), fmtD(x.inicio), fmtD(x.fim), '<div style="background:var(--border);height:6px;border-radius:3px;width:100px;overflow:hidden;display:inline-block;vertical-align:middle"><div style="background:var(--success);height:100%;width:' + (x.progresso || 0) + '%"></div></div> ' + (x.progresso || 0) + '%',
-      '<button class="btn btn-sm btn-primary" onclick="editarGantt(' + x.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'ganttProjetos\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaAtividadeGantt() { const a = prompt('Nome da atividade:'); if (!a) return; await saveData('ganttProjetos', { atividade: a, projeto: prompt('Projeto:', 'Geral') || 'Geral', inicio: prompt('Data início (YYYY-MM-DD):') || new Date().toISOString().split('T')[0], fim: prompt('Data fim (YYYY-MM-DD):') || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0], progresso: parseInt(prompt('Progresso (0-100):', '0')) || 0, data: now() }); toast('Atividade criada', 'success'); openModule('projetos-gantt'); }
-async function editarGantt(id) { const g = await DB.get('ganttProjetos', id); if (!g) return; const p = prompt('Novo progresso (0-100):', g.progresso); if (p !== null) { g.progresso = parseInt(p) || 0; await saveData('ganttProjetos', g); toast('Atualizado', 'success'); openModule('projetos-gantt'); } }
-function renderProjetosRecursos() {
-  return header('Gestão de Recursos', 'Alocação de recursos', 'var(--success)', '', 'fa-users-cog') +
-    '<div class="card"><div class="form-grid">' +
-    '<div class="form-group"><label>Projeto</label><select id="recursoProjeto"><option value="">Selecione...</option></select></div>' +
-    '<div class="form-group"><label>Recurso</label><select id="recursoNome"><option value="">Selecione...</option></select></div>' +
-    '<div class="form-group"><label>Horas</label><input type="number" id="recursoHoras" value="0" min="0"></div></div>' +
-    '<button class="btn btn-success" onclick="alocarRecurso()"><i class="fas fa-save"></i> Alocar</button></div>';
-}
-function alocarRecurso() { toast('Recurso alocado', 'success'); }
-async function renderProjetosTimesheet() {
-  const t = await getData('timesheets') || [];
-  return header('Timesheet', t.length + ' registros', 'var(--warning)',
-    '<button class="btn btn-success" onclick="novoTimesheet()"><i class="fas fa-plus"></i> Novo Registro</button>', 'fa-clock') +
-    '<div class="card">' + table(['Recurso', 'Projeto', 'Horas', 'Data', 'Ações'],
-      t.map(x => [esc(x.recurso || '-'), esc(x.projeto || '-'), (x.horas || 0) + 'h', fmtD(x.data), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'timesheets\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novoTimesheet() { const r = prompt('Nome do recurso:'); if (!r) return; await saveData('timesheets', { recurso: r, projeto: prompt('Projeto:', 'Geral') || 'Geral', horas: parseFloat(prompt('Horas:', '0')) || 0, data: new Date().toISOString().split('T')[0], dataRegistro: now() }); toast('Timesheet registrado', 'success'); openModule('projetos-timesheet'); }
-function renderProjetosCustos() {
-  return header('Custo Real vs Planejado', 'Análise de custos', 'var(--danger)', '', 'fa-calculator') +
-    '<div class="card"><div class="form-grid">' +
-    '<div class="form-group"><label>Projeto</label><select id="custoProjeto"><option value="">Selecione...</option></select></div>' +
-    '<div class="form-group"><label>Custo Planejado</label><input type="number" id="custoPlanejado" value="0"></div>' +
-    '<div class="form-group"><label>Custo Real</label><input type="number" id="custoReal" value="0"></div></div>' +
-    '<button class="btn btn-success" onclick="salvarCustoProjeto()"><i class="fas fa-save"></i> Salvar</button> <button class="btn btn-info" onclick="analisarCustos()"><i class="fas fa-chart-line"></i> Analisar</button></div>';
-}
-function salvarCustoProjeto() { toast('Custo salvo', 'success'); }
-function analisarCustos() { toast('Análise concluída', 'success'); }
-function renderProjetosRiscos() {
-  return header('Matriz de Riscos', 'Identificação e gestão', 'var(--warning)', '', 'fa-exclamation-triangle') +
-    '<div class="card"><div class="form-grid">' +
-    '<div class="form-group"><label>Risco</label><input id="riscoDesc" placeholder="Descrição do risco"></div>' +
-    '<div class="form-group"><label>Probabilidade</label><select id="riscoProb"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option></select></div>' +
-    '<div class="form-group"><label>Impacto</label><select id="riscoImpacto"><option value="baixo">Baixo</option><option value="medio">Médio</option><option value="alto">Alto</option></select></div>' +
-    '<div class="form-group"><label>Estratégia</label><input id="riscoEstrategia" placeholder="Estratégia de mitigação"></div></div>' +
-    '<button class="btn btn-success" onclick="salvarRisco()"><i class="fas fa-save"></i> Salvar</button></div>';
-}
-function salvarRisco() { toast('Risco salvo', 'success'); }
-
-/* ATIVOS AVANÇADO */
-async function renderAtivosDepreciacao() {
-  const ativos = await getData('ativos') || [];
-  return header('Depreciação de Ativos', 'Cálculo de depreciação', 'var(--info)', '', 'fa-chart-line') +
-    '<div class="card">' + table(['Ativo', 'Valor Original', 'Depreciação', 'Valor Atual'],
-      ativos.map(a => { const anos = Math.floor((new Date() - new Date(a.dataAquisicao)) / (1000 * 60 * 60 * 24 * 365)); const dt = (a.valor || 0) * ((a.depreciacao || 0) / 100) * Math.min(anos, 10); const va = Math.max(0, (a.valor || 0) - dt); return ['<strong>' + esc(a.nome) + '</strong>', fmt(a.valor || 0), (a.depreciacao || 0) + '% ao ano', fmt(va)]; })) + '</div>';
-}
-async function renderAtivosManutencao() {
-  const m = await getData('manutencoes') || [];
-  return header('Manutenção de Ativos', m.length + ' manutenções', 'var(--warning)',
-    '<button class="btn btn-success" onclick="novaManutencaoAtivo()"><i class="fas fa-plus"></i> Nova Manutenção</button>', 'fa-tools') +
-    '<div class="card">' + table(['Ativo', 'Data', 'Custo', 'Status', 'Ações'],
-      m.map(x => [esc(x.ativo || '-'), fmtD(x.data), fmt(x.custo || 0), badge(x.status === 'concluida' ? 'Concluída' : 'Pendente', x.status === 'concluida' ? 'success' : 'warning'),
-      '<button class="btn btn-sm btn-success" onclick="concluirManutencaoAtivo(' + x.id + ')"><i class="fas fa-check"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'manutencoes\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaManutencaoAtivo() { const a = prompt('Nome do ativo:'); if (!a) return; await saveData('manutencoes', { ativo: a, data: now(), custo: parseFloat(prompt('Custo:', '0')) || 0, status: 'pendente' }); toast('Manutenção registrada', 'success'); openModule('ativos-manutencao'); }
-async function concluirManutencaoAtivo(id) { const m = await DB.get('manutencoes', id); if (m) { m.status = 'concluida'; await saveData('manutencoes', m); toast('Manutenção concluída', 'success'); openModule('ativos-manutencao'); } }
-async function renderAtivosGarantia() {
-  const g = await getData('garantias') || [];
-  return header('Controle de Garantia', g.length + ' garantias', 'var(--success)',
-    '<button class="btn btn-success" onclick="novaGarantia()"><i class="fas fa-plus"></i> Nova Garantia</button>', 'fa-shield-alt') +
-    '<div class="card">' + table(['Ativo', 'Início', 'Fim', 'Status', 'Ações'],
-      g.map(x => { const v = new Date(x.fim) > new Date(); return [esc(x.ativo || '-'), fmtD(x.inicio), fmtD(x.fim), badge(v ? 'Válida' : 'Expirada', v ? 'success' : 'danger'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'garantias\',' + x.id + ')"><i class="fas fa-trash"></i></button>']; })) + '</div>';
-}
-async function novaGarantia() { const a = prompt('Nome do ativo:'); if (!a) return; await saveData('garantias', { ativo: a, inicio: new Date().toISOString().split('T')[0], fim: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0], data: now() }); toast('Garantia registrada', 'success'); openModule('ativos-garantia'); }
-
-/* FROTA AVANÇADO */
-async function renderFrotaManutencao() {
-  const m = await getData('manutencoes') || [];
-  return header('Manutenção de Frota', m.length + ' ordens', 'var(--warning)',
-    '<button class="btn btn-success" onclick="novaManutencaoFrota()"><i class="fas fa-plus"></i> Nova Manutenção</button>', 'fa-tools') +
-    '<div class="card">' + table(['Veículo', 'Data', 'Custo', 'Status', 'Ações'],
-      m.map(x => [esc(x.veiculo || x.ativo || '-'), fmtD(x.data), fmt(x.custo || 0), badge(x.status === 'concluida' ? 'Concluída' : 'Pendente', x.status === 'concluida' ? 'success' : 'warning'),
-      '<button class="btn btn-sm btn-success" onclick="concluirManutencaoFrota(' + x.id + ')"><i class="fas fa-check"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'manutencoes\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaManutencaoFrota() { const v = prompt('Placa do veículo:'); if (!v) return; await saveData('manutencoes', { veiculo: v, data: now(), custo: parseFloat(prompt('Custo:', '0')) || 0, status: 'pendente' }); toast('Manutenção registrada', 'success'); openModule('frota-manutencao'); }
-async function concluirManutencaoFrota(id) { const m = await DB.get('manutencoes', id); if (m) { m.status = 'concluida'; await saveData('manutencoes', m); toast('Manutenção concluída', 'success'); openModule('frota-manutencao'); } }
-async function renderFrotaRotas() {
-  const r = await getData('roteirizacao') || [];
-  return header('Rotas', r.length + ' rotas', 'var(--info)',
-    '<button class="btn btn-success" onclick="novaRotaFrota()"><i class="fas fa-plus"></i> Nova Rota</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      r.map(x => [esc(x.origem || '-'), esc(x.destino || '-'), esc(x.distancia || '-'), esc(x.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
-}
-async function novaRotaFrota() { const o = prompt('Origem:'); if (!o) return; await saveData('roteirizacao', { origem: o, destino: prompt('Destino:') || 'Não especificado', distancia: prompt('Distância:', '0 km') || '0 km', veiculo: prompt('Veículo:') || 'Não alocado', data: now() }); toast('Rota criada', 'success'); openModule('frota-rotas'); }
 async function renderFrotaGPS() {
-  const g = await getData('gpsTracking') || [];
-  return header('GPS Tracking', g.length + ' veículos', 'var(--success)',
-    '<button class="btn btn-success" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Adicionar</button>', 'fa-satellite') +
-    '<div class="card"><div class="gps-map" style="height:300px;background:var(--bg);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;color:var(--text-muted);border:1px solid var(--border)"><div style="text-align:center"><i class="fas fa-map" style="font-size:3rem;opacity:0.3"></i><p style="font-size:.8rem">Mapa de rastreamento GPS</p></div></div></div>' +
-    '<div class="card">' + table(['Veículo', 'Latitude', 'Longitude', 'Última Atualização'],
-      g.map(x => ['<strong>' + esc(x.veiculo) + '</strong>', esc(x.lat || '-'), esc(x.lng || '-'), fmtDT(x.ultimaAtualizacao)])) + '</div>';
+  const vehicles = await getData('gpsTracking') || [];
+  const canEdit = podeFazerModulo('frota-gps', 'editar') || podeFazerModulo('frota-gps', 'criar');
+  return header('GPS da Frota', vehicles.length + ' veículos registados', 'var(--success)',
+    canEdit ? '<button class="btn btn-success" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Registar veículo</button>' : '', 'fa-satellite') +
+    '<div class="card"><div id="kanawaGpsMap" style="height:360px;width:100%;border-radius:10px;z-index:1"></div>' +
+    '<p class="text-muted" style="margin-top:8px;font-size:.78rem">A posição é recolhida pelo GPS do dispositivo autorizado. Não são utilizadas coordenadas simuladas.</p></div>' +
+    '<div class="card">' + table(['Veículo','Latitude','Longitude','Precisão','Última atualização','Ações'],
+      vehicles.map(function (v) {
+        const hasLocation = Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lng));
+        return ['<strong>' + esc(v.veiculo || '-') + '</strong>', hasLocation ? Number(v.lat).toFixed(5) : '-', hasLocation ? Number(v.lng).toFixed(5) : '-',
+          v.gps_accuracy_m ? Math.round(v.gps_accuracy_m) + ' m' : '-', fmtDT(v.ultimaAtualizacao),
+          canEdit ? '<button class="btn btn-sm btn-primary" onclick="atualizarGPSVeiculo(' + Number(v.id) + ')">Atualizar GPS</button>' : ''];
+      })) + '</div>';
 }
-async function adicionarGPS() { const v = prompt('Placa do veículo:'); if (!v) return; await saveData('gpsTracking', { veiculo: v, lat: '-8.8391', lng: '13.2894', ultimaAtualizacao: now() }); toast('Veículo adicionado ao GPS', 'success'); openModule('frota-gps'); }
+
+async function initGpsMap() {
+  const vehicles = await getData('gpsTracking') || [];
+  try {
+    await ensureLeaflet();
+    let map = window.__kanawaMaps && window.__kanawaMaps.kanawaGpsMap;
+    if (!map) map = createKanawaMap('kanawaGpsMap');
+    if (!map) return;
+    clearKanawaMapMarkers('kanawaGpsMap');
+    const points = vehicles.filter(function (v) { return Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lng)); });
+    points.forEach(function (v) { addKanawaMapMarker('kanawaGpsMap', v.lat, v.lng, v.veiculo || 'Veículo', 'Última atualização: ' + (v.ultimaAtualizacao || 'não disponível')); });
+    if (points.length) {
+      const bounds = window.L.featureGroup(window.__kanawaMapMarkers.kanawaGpsMap).getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
+    }
+  } catch (error) {
+    const element = $('kanawaGpsMap');
+    if (element) element.innerHTML = '<p style="padding:18px">Mapa indisponível: ' + esc(error.message) + '</p>';
+  }
+}
+
+async function adicionarGPS() {
+  const vehicle = prompt('Identificação ou matrícula do veículo:');
+  if (!vehicle) return;
+  try {
+    await saveData('gpsTracking', { veiculo: vehicle.trim(), ultimaAtualizacao: null, location_source: null });
+    toast('Veículo registado. Atualize a posição quando o GPS estiver disponível.', 'success');
+    openModule('frota-gps');
+  } catch (error) { toast(error.message || 'Não foi possível registar o veículo.', 'error'); }
+}
+
+async function atualizarGPSVeiculo(id) {
+  if (!podeFazerModulo('frota-gps', 'editar') && !podeFazerModulo('frota-gps', 'criar')) {
+    toast('Não tem permissão para atualizar a posição da frota.', 'error'); return;
+  }
+  try {
+    const record = await DB.get('gpsTracking', id);
+    if (!record) throw new Error('Veículo não encontrado.');
+    const position = await obterPosicaoAtual();
+    record.lat = position.lat; record.lng = position.lng;
+    record.gps_accuracy_m = Math.round(position.accuracy);
+    record.location_source = 'device_gps';
+    record.ultimaAtualizacao = now();
+    await saveData('gpsTracking', record);
+    toast('Posição GPS do veículo atualizada.', 'success');
+    openModule('frota-gps');
+  } catch (error) { toast(error.message || 'Não foi possível atualizar a posição.', 'error'); }
+}
+
 async function renderFrotaCombustivel() {
   const a = await getData('abastecimentos') || [];
   return header('Consumo de Combustível', a.length + ' abastecimentos', 'var(--warning)',
