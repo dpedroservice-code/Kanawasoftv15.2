@@ -143,7 +143,7 @@ test('company invitations use a server-side Edge Function with admin authorizati
   const app = await read('app/app.js');
   const fn = await read('supabase/functions/ks-invite-member/index.ts');
   assert.match(app, /functions\/v1\/ks-invite-member/);
-  assert.match(app, /Bearer '\\s*\\+ sessionData\.session\.access_token/);
+  assert.ok(app.includes("'Authorization': 'Bearer ' + sessionData.session.access_token"));
   assert.match(fn, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(fn, /admin\.auth\.getUser\(token\)/);
   assert.match(fn, /inviteUserByEmail/);
