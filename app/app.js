@@ -283,7 +283,10 @@ function startAutoSync() {
 async function activateCloudSession(ctx, migrateLocal) {
   const companyId = ctx.company.id;
   const previousCompanyId = localStorage.getItem('kanawa_cloud_company_id');
-  const previousUserId = localStorage.getItem('kanawa_cloud_user_id');
+  let previousUserId = localStorage.getItem('kanawa_cloud_user_id');
+  if (!previousUserId) {
+    try { const previousContext = JSON.parse(localStorage.getItem('kanawa_cloud_context') || 'null'); previousUserId = previousContext && previousContext.user ? previousContext.user.id : null; } catch (e) { previousUserId = null; }
+  }
   if (previousUserId && previousUserId !== ctx.user.id) {
     for (const store of DB_STORES) await DB.clear(store);
     localStorage.removeItem('kanawa_user');
@@ -1825,7 +1828,7 @@ async function editarAcessoMembro(userId) {
   const roleMap = { manager:'gerente', operator:'operador', cashier:'caixa', accountant:'contabilista', viewer:'consulta' };
   const localRole = roleMap[member.role] || 'operador';
   const html = '<div><strong>' + esc(profile.full_name || profile.email || 'Funcionário') + '</strong><p>' + esc(profile.email || '') + '</p></div>' +
-    '<div class="form-grid"><div class="form-group"><label>Perfil</label><select id="editPerfil">' +
+    '<div class="form-grid"><div class="form-group"><label>Perfil</label><select id="editPerfil" onchange="preencherPermissoesPadrao(\'editPerfil\')">' +
     '<option value="gerente"' + (localRole==='gerente'?' selected':'') + '>Gerente</option>' +
     '<option value="operador"' + (localRole==='operador'?' selected':'') + '>Operador</option>' +
     '<option value="caixa"' + (localRole==='caixa'?' selected':'') + '>Caixa</option>' +
@@ -1843,7 +1846,7 @@ async function guardarAcessoMembro(userId) {
   const permissions = recolherPermissoes();
   try {
     await KanawaCloud.updateTeamMemberAccess({ userId:userId, role:role, status:status, permissions:permissions });
-    toast('Permissões atualizadas. O funcionário terá os novos acessos na próxima atualização da sessão.', 'success');
+    toast('Permissões atualizadas. Os acessos serão renovados na próxima sincronização.', 'success');
     closeModal();
     openModule('usuarios');
   } catch (e) { toast('Não foi possível atualizar: ' + (e.message || e), 'error'); }
