@@ -118,7 +118,7 @@ test('password recovery callback supports a real password update', async () => {
 
 test('cloud profile cannot self-assign a company role or change email locally', async () => {
   const app = await read('app/app.js');
-  assert.match(app, /perfilRole"\s*\+ \(CLOUD_AUTH \? ' disabled/);
+  assert.match(app, /id="perfilRole"'\s*\+ \(CLOUD_AUTH \? ' disabled/);
   assert.match(app, /Cloud roles are controlled by ks_company_memberships\/RLS/);
   assert.match(app, /email actual foi mantido/);
 });
