@@ -104,10 +104,30 @@
       }
     },
 
-    async signIn(email, password) {
+    async requestOtp(email) {
       if (!client) throw new Error('Biblioteca de ligação à base de dados não carregou. Atualize a página.');
-      const result = await client.auth.signInWithPassword({ email: email, password: password });
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      if (!normalizedEmail) throw new Error('Introduza o endereço de email.');
+      const result = await client.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: { shouldCreateUser: false }
+      });
       if (result.error) throw result.error;
+      return true;
+    },
+
+    async verifyOtp(email, token) {
+      if (!client) throw new Error('Biblioteca de ligação à base de dados não carregou. Atualize a página.');
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      const code = String(token || '').replace(/\\s/g, '');
+      if (!/^\\d{6}$/.test(code)) throw new Error('Introduza o código de 6 dígitos recebido por email.');
+      const result = await client.auth.verifyOtp({
+        email: normalizedEmail,
+        token: code,
+        type: 'email'
+      });
+      if (result.error) throw result.error;
+      if (!result.data || !result.data.user) throw new Error('Não foi possível validar o código. Peça um novo código.');
       return await loadContext(result.data.user);
     },
 
