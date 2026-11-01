@@ -132,13 +132,52 @@ function currentCloudCompanyId() {
   try { return JSON.parse(localStorage.getItem('kanawa_empresa') || '{}').cloud_id || null; }
   catch { return null; }
 }
+const CLOUD_MEDIA_BUCKET = 'ks-company-media';
+const CLOUD_MEDIA_FIELDS = ['imagem','foto','avatar','image','photo'];
+async function prepareCloudPayload(store, item, companyId) {
+  const payload = JSON.parse(JSON.stringify(item));
+  for (const field of CLOUD_MEDIA_FIELDS) {
+    const value = payload[field];
+    if (typeof value !== 'string' || !/^data:image\//i.test(value)) continue;
+    const response = await fetch(value);
+    if (!response.ok) throw new Error('Não foi possível preparar a imagem para sincronização.');
+    const blob = await response.blob();
+    if (blob.size > 5 * 1024 * 1024) throw new Error('Cada imagem cloud deve ter no máximo 5 MB.');
+    const extensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+    const extension = extensions[blob.type];
+    if (!extension) throw new Error('Formato de imagem não suportado para sincronização: ' + blob.type);
+    const path = companyId + '/' + store + '/' + String(item.id) + '/' + field + '.' + extension;
+    const { error } = await CLOUD_AUTH.storage.from(CLOUD_MEDIA_BUCKET).upload(path, blob, {
+      contentType: blob.type, upsert: true, cacheControl: '3600'
+    });
+    if (error) throw error;
+    payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + path;
+  }
+  return sanitizeCloudPayload(payload);
+}
+async function restoreCloudMedia(payload, existing) {
+  const record = { ...payload };
+  for (const field of CLOUD_MEDIA_FIELDS) {
+    const value = record[field];
+    if (existing && typeof existing[field] === 'string' && /^data:image\//i.test(existing[field])) {
+      record[field] = existing[field]; // keep the local offline copy
+      continue;
+    }
+    if (typeof value !== 'string' || !value.startsWith('storage://' + CLOUD_MEDIA_BUCKET + '/')) continue;
+    const path = value.slice(('storage://' + CLOUD_MEDIA_BUCKET + '/').length);
+    const { data, error } = await CLOUD_AUTH.storage.from(CLOUD_MEDIA_BUCKET).createSignedUrl(path, 3600);
+    if (error) throw error;
+    record[field] = data.signedUrl;
+  }
+  return record;
+}
 async function syncCloudRecord(store, item) {
   if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
   const companyId = currentCloudCompanyId();
   if (!companyId || item == null || item.id == null) throw new Error('Sessão ou empresa cloud não identificada.');
-  const payload = sanitizeCloudPayload(item);
+  const payload = await prepareCloudPayload(store, item, companyId);
   const encoded = JSON.stringify(payload);
-  if (new Blob([encoded]).size > CLOUD_MAX_RECORD_BYTES) throw new Error('Registo demasiado grande para sincronização cloud; imagens devem usar armazenamento de ficheiros.');
+  if (new Blob([encoded]).size > CLOUD_MAX_RECORD_BYTES) throw new Error('Registo demasiado grande para sincronização cloud.');
   const { error } = await CLOUD_AUTH.from('ks_records').upsert({
     company_id: companyId, store_key: store, record_id: String(item.id), payload
   }, { onConflict: 'company_id,store_key,record_id' });
@@ -201,14 +240,10 @@ async function syncTenantRecords() {
       if (!data || !data.length) break;
       for (const row of data) {
         if (!isCloudStoreAllowed(row.store_key) || !row.payload || typeof row.payload !== 'object') continue;
-        const record = { ...row.payload };
-        if (record.id == null) record.id = row.record_id;
-        const existing = await DB.get(row.store_key, record.id);
-        if (existing) {
-          for (const key of ['imagem','foto','avatar','logo','image','photo']) {
-            if (!record[key] && typeof existing[key] === 'string' && /^data:image\//i.test(existing[key])) record[key] = existing[key];
-          }
-        }
+        const cloudRecord = { ...row.payload };
+        if (cloudRecord.id == null) cloudRecord.id = row.record_id;
+        const existing = await DB.get(row.store_key, cloudRecord.id);
+        const record = await restoreCloudMedia(cloudRecord, existing);
         await DB.put(row.store_key, record);
         total++;
       }
