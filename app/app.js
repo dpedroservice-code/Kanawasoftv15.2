@@ -80,7 +80,8 @@ function toggleTheme() {
 function toggleUserMenu() { openModule('perfil'); }
 function calcIRT(s) { const f = AGT_CONFIG.irt.faixas.find(x => s >= x.min && s <= x.max); return f ? { irt: Math.max(0, (s * f.taxa) - f.parcela), faixa: f } : { irt: 0, faixa: null }; }
 function gerarHash(d) { const s = JSON.stringify(d) + Date.now() + Math.random(); let h = 0; for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h = h & h; } return Math.abs(h).toString(16).toUpperCase().padStart(16, '0'); }
-function gerarAssinatura(v) { const d = (v.numeroFatura || '') + '|' + (v.total || 0) + '|' + (v.data || '') + '|' + ((v.empresa && v.empresa.nif) || ''); let h = 0; for (let i = 0; i < d.length; i++) { h = ((h << 5) - h) + d.charCodeAt(i); h = h & h; } return Math.abs(h).toString(36).toUpperCase().padStart(12, '0'); }
+// Código local de conferência; não é assinatura digital nem código AGT.
+function gerarCodigoIntegridadeInterno(v) { const d = (v.numeroFatura || '') + '|' + (v.total || 0) + '|' + (v.data || '') + '|' + ((v.empresa && v.empresa.nif) || ''); let h = 0; for (let i = 0; i < d.length; i++) { h = ((h << 5) - h) + d.charCodeAt(i); h = h & h; } return Math.abs(h).toString(36).toUpperCase().padStart(12, '0'); }
 
 /* ====== INDEXEDDB ====== */
 const DB_STORES = [
@@ -730,7 +731,7 @@ function abrirGavetaAutomatico() {
 async function abrirFatura(venda) {
   const emp = venda.empresa || JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logo = (emp.logo && emp.logo.indexOf('data:') === 0) ? emp.logo : (emp.logo || 'logo.png');
-  const qrText = ['KANAWA-AGT-v1', 'NIF:' + (emp.nif || ''), 'FAT:' + venda.numeroFatura, 'DT:' + venda.data, 'TOT:' + Number(venda.total || 0).toFixed(2), 'IVA:' + Number(venda.iva || 0).toFixed(2), 'HASH:' + venda.hash, 'ASS:' + (venda.assinatura || gerarAssinatura(venda))].join('|');
+  const qrText = ['KANAWA-ERP-LOCAL-v1', 'NIF:' + (emp.nif || ''), 'DOC:' + venda.numeroFatura, 'DT:' + venda.data, 'TOT:' + Number(venda.total || 0).toFixed(2), 'IVA:' + Number(venda.iva || 0).toFixed(2), 'CODIGO_INTERNO:' + (venda.codigoInterno || gerarCodigoIntegridadeInterno(venda))].join('|');
   const subtotal = Number(venda.subtotal || 0), desconto = Number(venda.descontoValor || 0), base = subtotal - desconto, iva = Number(venda.iva || 0), total = Number(venda.total || 0);
   const totalExtenso = numeroPorExtenso(total);
   const itensHTML = (venda.itens || []).map((it, i) => '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:6px;font-size:.75rem">' + (i + 1) + '</td><td style="padding:6px;font-size:.75rem">' + esc(it.nome) + '</td><td style="padding:6px;text-align:center;font-size:.75rem">' + it.qty + '</td><td style="padding:6px;text-align:right;font-size:.75rem">' + fmt(it.preco) + '</td><td style="padding:6px;text-align:right;font-size:.75rem">' + fmt(it.subtotal || it.preco * it.qty) + '</td></tr>').join('');
@@ -754,9 +755,9 @@ async function abrirFatura(venda) {
     '<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr style="background:#1a3a5c;color:#fff"><th style="padding:6px;text-align:left;font-size:.75rem">#</th><th style="padding:6px;text-align:left;font-size:.75rem">Descrição</th><th style="padding:6px;text-align:center;font-size:.75rem">Qtd</th><th style="padding:6px;text-align:right;font-size:.75rem">Preço Unit.</th><th style="padding:6px;text-align:right;font-size:.75rem">Total</th></tr></thead><tbody>' + itensHTML + '</tbody></table>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">' +
     '<div style="text-align:center"><div id="qrcodeContainer" style="display:inline-block;padding:6px;background:#fff;border:2px solid #1a3a5c;border-radius:6px;min-width:130px;min-height:130px"></div>' +
-    '<div style="font-size:.6rem;color:#777;margin-top:4px"><strong>Código de Autenticação AGT</strong></div>' +
-    '<div style="font-size:.55rem;color:#999;font-family:monospace;margin-top:2px;word-break:break-all;max-width:200px;line-height:1.3">' + esc(venda.hash) + '</div>' +
-    '<div style="font-size:.55rem;color:#999;margin-top:2px">Verifique em: quiosqueagt.minfin.gov.ao</div></div>' +
+    '<div style="font-size:.6rem;color:#777;margin-top:4px"><strong>QR interno de conferência</strong></div>' +
+    '<div style="font-size:.55rem;color:#999;font-family:monospace;margin-top:2px;word-break:break-all;max-width:200px;line-height:1.3">' + esc(venda.codigoInterno || gerarCodigoIntegridadeInterno(venda)) + '</div>' +
+    '<div style="font-size:.55rem;color:#999;margin-top:2px">Não é um código de autenticação AGT</div></div>' +
     '<div style="font-size:.82rem;line-height:1.8">' +
     '<div style="display:flex;justify-content:space-between"><span>Subtotal:</span><strong>' + fmt(subtotal) + '</strong></div>' +
     (desconto > 0 ? '<div style="display:flex;justify-content:space-between;color:#dc3545"><span>Desconto (' + venda.desconto + '%):</span><strong>-' + fmt(desconto) + '</strong></div>' : '') +
@@ -766,7 +767,7 @@ async function abrirFatura(venda) {
     '<div style="display:flex;justify-content:space-between;border-top:2px solid #1a3a5c;padding-top:6px;margin-top:6px;font-size:1rem;color:#1a3a5c"><strong>TOTAL LÍQUIDO:</strong><strong>' + fmt(total) + '</strong></div>' +
     (venda.valorRecebido > 0 ? '<div style="display:flex;justify-content:space-between;margin-top:4px"><span>Valor Recebido:</span><strong>' + fmt(venda.valorRecebido) + '</strong></div><div style="display:flex;justify-content:space-between;color:#10b981"><span>Troco:</span><strong>' + fmt(venda.troco) + '</strong></div>' : '') + '</div></div>' +
     '<div style="margin-top:12px;padding:8px;background:#f8fafc;border-radius:6px;font-size:.75rem;border-left:3px solid #1a3a5c"><strong>Valor por extenso:</strong> <em>' + esc(totalExtenso) + '</em></div>' +
-    '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:.6rem;color:#666;line-height:1.5"><strong style="color:#1a3a5c">TERMOS E CONDIÇÕES — AGT ANGOLA</strong><br>• Documento emitido nos termos do Decreto Executivo n.º 29/22 de 20 de Março (Facturação Electrónica).<br>• IVA à taxa de ' + (venda.regime === 'simplificado' ? '7%' : '14%') + ' conforme Código do IVA (Lei n.º 7/19 de 24 de Abril).<br>• Processado por computador — Programa certificado Kanawa Soft ERP v' + APP_VERSION + '.<br>• Autenticidade verificável em https://quiosqueagt.minfin.gov.ao<br>• Hash de assinatura: ' + esc(venda.hash) + '<br>• Assinatura digital: ' + esc(venda.assinatura || gerarAssinatura(venda)) + '</div>' +
+    '<div style="margin-top:14px;padding:10px;border:1px solid #d97706;background:#fffbeb;border-radius:6px;font-size:.65rem;color:#78350f;line-height:1.5"><strong>AVISO — ESTADO DE VALIDAÇÃO FISCAL</strong><br>• Kanawa Soft ERP v' + APP_VERSION + ' ainda não possui certificação/validação AGT.<br>• O QR e o código apresentado são apenas identificadores internos; não constituem assinatura digital JWS/RS256 nem autenticação AGT.<br>• Esta impressão não deve ser apresentada como factura electrónica emitida por software certificado pela AGT.</div>' +
     '<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:.7rem;color:#777"><strong>Obrigado pela preferência!</strong><br><span style="font-size:.65rem">' + esc(emp.firma || emp.nome || 'KANAWA SOFT') + ' — ' + new Date().getFullYear() + '</span></div></div>';
   window._vendaAtual = venda;
   openModal('🖨️ Fatura / Recibo — ' + venda.numeroFatura,
@@ -987,7 +988,7 @@ async function pdvFinalizarVenda(modo) {
   const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const numeroFatura = 'FT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6);
   const venda = { numeroFatura, clienteNome: pdvState.cliente.nome, clienteNif: pdvState.cliente.nif, clienteTelefone: pdvState.cliente.telefone, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, preco: i.preco, qty: i.qty, subtotal: i.subtotal })), subtotal: c.subtotal, desconto: pdvState.desconto, descontoValor: c.descontoValor, iva: c.iva, total: c.total, valorRecebido: pdvState.valorRecebido, troco: c.troco, pagamento: pdvState.pagamento, regime: pdvState.regime, aplicarIVA: pdvState.aplicarIVA, observacoes: pdvState.observacoes, status: modo, data: now(), hash: gerarHash({ total: c.total, data: Date.now() }), operador: user.nome || 'Admin', empresa: emp };
-  venda.assinatura = gerarAssinatura(venda);
+  venda.codigoInterno = gerarCodigoIntegridadeInterno(venda);
   await saveData('vendas', venda);
   for (const item of pdvState.carrinho) { const p = await DB.get('produtos', item.id); if (p) { p.estoque = Math.max(0, (p.estoque || 0) - item.qty); await saveData('produtos', p); } }
   await saveData('movimentacoesEstoque', { tipo: 'saida', descricao: 'Venda ' + numeroFatura, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, qtd: i.qty })), data: now() });
