@@ -41,3 +41,10 @@ test('public API registration and fallback JWT secret are disabled', async () =>
   assert.match(routes, /Registo público desactivado/);
   assert.doesNotMatch(routes, /kanawa-erp-secret/);
 });
+
+test('cloud record writes and deletes enforce company membership roles', async () => {
+  const migration = await read('supabase/migrations/20261101190000_company_role_policies.sql');
+  assert.match(migration, /ks_has_company_role/);
+  assert.match(migration, /array\['owner','admin','manager','operator','cashier','accountant'\]/);
+  assert.match(migration, /for delete to authenticated[\s\S]*array\['owner','admin','manager'\]/);
+});
