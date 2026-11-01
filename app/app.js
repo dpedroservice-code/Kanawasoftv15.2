@@ -205,6 +205,7 @@ async function syncTenantRecords() {
 /* ====== API ====== */
 const API = {
   async req(m, e, d) {
+    if (CLOUD_AUTH) return { offline: true, error: 'Sincronização legada SQLite desactivada no modo cloud.' };
     const o = { method: m, headers: { 'Content-Type': 'application/json' } };
     try {
       if (CLOUD_AUTH) {
@@ -223,7 +224,7 @@ const API = {
     }
   },
   get(e) { return this.req('GET', e); }, post(e, d) { return this.req('POST', e, d); }, put(e, d) { return this.req('PUT', e, d); }, del(e) { return this.req('DELETE', e); },
-  async checkHealth() { try { const r = await fetch(API_BASE_URL + '/health', { signal: AbortSignal.timeout(2000) }); API_ONLINE = r.ok; } catch { API_ONLINE = false; } updateApiStatus(API_ONLINE); return API_ONLINE; }
+  async checkHealth() { if (CLOUD_AUTH) { const { data } = await CLOUD_AUTH.auth.getSession(); API_ONLINE = false; updateApiStatus(!!(data && data.session)); return false; } try { const r = await fetch(API_BASE_URL + '/health', { signal: AbortSignal.timeout(2000) }); API_ONLINE = r.ok; } catch { API_ONLINE = false; } updateApiStatus(API_ONLINE); return API_ONLINE; }
 };
 async function getData(s) { try { return await DB.getAll(s); } catch (e) { console.warn('getData:', s, e); return []; } }
 async function saveData(store, item) { const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item); if (API_ONLINE) { try { if (item.id) await API.put('/' + store + '/' + item.id, item); else await API.post('/' + store, item); } catch (e) { queueSync(store, 'create', item); } } else { queueSync(store, item.id ? 'update' : 'create', item); } return id; }
@@ -241,7 +242,7 @@ async function processSyncQueue() {
         if (item.action === 'delete') await deleteCloudRecord(store, item.payload.id);
         else await syncCloudRecord(store, item.payload);
       } else {
-        if (!API_ONLINE) continue;
+        if (CLOUD_AUTH || !API_ONLINE) continue;
         if (item.action === 'create') await API.post('/' + item.entity, item.payload);
         else if (item.action === 'update') await API.put('/' + item.entity + '/' + item.payload.id, item.payload);
         else if (item.action === 'delete') await API.del('/' + item.entity + '/' + item.payload.id);
@@ -261,7 +262,7 @@ async function syncNow(flag) {
   if (ind) ind.className = 'sync-indicator show syncing';
   if (txt) txt.textContent = 'Sincronizando...';
   const sent = await processSyncQueue();
-  const received = on ? await pullFromServer() : 0;
+  const received = on && !CLOUD_AUTH ? await pullFromServer() : 0;
   if (ind) ind.className = 'sync-indicator show online';
   if (txt) txt.textContent = 'Sincronizado ✓';
   if (flag) toast('Sincronização concluída (' + sent + ' pendentes enviados, ' + received + ' recebidos do servidor legado).', 'success');
