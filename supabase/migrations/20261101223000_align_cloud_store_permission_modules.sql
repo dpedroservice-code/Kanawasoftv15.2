@@ -16,6 +16,7 @@ AS $function$
     WHEN 'devolucoes' THEN 'vendas'
     WHEN 'vendasConsignadas' THEN 'vendas-consignadas'
     WHEN 'promocoes' THEN 'vendas-promocoes'
+    WHEN 'tabelasPrecos' THEN 'tabelas-precos'
     WHEN 'orcamentos' THEN 'orcamentos'
     WHEN 'compras' THEN 'compras'
     WHEN 'recebimentos' THEN 'compras'
