@@ -265,30 +265,55 @@ async function activateCloudSession(ctx, migrateLocal) {
   if (previousCompanyId && previousCompanyId !== companyId) {
     for (const store of DB_STORES) await DB.clear(store);
     localStorage.setItem('kanawa_cloud_company_id', companyId);
-  } else if (previousCompanyId === companyId) {
-    // Known company cache: keep local records available even when the network is down.
-  } else {
-    let remoteCount = null;
-    try { remoteCount = await KanawaCloud.countRecords(); }
+  } else if (previousCompanyId !== companyId) {
+    let remoteRows = null;
+    try { remoteRows = await KanawaCloud.getAllRecords(); }
     catch (networkError) { console.warn('Base central indisponível; mantém-se o cache local:', networkError); }
-    if (remoteCount !== null) {
-      if (remoteCount > 0) {
+
+    if (remoteRows !== null) {
+      let localCompany = null;
+      try {
+        localCompany = JSON.parse(
+          localStorage.getItem('kanawa_legacy_company') ||
+          localStorage.getItem('kanawa_empresa') || 'null'
+        );
+      } catch (e) { localCompany = null; }
+
+      const localNif = String(localCompany && (localCompany.nif || localCompany.tax_id) || '').replace(/\D/g, '');
+      const cloudNif = String(ctx.company.tax_id || '').replace(/\D/g, '');
+      const localName = String(localCompany && (localCompany.nome || localCompany.firma || localCompany.legal_name) || '').trim().toLowerCase();
+      const cloudName = String(ctx.company.legal_name || ctx.company.trade_name || '').trim().toLowerCase();
+      const sameCompany = (!!localNif && !!cloudNif && localNif === cloudNif) ||
+        (!localNif && !cloudNif && !!localName && !!cloudName && localName === cloudName);
+
+      if (remoteRows.length > 0 && !sameCompany) {
         for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
-      } else if (migrateLocal) {
+      } else if (migrateLocal && sameCompany) {
+        const remoteKeys = new Set(remoteRows.map(function (row) { return row.store_key + ':' + row.record_id; }));
         for (const store of DB_STORES) {
           if (localOnly.has(store) || store.startsWith('_')) continue;
           const rows = await DB.getAll(store);
           for (const row of rows) {
-            if (row && row.id !== undefined && row.id !== null) {
-              try { await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true }); }
-              catch (migrationError) { await queueSync(store, 'create', row, { skipSaleFinalize: true }); console.warn('Migração cloud pendente:', store, migrationError); }
+            if (!row || row.id === undefined || row.id === null) continue;
+            const key = store + ':' + String(row.id);
+            if (remoteKeys.has(key)) continue;
+            try {
+              await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true });
+              remoteKeys.add(key);
+            } catch (migrationError) {
+              await queueSync(store, 'create', row, { skipSaleFinalize: true });
+              console.warn('Migração cloud pendente:', store, migrationError);
             }
           }
         }
+      } else if (remoteRows.length > 0) {
+        for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
       }
       localStorage.setItem('kanawa_cloud_company_id', companyId);
+      localStorage.removeItem('kanawa_legacy_company');
     }
   }
+
   const company = {
     id: 1,
     firma: ctx.company.trade_name || ctx.company.legal_name,
@@ -317,7 +342,6 @@ async function activateCloudSession(ctx, migrateLocal) {
   catch (pullError) { console.warn('Sincronização inicial adiada; será retomada quando houver internet:', pullError); }
   try { await KanawaCloud.registerInstallation(APP_VERSION); }
   catch (e) { console.warn('Registo de instalação pendente:', e); }
-  await API.checkHealth();
 
   try {
     const license = await KanawaCloud.getLicense();
@@ -332,6 +356,7 @@ async function activateCloudSession(ctx, migrateLocal) {
       else if (days <= 5) toast('A licença expira em ' + Math.max(0, days) + ' dia(s).', 'warning');
     }
   } catch (e) { console.warn('Não foi possível consultar a licença:', e); }
+  await API.checkHealth();
   return { company: company, user: user };
 }
 
@@ -1805,6 +1830,8 @@ async function finalizarSetup() {
       taxRegime: $('setupRegime').value
     });
 
+    const existingLocalCompany = await DB.get('empresas', 1);
+    localStorage.setItem('kanawa_legacy_company', JSON.stringify(existingLocalCompany || company));
     await DB.put('empresas', company);
     await DB.put('usuarios', localUser);
     if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
