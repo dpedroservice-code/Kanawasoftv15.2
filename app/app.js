@@ -134,41 +134,57 @@ function currentCloudCompanyId() {
 }
 const CLOUD_MEDIA_BUCKET = 'ks-company-media';
 const CLOUD_MEDIA_FIELDS = ['imagem','foto','avatar','image','photo'];
+async function hashCloudBlob(blob) {
+  if (!window.crypto || !window.crypto.subtle) throw new Error('A sincronização segura de imagens requer HTTPS e Web Crypto.');
+  const digest = await window.crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
 async function prepareCloudPayload(store, item, companyId) {
   const payload = JSON.parse(JSON.stringify(item));
+  const refs = item._cloudMediaRefs || {};
   for (const field of CLOUD_MEDIA_FIELDS) {
     const value = payload[field];
-    if (typeof value !== 'string' || !/^data:image\//i.test(value)) continue;
-    const response = await fetch(value);
-    if (!response.ok) throw new Error('Não foi possível preparar a imagem para sincronização.');
-    const blob = await response.blob();
-    if (blob.size > 5 * 1024 * 1024) throw new Error('Cada imagem cloud deve ter no máximo 5 MB.');
-    const extensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
-    const extension = extensions[blob.type];
-    if (!extension) throw new Error('Formato de imagem não suportado para sincronização: ' + blob.type);
-    const path = companyId + '/' + store + '/' + String(item.id) + '/' + field + '.' + extension;
-    const { error } = await CLOUD_AUTH.storage.from(CLOUD_MEDIA_BUCKET).upload(path, blob, {
-      contentType: blob.type, upsert: true, cacheControl: '3600'
-    });
-    if (error) throw error;
-    payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + path;
+    if (typeof value === 'string' && /^data:image\//i.test(value)) {
+      const response = await fetch(value);
+      if (!response.ok) throw new Error('Não foi possível preparar a imagem para sincronização.');
+      const blob = await response.blob();
+      if (blob.size > 5 * 1024 * 1024) throw new Error('Cada imagem cloud deve ter no máximo 5 MB.');
+      const extensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+      const extension = extensions[blob.type];
+      if (!extension) throw new Error('Formato de imagem não suportado para sincronização: ' + blob.type);
+      const digest = await hashCloudBlob(blob);
+      const path = companyId + '/' + store + '/' + String(item.id) + '/' + field + '-' + digest + '.' + extension;
+      const { error } = await CLOUD_AUTH.storage.from(CLOUD_MEDIA_BUCKET).upload(path, blob, {
+        contentType: blob.type, upsert: true, cacheControl: '3600'
+      });
+      if (error) throw error;
+      payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + path;
+    } else if (refs[field] && typeof value === 'string' && /^https?:\/\//i.test(value)) {
+      payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + refs[field];
+    }
   }
+  delete payload._cloudMediaRefs;
   return sanitizeCloudPayload(payload);
 }
 async function restoreCloudMedia(payload, existing) {
   const record = { ...payload };
+  const refs = { ...(existing && existing._cloudMediaRefs || {}) };
   for (const field of CLOUD_MEDIA_FIELDS) {
     const value = record[field];
-    if (existing && typeof existing[field] === 'string' && /^data:image\//i.test(existing[field])) {
-      record[field] = existing[field]; // keep the local offline copy
-      continue;
-    }
     if (typeof value !== 'string' || !value.startsWith('storage://' + CLOUD_MEDIA_BUCKET + '/')) continue;
     const path = value.slice(('storage://' + CLOUD_MEDIA_BUCKET + '/').length);
+    const existingIsLocalImage = existing && typeof existing[field] === 'string' && /^data:image\//i.test(existing[field]);
+    if (existingIsLocalImage && (!refs[field] || refs[field] === path)) {
+      record[field] = existing[field]; // keep the matching local offline copy
+      refs[field] = path;
+      continue;
+    }
     const { data, error } = await CLOUD_AUTH.storage.from(CLOUD_MEDIA_BUCKET).createSignedUrl(path, 3600);
     if (error) throw error;
     record[field] = data.signedUrl;
+    refs[field] = path;
   }
+  if (Object.keys(refs).length) record._cloudMediaRefs = refs;
   return record;
 }
 async function syncCloudRecord(store, item) {
