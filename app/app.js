@@ -1549,8 +1549,15 @@ async function restaurarSessaoCloud() {
   const company = companies[0];
   const profileResult = await CLOUD_AUTH.from('ks_profiles').select('full_name,phone').eq('user_id', authUser.id).maybeSingle();
   const profile = profileResult.data || {};
-  const user = { id: authUser.id, nome: profile.full_name || authUser.email, email: authUser.email, role: 'owner', telefone: profile.phone || '' };
-  const empresa = { id: company.id, firma: company.trade_name || company.legal_name, nome: company.legal_name, nif: company.tax_id || '', regime: company.tax_regime, moeda: company.currency_code, fiscal_status: company.fiscal_status };
+  const cloudUser = { auth_user_id: authUser.id, nome: profile.full_name || authUser.email, email: authUser.email, role: 'admin', perfil: 'admin', telefone: profile.phone || '' };
+  const cloudCompany = { cloud_id: company.id, firma: company.trade_name || company.legal_name, nome: company.legal_name, nif: company.tax_id || '', regime: company.tax_regime, moeda: company.currency_code, fiscal_status: company.fiscal_status };
+  const localCompanies = await DB.getAll('empresas');
+  const empresa = { ...cloudCompany, id: localCompanies.length ? localCompanies[0].id : 1 };
+  if (localCompanies.length) await DB.put('empresas', empresa); else await DB.add('empresas', empresa);
+  const localUsers = await DB.getAll('usuarios');
+  const matchedUser = localUsers.find(item => String(item.email || '').toLowerCase() === String(cloudUser.email || '').toLowerCase());
+  const user = { ...cloudUser, id: matchedUser ? matchedUser.id : 1 };
+  if (matchedUser) await DB.put('usuarios', user); else await DB.add('usuarios', user);
   localStorage.setItem('kanawa_user', JSON.stringify(user));
   localStorage.setItem('kanawa_empresa', JSON.stringify(empresa));
   localStorage.setItem('kanawa_setup_done', 'true');
