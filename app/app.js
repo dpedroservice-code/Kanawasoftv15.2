@@ -1786,7 +1786,7 @@ async function restaurarSessaoCloud() {
   localStorage.setItem('kanawa_user', JSON.stringify(user));
   localStorage.setItem('kanawa_empresa', JSON.stringify(empresa));
   localStorage.setItem('kanawa_setup_done', 'true');
-  await syncTenantRecords();
+  try { await syncTenantRecords(); } catch (syncError) { toast('A empresa abriu com os dados locais; sincronização cloud pendente: ' + syncError.message, 'warning'); }
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = empresa.firma;
   if ($('userName')) $('userName').textContent = user.nome;
   if ($('userRole')) $('userRole').textContent = membership.role === 'owner' ? 'Proprietário' : membership.role;
