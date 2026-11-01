@@ -1,0 +1,2 @@
+-- The entitlements RPC orders the latest subscription by created_at; expose only that additional safe column.
+grant select(company_id,plan_code,status,current_period_end,grace_until,trial_ends_at,billing_interval,currency,license_id,created_at) on public.ks_subscriptions to authenticated;
