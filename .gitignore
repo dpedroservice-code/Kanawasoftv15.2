@@ -32,3 +32,6 @@ _site/
 .jekyll-metadata
 /vendor
 Gemfile.lock
+
+# Netlify local state
+.netlify/
