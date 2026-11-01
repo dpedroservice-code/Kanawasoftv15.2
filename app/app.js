@@ -152,14 +152,14 @@ async function saveData(store, item, options) {
           await DB.del(store, id);
           throw e;
         }
-        await queueSync(store, existed ? 'update' : 'create', record);
+        await queueSync(store, existed ? 'update' : 'create', record, options || {});
         if (store === 'vendas' && item.status === 'finalizada') {
           toast('Venda guardada neste dispositivo; sincronização pendente: ' + (e.message || 'sem ligação'), 'warning');
         }
         console.warn('Kanawa cloud write queued:', store, e);
       }
     } else {
-      await queueSync(store, existed ? 'update' : 'create', record);
+      await queueSync(store, existed ? 'update' : 'create', record, options || {});
     }
   }
   return id;
@@ -177,9 +177,9 @@ async function deleteData(store, id) {
   }
 }
 
-async function queueSync(entity, action, payload) {
+async function queueSync(entity, action, payload, options) {
   if (window.KanawaCloud && KanawaCloud.isLocalOnly(entity)) return;
-  try { await DB.add('_sync_queue', { entity: entity, action: action, payload: payload, data: now(), synced: false }); }
+  try { await DB.add('_sync_queue', { entity: entity, action: action, payload: payload, options: options || {}, data: now(), synced: false }); }
   catch (e) { console.warn('Não foi possível guardar fila de sincronização:', e); }
 }
 
@@ -190,7 +190,7 @@ async function processSyncQueue() {
   for (const item of queue.filter(x => !x.synced)) {
     try {
       if (item.action === 'delete') await KanawaCloud.deleteRecord(item.entity, item.payload.id);
-      else await KanawaCloud.upsertRecord(item.entity, item.payload);
+      else await KanawaCloud.upsertRecord(item.entity, item.payload, item.options || {});
       await DB.del('_sync_queue', item.id);
       sent++;
     } catch (e) {
@@ -275,7 +275,7 @@ async function activateCloudSession(ctx, migrateLocal) {
         for (const row of rows) {
           if (row && row.id !== undefined && row.id !== null) {
             try { await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true }); }
-            catch (migrationError) { await queueSync(store, 'create', row); console.warn('Migração cloud pendente:', store, migrationError); }
+            catch (migrationError) { await queueSync(store, 'create', row, { skipSaleFinalize: true }); console.warn('Migração cloud pendente:', store, migrationError); }
           }
         }
       }
