@@ -198,6 +198,31 @@ async function syncCloudRecord(store, item) {
   if (!companyId || item == null || item.id == null) throw new Error('Sessão ou empresa cloud não identificada.');
   const prepared = await prepareCloudPayload(store, item, companyId);
   const payload = prepared.payload;
+  if (store === 'produtos') {
+    const { error: productError } = await CLOUD_AUTH.rpc('ks_sync_product', {
+      p_company_id: companyId,
+      p_product: {
+        external_id: String(item.id), sku: item.codigo || item.codigoBarras || null,
+        name: item.nome || item.descricao || 'Produto', category: item.categoria || null,
+        unit: item.unidade || 'UN', unit_price: Math.max(0, Number(item.preco) || 0),
+        stock_quantity: Math.max(0, Number(item.estoque) || 0),
+        min_stock: Math.max(0, Number(item.estoqueMinimo || item.estoqueMin) || 0),
+        description: item.descricao || null,
+        image_path: prepared.mediaRefs.imagem || (item._cloudMediaRefs && item._cloudMediaRefs.imagem) || null,
+        is_active: item.ativo !== false
+      }
+    });
+    if (productError) throw productError;
+  } else if (store === 'clientes') {
+    const { error: customerError } = await CLOUD_AUTH.from('ks_customers').upsert({
+      company_id: companyId, external_id: String(item.id),
+      name: item.nome || item.razaoSocial || 'Cliente',
+      tax_id: item.nif || item.contribuinte || null,
+      phone: item.telefone || item.contacto || null,
+      email: item.email || null, address: item.endereco || item.morada || null
+    }, { onConflict: 'company_id,external_id' });
+    if (customerError) throw customerError;
+  }
   const encoded = JSON.stringify(payload);
   if (new Blob([encoded]).size > CLOUD_MAX_RECORD_BYTES) throw new Error('Registo demasiado grande para sincronização cloud.');
   const { error } = await CLOUD_AUTH.from('ks_records').upsert({
@@ -263,6 +288,10 @@ async function syncTenantRecords() {
   const companyId = currentCloudCompanyId();
   let total = 0, offset = 0;
   try {
+    const { data: cloudProducts, error: stockError } = await CLOUD_AUTH.from('ks_products')
+      .select('external_id,stock_quantity').eq('company_id', companyId);
+    if (stockError) throw stockError;
+    const cloudStockById = new Map((cloudProducts || []).map(p => [String(p.external_id), Number(p.stock_quantity)]));
     while (true) {
       const { data, error } = await CLOUD_AUTH.from('ks_records')
         .select('store_key,record_id,payload')
@@ -275,6 +304,9 @@ async function syncTenantRecords() {
         if (!isCloudStoreAllowed(row.store_key) || !row.payload || typeof row.payload !== 'object') continue;
         const cloudRecord = { ...row.payload };
         if (cloudRecord.id == null) cloudRecord.id = row.record_id;
+        if (row.store_key === 'produtos' && cloudStockById.has(String(row.record_id))) {
+          cloudRecord.estoque = cloudStockById.get(String(row.record_id));
+        }
         const existing = await DB.get(row.store_key, cloudRecord.id);
         const record = await restoreCloudMedia(cloudRecord, existing);
         await DB.put(row.store_key, record);
@@ -321,6 +353,14 @@ async function getData(s) { try { return await DB.getAll(s); } catch (e) { conso
 async function saveData(store, item) { const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item); if (API_ONLINE) { try { if (item.id) await API.put('/' + store + '/' + item.id, item); else await API.post('/' + store, item); } catch (e) { queueSync(store, 'create', item); } } else { queueSync(store, item.id ? 'update' : 'create', item); } return id; }
 async function deleteData(s, id) { await DB.del(s, id); if (API_ONLINE) { try { await API.del('/' + s + '/' + id); } catch (e) { queueSync(s, 'delete', { id }); } } else { queueSync(s, 'delete', { id }); } }
 async function queueSync(entity, action, payload) { try { await DB.add('_sync_queue', { entity, action, payload, data: now(), synced: false }); } catch (e) { } }
+async function finalizeCloudSale(payload) {
+  if (!CLOUD_AUTH || !currentCloudCompanyId()) throw new Error('Sessão cloud não disponível.');
+  const { data, error } = await CLOUD_AUTH.rpc('ks_finalize_sale', {
+    p_company_id: currentCloudCompanyId(), p_sale: payload.sale, p_items: payload.items
+  });
+  if (error) throw error;
+  return data;
+}
 async function processSyncQueue() {
   const q = await DB.getAll('_sync_queue');
   const pending = q.filter(x => !x.synced);
@@ -328,7 +368,9 @@ async function processSyncQueue() {
   let ok = 0;
   for (const item of pending) {
     try {
-      if (String(item.entity).startsWith('cloud:')) {
+      if (item.entity === 'cloud:typed-sale' && item.action === 'finalize') {
+        await finalizeCloudSale(item.payload);
+      } else if (String(item.entity).startsWith('cloud:')) {
         const store = item.entity.slice(6);
         if (item.action === 'delete') await deleteCloudRecord(store, item.payload.id);
         else await syncCloudRecord(store, item.payload);
@@ -1025,6 +1067,44 @@ async function pdvFinalizarVenda(modo) {
   const numeroFatura = 'FT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6);
   const venda = { numeroFatura, clienteNome: pdvState.cliente.nome, clienteNif: pdvState.cliente.nif, clienteTelefone: pdvState.cliente.telefone, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, preco: i.preco, qty: i.qty, subtotal: i.subtotal })), subtotal: c.subtotal, desconto: pdvState.desconto, descontoValor: c.descontoValor, iva: c.iva, total: c.total, valorRecebido: pdvState.valorRecebido, troco: c.troco, pagamento: pdvState.pagamento, regime: pdvState.regime, aplicarIVA: pdvState.aplicarIVA, observacoes: pdvState.observacoes, status: modo, data: now(), hash: gerarHash({ total: c.total, data: Date.now() }), operador: user.nome || 'Admin', empresa: emp };
   venda.codigoInterno = gerarCodigoIntegridadeInterno(venda);
+  if (CLOUD_AUTH && modo === 'finalizada') {
+    const typedItems = [];
+    for (const item of pdvState.carrinho) {
+      const product = await DB.get('produtos', item.id);
+      if (!product) { toast('Produto não encontrado na base local. Venda não finalizada.', 'error'); return; }
+      await queueCloudUpsert('produtos', product);
+      typedItems.push({
+        product_external_id: String(item.id), product_name: item.nome,
+        unit_price: Number(item.preco) || 0, quantity: Number(item.qty) || 0,
+        line_total: Number(item.subtotal) || 0,
+        stock_tracked: product.controlaEstoque !== false && String(product.tipo || '').toLowerCase() !== 'servico'
+      });
+    }
+    const typedSale = {
+      external_id: numeroFatura, invoice_number: numeroFatura,
+      customer_name: pdvState.cliente.nome, customer_tax_id: pdvState.cliente.nif,
+      customer_phone: pdvState.cliente.telefone, subtotal: c.subtotal,
+      discount_value: c.descontoValor, tax_amount: c.iva, total: c.total,
+      amount_received: pdvState.valorRecebido, change_amount: c.troco,
+      payment_method: pdvState.pagamento, tax_regime: pdvState.regime,
+      status: modo, notes: pdvState.observacoes, operator_name: user.nome || 'Admin', sold_at: venda.data
+    };
+    try {
+      await finalizeCloudSale({ sale: typedSale, items: typedItems });
+    } catch (error) {
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+        /failed to fetch|network|fetch failed|timeout/i.test(error.message || '');
+      if (!offline) {
+        toast('Venda não finalizada na nuvem: ' + (error.message || 'erro de validação'), 'error');
+        return;
+      }
+      await DB.add('_sync_queue', {
+        entity: 'cloud:typed-sale', action: 'finalize',
+        payload: { sale: typedSale, items: typedItems }, data: now(), synced: false
+      });
+      toast('Sem ligação: venda guardada localmente e aguarda confirmação cloud.', 'warning');
+    }
+  }
   await saveData('vendas', venda);
   for (const item of pdvState.carrinho) { const p = await DB.get('produtos', item.id); if (p) { p.estoque = Math.max(0, (p.estoque || 0) - item.qty); await saveData('produtos', p); } }
   await saveData('movimentacoesEstoque', { tipo: 'saida', descricao: 'Venda ' + numeroFatura, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, qtd: i.qty })), data: now() });

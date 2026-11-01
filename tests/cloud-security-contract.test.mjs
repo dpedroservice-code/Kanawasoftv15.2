@@ -158,3 +158,31 @@ test('invited users become active only after confirming their email', async () =
   assert.match(migration, /profile_read_company_admin/);
   assert.match(migration, /membership_read_company_admin/);
 });
+
+test('products and customers synchronize into normalized tenant tables', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /rpc\('ks_sync_product'/);
+  assert.match(app, /from\('ks_customers'\)\.upsert/);
+  assert.match(app, /cloudStockById\.get\(String\(row\.record_id\)\)/);
+});
+
+test('PDV finalization uses an idempotent cloud transaction and queues offline sales', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /rpc\('ks_finalize_sale'/);
+  assert.match(app, /entity: 'cloud:typed-sale', action: 'finalize'/);
+  assert.match(app, /item\.entity === 'cloud:typed-sale'/);
+  assert.match(app, /await finalizeCloudSale\\(\\{ sale: typedSale, items: typedItems \\}\\)/);
+});
+
+test('normalized sales schema enforces tenant isolation and transactional stock updates', async () => {
+  const migration = await read('supabase/migrations/20261101155732_kanawa_normalized_sales_inventory.sql');
+  assert.match(migration, /create table if not exists public\\.ks_products/);
+  assert.match(migration, /create table if not exists public\\.ks_sales/);
+  assert.match(migration, /create table if not exists public\\.ks_sale_items/);
+  assert.match(migration, /create table if not exists public\\.ks_stock_movements/);
+  assert.match(migration, /create table if not exists public\\.ks_payments/);
+  assert.match(migration, /security definer/);
+  assert.match(migration, /on conflict \\(company_id, external_id\\) do nothing/);
+  assert.match(migration, /stock_quantity = stock_quantity - v_qty/);
+  assert.match(migration, /private\\.ks_has_company_role/);
+});
