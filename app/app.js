@@ -314,6 +314,10 @@ async function activateCloudSession(ctx, migrateLocal) {
 
   try {
     const license = await KanawaCloud.getLicense();
+    if (license) localStorage.setItem('kanawa_license', JSON.stringify(license));
+    const entitlements = await KanawaCloud.getEntitlements();
+    if (entitlements) localStorage.setItem('kanawa_entitlements', JSON.stringify(entitlements));
+    if (entitlements && entitlements.read_only) toast('A licença ou os limites do plano estão em modo de consulta. Verifique a subscrição.', 'warning');
     if (license && license.expires_at) {
       const expiry = new Date(license.expires_at);
       const days = Math.ceil((expiry.getTime() - Date.now()) / 86400000);
