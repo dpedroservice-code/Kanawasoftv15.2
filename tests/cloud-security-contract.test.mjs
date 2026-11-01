@@ -128,3 +128,13 @@ test('cloud password change reauthenticates the current password', async () => {
   assert.match(app, /auth\.signInWithPassword\(\{ email: user\.email, password: atual \}\)/);
   assert.match(app, /auth\.updateUser\(\{ password: nova \}\)/);
 });
+
+test('active user can switch only between their own active company memberships', async () => {
+  const app = await read('app/app.js');
+  const html = await read('app/index.html');
+  assert.match(app, /async function restaurarSessaoCloud\(selectedCompanyId = null\)/);
+  assert.match(app, /\.in\('id', memberships\.map\(m => m\.company_id\)\)/);
+  assert.match(app, /async function switchCompany\(companyId\)/);
+  assert.match(app, /memberships\.find\(m => m\.company_id === currentId\) \|\| memberships\[0\]/);
+  assert.match(html, /id="companySwitcher"/);
+});

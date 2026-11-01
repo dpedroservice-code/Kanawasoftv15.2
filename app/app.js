@@ -3,6 +3,7 @@
 
 const APP_VERSION = '15.2';
 const CLOUD_AUTH = window.supabase && window.supabase.createClient('https://jiehrswweoyesbabrpjf.supabase.co', 'sb_publishable_l9HL3zMMJ5rN7vnXUZPa1g_9ZA1q7PO', { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+let CLOUD_COMPANIES = [];
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
 let API_TOKEN = localStorage.getItem('kanawa_api_token') || null;
@@ -1851,7 +1852,32 @@ function abrirSetup() {
   if ($('authScreen')) $('authScreen').classList.remove('active');
   if ($('setupWizard')) $('setupWizard').classList.add('active');
 }
-async function restaurarSessaoCloud() {
+function renderCompanySwitcher(selectedCompanyId) {
+  const select = $('companySwitcher');
+  if (!select) return;
+  select.innerHTML = CLOUD_COMPANIES.map(company =>
+    '<option value="' + esc(company.id) + '">' + esc(company.trade_name || company.legal_name || 'Empresa') + '</option>'
+  ).join('');
+  select.value = selectedCompanyId || '';
+  select.style.display = CLOUD_COMPANIES.length > 1 ? 'block' : 'none';
+  select.disabled = CLOUD_COMPANIES.length < 2;
+}
+async function switchCompany(companyId) {
+  if (!companyId || companyId === currentCloudCompanyId()) return;
+  const select = $('companySwitcher');
+  if (select) select.disabled = true;
+  try {
+    const ok = await restaurarSessaoCloud(companyId);
+    if (!ok) throw new Error('Não foi possível abrir a empresa seleccionada.');
+    toast('Empresa alterada. Os dados locais foram isolados por empresa.', 'success');
+  } catch (error) {
+    if (select) select.value = currentCloudCompanyId() || '';
+    toast(error.message || 'Falha ao mudar de empresa.', 'error');
+  } finally {
+    if (select) select.disabled = CLOUD_COMPANIES.length < 2;
+  }
+}
+async function restaurarSessaoCloud(selectedCompanyId = null) {
   if (!CLOUD_AUTH) return false;
   const { data: sessionData, error: sessionError } = await CLOUD_AUTH.auth.getSession();
   if (sessionError || !sessionData.session) return false;
@@ -1860,16 +1886,20 @@ async function restaurarSessaoCloud() {
     .from('ks_company_memberships')
     .select('company_id,role,status')
     .eq('user_id', authUser.id)
-    .eq('status', 'active')
-    .limit(1);
+    .eq('status', 'active');
   if (membershipError || !memberships || !memberships.length) return false;
-  const membership = memberships[0];
-  const { data: company, error: companyError } = await CLOUD_AUTH
+
+  const currentId = selectedCompanyId || currentCloudCompanyId();
+  const membership = memberships.find(m => m.company_id === currentId) || memberships[0];
+  const { data: companies, error: companiesError } = await CLOUD_AUTH
     .from('ks_companies')
     .select('id,legal_name,trade_name,tax_id,country_code,currency_code,tax_regime,fiscal_status,phone,email,address,logo_path')
-    .eq('id', membership.company_id)
-    .maybeSingle();
-  if (companyError || !company) return false;
+    .in('id', memberships.map(m => m.company_id));
+  if (companiesError || !companies || !companies.length) return false;
+  CLOUD_COMPANIES = companies;
+  const company = companies.find(c => c.id === membership.company_id);
+  if (!company) return false;
+  renderCompanySwitcher(company.id);
 
   // Each company receives a separate local IndexedDB database.
   // This prevents a second tenant in the same browser profile from reading
@@ -1990,6 +2020,8 @@ async function logout() {
   localStorage.removeItem('kanawa_user');
   localStorage.removeItem('kanawa_empresa');
   localStorage.removeItem('kanawa_setup_done');
+  CLOUD_COMPANIES = [];
+  renderCompanySwitcher('');
   if ($('app')) $('app').classList.remove('active');
   if ($('authScreen')) $('authScreen').classList.add('active');
 }
@@ -2929,7 +2961,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','recuperarSenha','abrirModalNovaSenhaRecuperacao','guardarNovaSenhaRecuperacao','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','switchCompany','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','recuperarSenha','abrirModalNovaSenhaRecuperacao','guardarNovaSenhaRecuperacao','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',
