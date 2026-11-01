@@ -113,30 +113,54 @@ const API = {
   }
 };
 
+const DATA_CACHE_TTL_MS = 12000;
+const dataCacheExpiry = new Map();
+const dataLoadsInFlight = new Map();
+
+function invalidateDataCache(store) {
+  if (store) dataCacheExpiry.delete(store);
+  else dataCacheExpiry.clear();
+}
+
 async function getData(store) {
-  try {
-    if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
-      const pending = await DB.getAll('_sync_queue');
-      if (!pending.some(x => !x.synced && x.entity === store)) {
-        try {
-          const remote = await KanawaCloud.getStore(store);
-          if (Array.isArray(remote)) {
-            await DB.clear(store);
-            for (const item of remote) await DB.put(store, item);
+  const nowMs = Date.now();
+  if (dataCacheExpiry.has(store) && dataCacheExpiry.get(store) > nowMs) {
+    return await DB.getAll(store);
+  }
+  if (dataLoadsInFlight.has(store)) return await dataLoadsInFlight.get(store);
+
+  const load = (async function () {
+    try {
+      if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
+        const pending = await DB.getAll('_sync_queue');
+        if (!pending.some(x => !x.synced && x.entity === store)) {
+          try {
+            const remote = await KanawaCloud.getStore(store);
+            if (Array.isArray(remote)) {
+              await DB.clear(store);
+              for (const item of remote) await DB.put(store, item);
+            }
+          } catch (cloudError) {
+            console.warn('Kanawa cloud read:', store, cloudError);
           }
-        } catch (cloudError) {
-          console.warn('Kanawa cloud read:', store, cloudError);
         }
       }
+      const rows = await DB.getAll(store);
+      dataCacheExpiry.set(store, Date.now() + DATA_CACHE_TTL_MS);
+      return rows;
+    } catch (e) {
+      console.warn('getData:', store, e);
+      return [];
+    } finally {
+      dataLoadsInFlight.delete(store);
     }
-    return await DB.getAll(store);
-  } catch (e) {
-    console.warn('getData:', store, e);
-    return [];
-  }
+  })();
+  dataLoadsInFlight.set(store, load);
+  return await load;
 }
 
 async function saveData(store, item, options) {
+  invalidateDataCache(store);
   const existed = !!item.id;
   if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store) && !podeAlterarArmazenamento(store, existed ? 'editar' : 'criar')) {
     toast('Não tem permissão para esta operação.', 'error');
@@ -166,10 +190,12 @@ async function saveData(store, item, options) {
       await queueSync(store, existed ? 'update' : 'create', record, options || {});
     }
   }
+  invalidateDataCache(store);
   return id;
 }
 
 async function deleteData(store, id) {
+  invalidateDataCache(store);
   if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store) && !podeAlterarArmazenamento(store, 'excluir')) {
     toast('Não tem permissão para eliminar este registo.', 'error');
     throw new Error('Permissão insuficiente para eliminar: ' + store);
@@ -183,6 +209,7 @@ async function deleteData(store, id) {
       await queueSync(store, 'delete', { id: id });
     }
   }
+  invalidateDataCache(store);
 }
 
 async function queueSync(entity, action, payload, options) {
@@ -211,6 +238,7 @@ async function processSyncQueue() {
 
 async function pullFromServer() {
   if (!window.KanawaCloud || !KanawaCloud.ready) return 0;
+  invalidateDataCache();
   const records = await KanawaCloud.getAllRecords();
   const queue = await DB.getAll('_sync_queue');
   const dirty = new Set(queue.filter(x => !x.synced).map(x => x.entity));
@@ -230,6 +258,7 @@ async function pullFromServer() {
       total++;
     }
   }
+  invalidateDataCache();
   return total;
 }
 
@@ -2998,28 +3027,71 @@ async function init() {
 
     const loginForm = $('loginForm');
     if (loginForm) {
+      let otpRequested = false;
+      const emailInput = $('loginEmail');
+      const codeGroup = $('loginCodeGroup');
+      const codeInput = $('loginOtpCode');
+      const submit = $('loginSubmit');
+      const resend = $('loginResend');
+      const errorBox = $('loginError');
+
+      async function sendLoginCode() {
+        const email = emailInput.value.trim();
+        if (!email) throw new Error('Introduza o e-mail da sua conta.');
+        await KanawaCloud.requestLoginCode(email);
+        otpRequested = true;
+        emailInput.readOnly = true;
+        codeGroup.style.display = 'block';
+        codeInput.required = true;
+        submit.innerHTML = '<i class="fas fa-shield-alt"></i> Confirmar código e entrar';
+        resend.style.display = 'block';
+        codeInput.focus();
+        if (errorBox) {
+          errorBox.textContent = 'Se este e-mail estiver associado a uma conta ativa, receberá um código de acesso. Verifique também a pasta de spam.';
+          errorBox.classList.add('show');
+          errorBox.classList.remove('alert-danger');
+          errorBox.classList.add('alert-info');
+        }
+      }
+
       loginForm.addEventListener('submit', async function (event) {
         event.preventDefault();
-        const email = $('loginEmail').value.trim();
-        const password = $('loginPassword').value;
-        const errorBox = $('loginError');
-        if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show'); }
-        const submit = loginForm.querySelector('button[type="submit"]');
+        if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show', 'alert-info'); errorBox.classList.add('alert-danger'); }
         if (submit) submit.disabled = true;
+        if (resend) resend.disabled = true;
         try {
-          const ctx = await KanawaCloud.signIn(email, password);
-          await activateCloudSession(ctx, true);
-          localStorage.removeItem('kanawa_pending_email');
-          mostrarAplicacaoAutenticada(ctx);
-          toast('Sessão iniciada. Os dados estão ligados à base de dados central.', 'success');
+          if (!otpRequested) {
+            await sendLoginCode();
+          } else {
+            const ctx = await KanawaCloud.verifyLoginCode(emailInput.value.trim(), codeInput.value);
+            await activateCloudSession(ctx, true);
+            localStorage.removeItem('kanawa_pending_email');
+            mostrarAplicacaoAutenticada(ctx);
+            toast('E-mail confirmado. Sessão iniciada com segurança.', 'success');
+          }
         } catch (error) {
           if (errorBox) {
-            errorBox.textContent = error.message || 'Email ou senha incorretos.';
+            errorBox.textContent = error.message || 'Não foi possível confirmar o acesso. Verifique o código e tente novamente.';
             errorBox.classList.add('show');
           }
         } finally {
           if (submit) submit.disabled = false;
+          if (resend) resend.disabled = false;
         }
+      });
+
+      if (resend) resend.addEventListener('click', async function () {
+        if (resend.disabled) return;
+        resend.disabled = true;
+        if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show'); }
+        try {
+          await KanawaCloud.requestLoginCode(emailInput.value.trim());
+          codeInput.value = '';
+          codeInput.focus();
+          toast('Se a conta estiver registada, será enviado um novo código.', 'success');
+        } catch (error) {
+          if (errorBox) { errorBox.textContent = error.message || 'Não foi possível reenviar o código.'; errorBox.classList.add('show'); }
+        } finally { resend.disabled = false; }
       });
     }
 
