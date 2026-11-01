@@ -219,11 +219,13 @@
           p_product: product
         });
         if (syncProduct.error) throw syncProduct.error;
-        const stockUpdate = await client.from('ks_products')
-          .update({ stock_quantity: stock, updated_at: new Date().toISOString() })
-          .eq('company_id', context.company.id)
-          .eq('external_id', id);
-        if (stockUpdate.error) throw stockUpdate.error;
+        if (!(options && options.skipStockSync)) {
+          const stockUpdate = await client.from('ks_products')
+            .update({ stock_quantity: stock, updated_at: new Date().toISOString() })
+            .eq('company_id', context.company.id)
+            .eq('external_id', id);
+          if (stockUpdate.error) throw stockUpdate.error;
+        }
       }
 
       // Finalized POS sales go through the database transaction which checks licence limits,
