@@ -72,3 +72,11 @@ test('cloud media keeps content-addressed references for offline copies', async 
   assert.match(app, /_cloudMediaRefs/);
   assert.match(app, /DB\.cloudSyncEnabled = false/);
 });
+
+test('company logo uses private storage and a database path reference', async () => {
+  const app = await read('app/app.js');
+  const migration = await read('supabase/migrations/20261101210000_company_logo_storage_path.sql');
+  assert.match(app, /company\.logo_path/);
+  assert.match(app, /logo_path: logoPath/);
+  assert.match(migration, /add column if not exists logo_path text/i);
+});
