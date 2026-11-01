@@ -201,3 +201,13 @@ test('License expiry gates local writes and the platform admin UI is role-gated'
  const app=await read('app/app.js'); assert.match(app,/ksAssertWritableStore/);
  assert.match(app,/KS_ENTITLEMENTS\\.read_only/); assert.match(app,/if \\(m === 'saas'\\) return KS_PLATFORM_ADMIN/);
 });
+
+test('SaaS quotas are enforced server-side for seats, products, installations and invoices', async () => {
+ const migration=await read('supabase/migrations/20261101162010_kanawa_saas_quota_enforcement.sql');
+ assert.match(migration,/ks_enforce_seat_quota/);
+ assert.match(migration,/ks_enforce_product_quota/);
+ assert.match(migration,/ks_enforce_installation_quota/);
+ assert.match(migration,/ks_enforce_invoice_quota/);
+ const app=await read('app/app.js');
+ assert.match(app,/max_installations/);
+});
