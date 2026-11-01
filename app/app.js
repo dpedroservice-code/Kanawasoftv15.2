@@ -1649,16 +1649,28 @@ async function renderConfig() {
     '<button class="btn btn-info" onclick="exportarBackupCompleto()"><i class="fas fa-download"></i> Backup</button>' +
     '<button class="btn btn-danger" onclick="resetTotal()"><i class="fas fa-bomb"></i> Reset Total</button></div></div>';
 }
-function salvarConfigEmpresa() {
+async function salvarConfigEmpresa() {
   const empAtual = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logoAtual = empAtual.logo || 'logo.png';
   const logoNovo = localStorage.getItem('kanawa_logo_temp') || logoAtual;
-  const e = { firma: $('cfgFirma').value, nome: $('cfgNome').value, nif: $('cfgNif').value, alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value, email: $('cfgEmail').value, endereco: $('cfgEnd').value, website: $('cfgSite').value, banco: $('cfgBanco').value, iban: $('cfgIban').value, logo: logoNovo };
+  const e = { ...empAtual, firma: $('cfgFirma').value, nome: $('cfgNome').value, nif: $('cfgNif').value, alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value, email: $('cfgEmail').value, endereco: $('cfgEnd').value, website: $('cfgSite').value, banco: $('cfgBanco').value, iban: $('cfgIban').value, logo: logoNovo };
+  if (CLOUD_AUTH && e.cloud_id) {
+    const { error } = await CLOUD_AUTH.from('ks_companies').update({
+      legal_name: e.nome || e.firma,
+      trade_name: e.firma || e.nome,
+      tax_id: e.nif || null,
+      tax_regime: e.regime || 'not_configured',
+      phone: e.telefone || null,
+      email: e.email || null,
+      address: e.endereco || null
+    }).eq('id', e.cloud_id);
+    if (error) { toast('Dados locais mantidos, mas a actualização cloud falhou: ' + error.message, 'error'); return; }
+  }
   localStorage.setItem('kanawa_empresa', JSON.stringify(e));
   localStorage.removeItem('kanawa_logo_temp');
   aplicarLogo();
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = e.firma || e.nome || 'Kanawa Soft';
-  toast('✅ Empresa atualizada', 'success');
+  toast('Empresa actualizada' + (e.cloud_id ? ' na nuvem' : ' localmente'), 'success');
 }
 function escolherLogoEmpresa(input) {
   const file = input.files[0]; if (!file) return;
