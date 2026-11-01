@@ -136,23 +136,44 @@ async function getData(store) {
   }
 }
 
-async function saveData(store, item) {
-  const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item);
+async function saveData(store, item, options) {
+  const existed = !!item.id;
+  const id = existed ? (await DB.put(store, item), item.id) : await DB.add(store, item);
   const record = Object.assign({}, item, { id: id });
-  if (window.KanawaCloud && KanawaCloud.ready && store === 'empresas') {
-    try { await KanawaCloud.updateCompany(record); } catch (e) { console.warn('Atualização da empresa pendente:', e); }
-  } else if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
-    try { await KanawaCloud.upsertRecord(store, record); }
-    catch (e) { await queueSync(store, item.id ? 'update' : 'create', record); console.warn('Kanawa cloud write queued:', store, e); }
+  if (window.KanawaCloud && store === 'empresas' && KanawaCloud.ready) {
+    try { await KanawaCloud.updateCompany(record); }
+    catch (e) { console.warn('Atualização da empresa pendente:', e); }
+  } else if (window.KanawaCloud && !KanawaCloud.isLocalOnly(store)) {
+    if (KanawaCloud.ready) {
+      try { await KanawaCloud.upsertRecord(store, record, options || {}); }
+      catch (e) {
+        // A database validation/quota error must not be reported as a completed invoice.
+        if (store === 'vendas' && item.status === 'finalizada' && e && e.code) {
+          await DB.del(store, id);
+          throw e;
+        }
+        await queueSync(store, existed ? 'update' : 'create', record);
+        if (store === 'vendas' && item.status === 'finalizada') {
+          toast('Venda guardada neste dispositivo; sincronização pendente: ' + (e.message || 'sem ligação'), 'warning');
+        }
+        console.warn('Kanawa cloud write queued:', store, e);
+      }
+    } else {
+      await queueSync(store, existed ? 'update' : 'create', record);
+    }
   }
   return id;
 }
 
 async function deleteData(store, id) {
   await DB.del(store, id);
-  if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
-    try { await KanawaCloud.deleteRecord(store, id); }
-    catch (e) { await queueSync(store, 'delete', { id: id }); }
+  if (window.KanawaCloud && !KanawaCloud.isLocalOnly(store)) {
+    if (KanawaCloud.ready) {
+      try { await KanawaCloud.deleteRecord(store, id); }
+      catch (e) { await queueSync(store, 'delete', { id: id }); }
+    } else {
+      await queueSync(store, 'delete', { id: id });
+    }
   }
 }
 
@@ -253,7 +274,8 @@ async function activateCloudSession(ctx, migrateLocal) {
         const rows = await DB.getAll(store);
         for (const row of rows) {
           if (row && row.id !== undefined && row.id !== null) {
-            await KanawaCloud.upsertRecord(store, row);
+            try { await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true }); }
+            catch (migrationError) { await queueSync(store, 'create', row); console.warn('Migração cloud pendente:', store, migrationError); }
           }
         }
       }
@@ -956,8 +978,9 @@ async function pdvFinalizarVenda(modo) {
   const numeroFatura = 'FT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6);
   const venda = { numeroFatura, clienteNome: pdvState.cliente.nome, clienteNif: pdvState.cliente.nif, clienteTelefone: pdvState.cliente.telefone, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, preco: i.preco, qty: i.qty, subtotal: i.subtotal })), subtotal: c.subtotal, desconto: pdvState.desconto, descontoValor: c.descontoValor, iva: c.iva, total: c.total, valorRecebido: pdvState.valorRecebido, troco: c.troco, pagamento: pdvState.pagamento, regime: pdvState.regime, aplicarIVA: pdvState.aplicarIVA, observacoes: pdvState.observacoes, status: modo, data: now(), hash: gerarHash({ total: c.total, data: Date.now() }), operador: user.nome || 'Admin', empresa: emp };
   venda.assinatura = gerarAssinatura(venda);
-  await saveData('vendas', venda);
-  for (const item of pdvState.carrinho) { const p = await DB.get('produtos', item.id); if (p) { p.estoque = Math.max(0, (p.estoque || 0) - item.qty); await saveData('produtos', p); } }
+  try { await saveData('vendas', venda); }
+  catch (saleError) { toast('Venda não finalizada no servidor: ' + (saleError.message || 'verifique licença e stock'), 'error'); return; }
+  for (const item of pdvState.carrinho) { const p = await DB.get('produtos', item.id); if (p) { p.estoque = Math.max(0, (p.estoque || 0) - item.qty); await saveData('produtos', p, { skipStockSync: true }); } }
   await saveData('movimentacoesEstoque', { tipo: 'saida', descricao: 'Venda ' + numeroFatura, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, qtd: i.qty })), data: now() });
   if (pdvState.pagamento === 'credito') await saveData('contasReceber', { cliente: pdvState.cliente.nome, valor: c.total, descricao: 'Venda ' + numeroFatura, vencimento: new Date(Date.now() + 30 * 86400000).toISOString(), status: 'pendente', data: now() });
   await criarNotificacao('Nova Venda', numeroFatura + ' - ' + fmt(c.total), 'success', 'vendas');
