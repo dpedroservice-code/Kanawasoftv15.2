@@ -2,8 +2,26 @@
 (function () {
   'use strict';
 
-  const ROUTING_API = 'https://router.project-osrm.org';
-  const GEOCODING_API = 'https://photon.komoot.io/api';
+  let routingApi = 'https://router.project-osrm.org';
+  let geocodingApi = 'https://photon.komoot.io/api';
+  let mapConfigLoaded = false;
+  let mapConfigIsDemo = true;
+  async function ensureMapConfig() {
+    if (mapConfigLoaded) return;
+    mapConfigLoaded = true;
+    try {
+      if (window.KanawaCloud && typeof window.KanawaCloud.getMapProviderConfig === 'function') {
+        const config = await window.KanawaCloud.getMapProviderConfig();
+        if (config) {
+          if (config.routing_endpoint) routingApi = text(config.routing_endpoint).replace(/\/$/, '');
+          if (config.geocoding_endpoint) geocodingApi = text(config.geocoding_endpoint).replace(/\/$/, '');
+          mapConfigIsDemo = config.is_demo_endpoint !== false;
+        }
+      }
+    } catch (error) {
+      console.warn('Não foi possível carregar configuração de mapas; serão usados endpoints públicos de demonstração.', error);
+    }
+  }
   const DEFAULT_CENTER = [-8.8383, 13.2344];
   let maps = {};
   let mapLayers = {};
@@ -87,7 +105,8 @@
       if (lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error('As coordenadas estão fora dos limites válidos.');
       return { lat: lat, lon: lon, label: query };
     }
-    const response = await fetch(GEOCODING_API + '?q=' + encodeURIComponent(query) + '&limit=1&lang=pt');
+    await ensureMapConfig();
+    const response = await fetch(geocodingApi + '?q=' + encodeURIComponent(query) + '&limit=1&lang=pt');
     if (!response.ok) throw new Error('Serviço de pesquisa de moradas indisponível (' + response.status + ').');
     const data = await response.json();
     const feature = data && data.features && data.features[0];
@@ -98,7 +117,8 @@
   async function routeBetween(originText, destinationText) {
     const origin = await geocode(originText);
     const destination = await geocode(destinationText);
-    const url = ROUTING_API + '/route/v1/driving/' + origin.lon + ',' + origin.lat + ';' + destination.lon + ',' + destination.lat + '?overview=full&geometries=geojson&steps=true';
+    await ensureMapConfig();
+    const url = routingApi + '/route/v1/driving/' + origin.lon + ',' + origin.lat + ';' + destination.lon + ',' + destination.lat + '?overview=full&geometries=geojson&steps=true';
     const response = await fetch(url);
     if (!response.ok) throw new Error('Serviço de cálculo de percurso indisponível (' + response.status + ').');
     const data = await response.json();
@@ -121,6 +141,7 @@
   }
   async function initRouteMap() {
     try {
+      await ensureMapConfig();
       const rows = await getData('roteirizacao') || [];
       await ensureLeaflet();
       const map = createMap('kanawaRouteMap');
@@ -142,6 +163,7 @@
     }
   }
   async function renderRoutes(title) {
+    await ensureMapConfig();
     const routes = await getData('roteirizacao') || [];
     window.__kanawaRoutePreview = null;
     return header(title || 'Roteirização e Rotas', routes.length + ' rotas guardadas', 'var(--primary)',
@@ -152,7 +174,8 @@
       '<div class="form-group"><label>Destino (morada, local ou latitude, longitude)</label><input id="rotaDestino" placeholder="Ex.: Talatona, Luanda"></div>' +
       '<div class="form-group"><label>Veículo / motorista (opcional)</label><input id="rotaVeiculo" placeholder="Matrícula ou identificação"></div></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="rotaCalcularBtn" class="btn btn-primary" onclick="calcularRotaLogistica()">Calcular distância e rota</button><button class="btn btn-success" onclick="salvarRota()">Guardar rota calculada</button></div>' +
-      '<p id="rotaMapStatus" class="text-muted" style="margin-top:10px">A duração é uma estimativa rodoviária, sem dados de trânsito em tempo real.</p>' +
+      '<p id="rotaMapStatus" class="text-muted" style="margin-top:10px">' +
+      (mapConfigIsDemo ? 'Serviços públicos de demonstração (sem SLA). A duração é estimada e não inclui trânsito em tempo real.' : 'Fornecedor de mapas configurado. A duração é estimada e não inclui trânsito em tempo real.') + '</p>' +
       '<div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px"><strong>Distância: <span id="rotaDistancia">—</span></strong><strong>Duração: <span id="rotaDuracao">—</span></strong></div></div>' +
       '<div class="card"><div id="kanawaRouteMap" style="height:380px;width:100%;border-radius:10px;z-index:1"></div></div>' +
       '<div class="card">' + table(['Origem','Destino','Distância','Duração','Veículo','Ações'], routes.map(function (r) {
@@ -213,6 +236,7 @@
     } catch (error) { notify(error.message || 'Não foi possível guardar a rota.', 'error'); }
   }
   async function optimizeRoutes() {
+    await ensureMapConfig();
     const routes = await getData('roteirizacao') || [];
     if (routes.length < 2) { notify('Guarde pelo menos duas rotas para otimizar as paragens.', 'warning'); return; }
     try {
@@ -231,7 +255,7 @@
       if (unique.length < 3) { notify('São necessárias pelo menos três paragens diferentes para otimizar.', 'warning'); return; }
       if (unique.length > 20) { notify('A otimização está limitada a 20 paragens por operação.', 'warning'); return; }
       const coordinates = unique.map(p => p.lon+','+p.lat).join(';');
-      const response = await fetch(ROUTING_API+'/trip/v1/driving/'+coordinates+'?roundtrip=false&source=first&destination=last&overview=full&geometries=geojson');
+      const response = await fetch(routingApi+'/trip/v1/driving/'+coordinates+'?roundtrip=false&source=first&destination=last&overview=full&geometries=geojson');
       if (!response.ok) throw new Error('Serviço de otimização indisponível ('+response.status+').');
       const data = await response.json();
       if (data.code !== 'Ok' || !data.trips || !data.trips.length) throw new Error('Não foi possível otimizar estas paragens.');
