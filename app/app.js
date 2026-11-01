@@ -89,7 +89,14 @@ const DB_STORES = [
 ];
 const DB = {
   name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES,
-  init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; res(this.db); }; req.onerror = e => rej(e.target.error); }); },
+  init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; this.db.onversionchange = () => this.db.close(); res(this.db); }; req.onerror = e => rej(e.target.error); }); },
+  openTenant(companyId) {
+    const safeId = String(companyId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeId) return Promise.reject(new Error('Identificador de empresa inválido.'));
+    if (this.db) { this.db.close(); this.db = null; }
+    this.name = 'kanawa_erp_v15_company_' + safeId;
+    return this.init();
+  },
   _tx(s, m) { return this.db.transaction(s, m || 'readonly').objectStore(s); },
   add(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
@@ -102,7 +109,24 @@ const DB = {
 
 /* ====== API ====== */
 const API = {
-  async req(m, e, d) { const o = { method: m, headers: { 'Content-Type': 'application/json' } }; if (API_TOKEN) o.headers['Authorization'] = 'Bearer ' + API_TOKEN; if (d) o.body = JSON.stringify(d); try { const r = await fetch(API_BASE_URL + e, o); if (!r.ok) throw new Error('HTTP ' + r.status); API_ONLINE = true; updateApiStatus(true); return await r.json(); } catch (err) { API_ONLINE = false; updateApiStatus(false); return { offline: true, error: err.message }; } },
+  async req(m, e, d) {
+    const o = { method: m, headers: { 'Content-Type': 'application/json' } };
+    try {
+      if (CLOUD_AUTH) {
+        const { data } = await CLOUD_AUTH.auth.getSession();
+        const accessToken = data && data.session && data.session.access_token;
+        if (accessToken) o.headers['Authorization'] = 'Bearer ' + accessToken;
+      } else if (API_TOKEN) o.headers['Authorization'] = 'Bearer ' + API_TOKEN;
+      if (d) o.body = JSON.stringify(d);
+      const r = await fetch(API_BASE_URL + e, o);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      API_ONLINE = true; updateApiStatus(true);
+      return await r.json();
+    } catch (err) {
+      API_ONLINE = false; updateApiStatus(false);
+      return { offline: true, error: err.message };
+    }
+  },
   get(e) { return this.req('GET', e); }, post(e, d) { return this.req('POST', e, d); }, put(e, d) { return this.req('PUT', e, d); }, del(e) { return this.req('DELETE', e); },
   async checkHealth() { try { const r = await fetch(API_BASE_URL + '/health', { signal: AbortSignal.timeout(2000) }); API_ONLINE = r.ok; } catch { API_ONLINE = false; } updateApiStatus(API_ONLINE); return API_ONLINE; }
 };
@@ -1542,28 +1566,54 @@ async function restaurarSessaoCloud() {
   const { data: sessionData, error: sessionError } = await CLOUD_AUTH.auth.getSession();
   if (sessionError || !sessionData.session) return false;
   const authUser = sessionData.session.user;
-  const { data: companies, error } = await CLOUD_AUTH.from('ks_companies')
-    .select('id,legal_name,trade_name,tax_id,country_code,currency_code,tax_regime,fiscal_status')
-    .eq('owner_user_id', authUser.id).limit(1);
-  if (error || !companies || !companies.length) return false;
-  const company = companies[0];
-  const profileResult = await CLOUD_AUTH.from('ks_profiles').select('full_name,phone').eq('user_id', authUser.id).maybeSingle();
+  const { data: memberships, error: membershipError } = await CLOUD_AUTH
+    .from('ks_company_memberships')
+    .select('company_id,role,status')
+    .eq('user_id', authUser.id)
+    .eq('status', 'active')
+    .limit(1);
+  if (membershipError || !memberships || !memberships.length) return false;
+  const membership = memberships[0];
+  const { data: company, error: companyError } = await CLOUD_AUTH
+    .from('ks_companies')
+    .select('id,legal_name,trade_name,tax_id,country_code,currency_code,tax_regime,fiscal_status,phone,email,address')
+    .eq('id', membership.company_id)
+    .maybeSingle();
+  if (companyError || !company) return false;
+
+  // Each company receives a separate local IndexedDB database.
+  // This prevents a second tenant in the same browser profile from reading
+  // the first tenant's offline records. Legacy data remains untouched.
+  await DB.openTenant(company.id);
+
+  const profileResult = await CLOUD_AUTH.from('ks_profiles')
+    .select('full_name,phone').eq('user_id', authUser.id).maybeSingle();
   const profile = profileResult.data || {};
-  const cloudUser = { auth_user_id: authUser.id, nome: profile.full_name || authUser.email, email: authUser.email, role: 'admin', perfil: 'admin', telefone: profile.phone || '' };
-  const cloudCompany = { cloud_id: company.id, firma: company.trade_name || company.legal_name, nome: company.legal_name, nif: company.tax_id || '', regime: company.tax_regime, moeda: company.currency_code, fiscal_status: company.fiscal_status };
-  const localCompanies = await DB.getAll('empresas');
-  const empresa = { ...cloudCompany, id: localCompanies.length ? localCompanies[0].id : 1 };
-  if (localCompanies.length) await DB.put('empresas', empresa); else await DB.add('empresas', empresa);
-  const localUsers = await DB.getAll('usuarios');
-  const matchedUser = localUsers.find(item => String(item.email || '').toLowerCase() === String(cloudUser.email || '').toLowerCase());
-  const user = { ...cloudUser, id: matchedUser ? matchedUser.id : 1 };
-  if (matchedUser) await DB.put('usuarios', user); else await DB.add('usuarios', user);
+  const roleMap = { owner: 'admin', admin: 'admin', manager: 'gerente', operator: 'operador', cashier: 'caixa', accountant: 'gerente', viewer: 'operador' };
+  const appRole = roleMap[membership.role] || 'operador';
+  const user = {
+    id: 1, auth_user_id: authUser.id,
+    nome: profile.full_name || authUser.email,
+    email: authUser.email, role: appRole, perfil: appRole,
+    telefone: profile.phone || ''
+  };
+  const empresa = {
+    id: 1, cloud_id: company.id,
+    firma: company.trade_name || company.legal_name,
+    nome: company.legal_name, nif: company.tax_id || '',
+    regime: company.tax_regime, moeda: company.currency_code,
+    fiscal_status: company.fiscal_status,
+    telefone: company.phone || '', email: company.email || '',
+    endereco: company.address || ''
+  };
+  await DB.put('empresas', empresa);
+  await DB.put('usuarios', user);
   localStorage.setItem('kanawa_user', JSON.stringify(user));
   localStorage.setItem('kanawa_empresa', JSON.stringify(empresa));
   localStorage.setItem('kanawa_setup_done', 'true');
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = empresa.firma;
   if ($('userName')) $('userName').textContent = user.nome;
-  if ($('userRole')) $('userRole').textContent = 'Proprietário';
+  if ($('userRole')) $('userRole').textContent = membership.role === 'owner' ? 'Proprietário' : membership.role;
   if ($('authScreen')) $('authScreen').classList.remove('active');
   if ($('setupWizard')) $('setupWizard').classList.remove('active');
   if ($('app')) $('app').classList.add('active');
@@ -1588,6 +1638,9 @@ async function finalizarSetup() {
         company_legal_name: legalName,
         company_trade_name: legalName,
         company_tax_id: $('setupNif').value.trim() || null,
+        company_phone: $('setupTelefone').value.trim() || null,
+        company_email: $('setupEmail').value.trim().toLowerCase() || null,
+        company_address: $('setupEndereco').value.trim() || null,
         country_code: 'AO',
         currency_code: $('setupMoeda').value,
         tax_regime: $('setupRegime').value
@@ -1608,11 +1661,22 @@ async function finalizarSetup() {
     toast(error.message || 'Não foi possível criar a conta.', 'error');
   } finally { if (button) button.disabled = false; }
 }
+async function recuperarSenha() {
+  if (!CLOUD_AUTH) { toast('Serviço de autenticação indisponível.', 'error'); return; }
+  const email = $('loginEmail').value.trim().toLowerCase();
+  if (!email) { toast('Introduza o seu email no campo de login.', 'warning'); $('loginEmail').focus(); return; }
+  try {
+    const { error } = await CLOUD_AUTH.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+    if (error) throw error;
+    toast('Enviámos instruções de recuperação para o seu email.', 'success');
+  } catch (error) { toast(error.message || 'Não foi possível iniciar a recuperação.', 'error'); }
+}
 async function logout() {
   if (!confirm('Sair?')) return;
   if (CLOUD_AUTH) await CLOUD_AUTH.auth.signOut();
   localStorage.removeItem('kanawa_user');
   localStorage.removeItem('kanawa_empresa');
+  localStorage.removeItem('kanawa_setup_done');
   if ($('app')) $('app').classList.remove('active');
   if ($('authScreen')) $('authScreen').classList.add('active');
 }
@@ -2546,7 +2610,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','recuperarSenha','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',
