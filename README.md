@@ -27,6 +27,26 @@ O browser utiliza apenas a publishable key. Nunca colocar `service_role`, secret
 
 O trigger de onboarding existente cria a empresa, a associação de proprietário e uma licença de avaliação de 14 dias. Os limites e o estado da licença são mantidos no PostgreSQL.
 
+
+## Utilizadores, perfis e permissões
+
+A gestão de equipa é exclusiva do proprietário/administrador da empresa.
+
+1. Entrar com a conta de administrador e abrir **Utilizadores e Permissões**.
+2. Selecionar **Convidar funcionário**, preencher nome e email individual e escolher Gerente, Operador, Caixa, Contabilista ou Consulta.
+3. Marcar, por módulo, as operações permitidas: ver, criar, editar, excluir, exportar, importar, aprovar, cancelar e configurar.
+4. Gerar o convite e entregar a chave de ativação ao funcionário por um canal privado.
+5. O funcionário abre **Ativar convite de funcionário**, informa o mesmo email, a chave e cria a sua própria palavra-passe.
+6. O administrador pode alterar permissões ou suspender a conta na lista de utilizadores.
+
+A chave do convite é individual, de utilização única e expira em 72 horas. Não é uma palavra-passe partilhada. Cada funcionário autentica-se com o seu próprio email e palavra-passe. Convites não podem criar outra conta de administrador.
+
+As permissões ficam em ks_company_memberships.permissions e são verificadas por políticas RLS no PostgreSQL. O menu e os formulários também respeitam as permissões, mas a segurança não depende apenas da interface. O acesso às tabelas de produtos, clientes, vendas, pagamentos, movimentos de stock e registos dos módulos é limitado pela base de dados. A finalização de vendas utiliza uma operação controlada para reduzir o stock sem conceder ao caixa permissão para alterar preços.
+
+A cache IndexedDB é separada por utilizador neste dispositivo. Ao sincronizar, o ERP volta a consultar as permissões da sessão; a suspensão do funcionário bloqueia a próxima autenticação e as operações protegidas no servidor.
+
+**Nota:** a ativação do convite cria o utilizador no Supabase Auth e a associação à empresa. O envio do código ao funcionário é feito pelo administrador; ainda não existe envio automático de email/SMS nesta etapa.
+
 ## Publicação Netlify
 
 A configuração em `netlify.toml` publica a pasta `app/`.
