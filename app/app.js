@@ -243,6 +243,21 @@ async function syncNow(showMessage) {
   if (indicator) indicator.className = 'sync-indicator show syncing';
   if (label) label.textContent = 'A sincronizar com PostgreSQL...';
   try {
+    if (KanawaCloud.refreshContext) {
+      const freshContext = await KanawaCloud.refreshContext();
+      const currentUser = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+      currentUser.role = freshContext.role;
+      currentUser.perfil = freshContext.role;
+      currentUser.permissions = freshContext.permissions || {};
+      localStorage.setItem('kanawa_user', JSON.stringify(currentUser));
+      if ($('app') && $('app').classList.contains('active')) {
+        renderSidebar();
+        if (!podeAcessar(currentModule)) {
+          const firstAllowed = MENU.find(function (item) { return podeAcessar(item.id); });
+          if (firstAllowed) openModule(firstAllowed.id);
+        }
+      }
+    }
     const sent = await processSyncQueue();
     const received = await pullFromServer();
     if (indicator) indicator.className = 'sync-indicator show online';
@@ -268,6 +283,13 @@ function startAutoSync() {
 async function activateCloudSession(ctx, migrateLocal) {
   const companyId = ctx.company.id;
   const previousCompanyId = localStorage.getItem('kanawa_cloud_company_id');
+  const previousUserId = localStorage.getItem('kanawa_cloud_user_id');
+  if (previousUserId && previousUserId !== ctx.user.id) {
+    for (const store of DB_STORES) await DB.clear(store);
+    localStorage.removeItem('kanawa_user');
+    localStorage.removeItem('kanawa_empresa');
+    localStorage.removeItem('kanawa_setup_done');
+  }
   const localOnly = new Set(['empresas','usuarios','config','dispositivos','sessoes','tentativasLogin','politicasSenha','sms2FA','acessos','logsSeguranca','seguranca','migracoes','_sync_queue']);
 
   if (previousCompanyId && previousCompanyId !== companyId) {
@@ -297,7 +319,7 @@ async function activateCloudSession(ctx, migrateLocal) {
 
       if (remoteRows.length > 0 && !sameCompany) {
         for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
-      } else if (migrateLocal && sameCompany) {
+      } else if (migrateLocal && sameCompany && ctx.role === 'admin') {
         const remoteKeys = new Set(remoteRows.map(function (row) { return row.store_key + ':' + row.record_id; }));
         for (const store of DB_STORES) {
           if (localOnly.has(store) || store.startsWith('_')) continue;
@@ -315,7 +337,7 @@ async function activateCloudSession(ctx, migrateLocal) {
             }
           }
         }
-      } else if (remoteRows.length > 0) {
+      } else if (remoteRows.length > 0 || (sameCompany && ctx.role !== 'admin')) {
         for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
       }
       localStorage.setItem('kanawa_cloud_company_id', companyId);
@@ -323,6 +345,7 @@ async function activateCloudSession(ctx, migrateLocal) {
     }
   }
 
+  localStorage.setItem('kanawa_cloud_user_id', ctx.user.id);
   const company = {
     id: 1,
     firma: ctx.company.trade_name || ctx.company.legal_name,
@@ -1700,10 +1723,12 @@ function htmlEditorPermissoes(role, selected) {
   const actions = ['ver','criar','editar','excluir','exportar','importar','aprovar','cancelar','configurar'];
   const modules = modulosGeriveis();
   const rows = modules.map(function (m) {
-    const saved = selected && Array.isArray(selected[m.id]) ? selected[m.id] : null;
-    const defaults = saved || ((base.modulos === '*' || base.modulos.includes(m.id))
-      ? ['ver'].concat(base.acoes || []).filter(function (v, i, a) { return a.indexOf(v) === i; })
-      : []);
+    const hasSelection = selected !== null && selected !== undefined;
+    const defaults = hasSelection
+      ? (Array.isArray(selected[m.id]) ? selected[m.id] : [])
+      : ((base.modulos === '*' || base.modulos.includes(m.id))
+        ? ['ver'].concat(base.acoes || []).filter(function (v, i, a) { return a.indexOf(v) === i; })
+        : []);
     return '<tr><td style="white-space:nowrap;font-weight:600">' + esc(m.label) + '</td>' +
       actions.map(function (action) {
         const checked = defaults.includes(action) ? ' checked' : '';
@@ -1714,8 +1739,9 @@ function htmlEditorPermissoes(role, selected) {
     actions.map(function (a) { return '<th>' + a + '</th>'; }).join('') +
     '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
-function preencherPermissoesPadrao() {
-  const role = $('uPerfil') ? $('uPerfil').value : 'operador';
+function preencherPermissoesPadrao(selectId) {
+  const roleSelect = $(selectId || 'uPerfil');
+  const role = roleSelect ? roleSelect.value : 'operador';
   const base = PERMISSOES[role] || PERMISSOES.operador;
   document.querySelectorAll('[data-perm-module]').forEach(function (input) {
     const moduleId = input.getAttribute('data-perm-module');
