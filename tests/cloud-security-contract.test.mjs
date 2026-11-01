@@ -48,3 +48,10 @@ test('cloud record writes and deletes enforce company membership roles', async (
   assert.match(migration, /array\['owner','admin','manager','operator','cashier','accountant'\]/);
   assert.match(migration, /for delete to authenticated[\s\S]*array\['owner','admin','manager'\]/);
 });
+
+test('frontend permissions map read-only and accounting members correctly', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /accountant: 'contabilista', viewer: 'viewer'/);
+  assert.match(app, /viewer: \{ modulos: \[[^\]]+\], acoes: \['ver'\]/);
+  assert.match(app, /contabilista: \{ modulos: \[[^\]]+'financeiro'[^\]]+\]/);
+});
