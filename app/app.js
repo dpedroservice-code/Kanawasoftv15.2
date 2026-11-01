@@ -243,7 +243,7 @@ async function syncNow(showMessage) {
   if (indicator) indicator.className = 'sync-indicator show syncing';
   if (label) label.textContent = 'A sincronizar com PostgreSQL...';
   try {
-    if (KanawaCloud.refreshContext) {
+    if (window.KanawaCloud && KanawaCloud.ready && KanawaCloud.refreshContext) {
       const freshContext = await KanawaCloud.refreshContext();
       const currentUser = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
       currentUser.role = freshContext.role;
