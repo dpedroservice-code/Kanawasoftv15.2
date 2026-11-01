@@ -3,8 +3,6 @@
 
 const APP_VERSION = '15.3-cloud';
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
-const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
-let API_TOKEN = localStorage.getItem('kanawa_api_token') || null;
 let API_ONLINE = false;
 let setupStep = 1;
 let currentModule = 'dashboard';
@@ -135,14 +133,11 @@ async function getData(store) {
 async function saveData(store, item) {
   const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item);
   const record = Object.assign({}, item, { id: id });
-  if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
-    try {
-      if (store === 'empresas') await KanawaCloud.updateCompany(record);
-      else await KanawaCloud.upsertRecord(store, record);
-    } catch (e) {
-      await queueSync(store, item.id ? 'update' : 'create', record);
-      console.warn('Kanawa cloud write queued:', store, e);
-    }
+  if (window.KanawaCloud && KanawaCloud.ready && store === 'empresas') {
+    try { await KanawaCloud.updateCompany(record); } catch (e) { console.warn('Atualização da empresa pendente:', e); }
+  } else if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
+    try { await KanawaCloud.upsertRecord(store, record); }
+    catch (e) { await queueSync(store, item.id ? 'update' : 'create', record); console.warn('Kanawa cloud write queued:', store, e); }
   }
   return id;
 }
@@ -1663,15 +1658,15 @@ async function renderConfig() {
     '<div class="form-group"><label>Desconto Máximo (%)</label><input type="number" id="cfgDescMax" value="' + (regras.descontoMax || 50) + '"></div></div>' +
     '<button class="btn btn-success btn-lg" style="margin-top:16px" onclick="salvarRegras()"><i class="fas fa-save"></i> Salvar Regras</button></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-server"></i> Servidor (Opcional)</h3></div>' +
-    '<p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px">O sistema funciona 100% offline. Configure para compartilhar dados com outras telas/dispositivos.</p>' +
+    '<p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px">Os dados são guardados no PostgreSQL central e sincronizados com o cache local para permitir trabalho temporário sem internet.</p>' +
     '<div class="form-grid">' +
-    '<div class="form-group full"><label>URL do Servidor</label><input id="cfgApiUrl" value="' + esc(localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api') + '"></div>' +
+    '<div class="form-group full"><label>Base de dados central</label><input value="Supabase PostgreSQL — Kanawa Cloud" disabled></div>' +
     '<div class="form-group"><label>Status</label><div style="padding:10px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (API_ONLINE ? '#4ade80' : '#f87171') + ';margin-right:6px"></span>' + (API_ONLINE ? 'Conectado' : 'Desconectado') + '</div></div></div>' +
     '<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">' +
-    '<button class="btn btn-success" onclick="salvarConfigAPI()"><i class="fas fa-save"></i> Salvar URL</button>' +
+    '<span style="font-size:.8rem;color:var(--text-muted);padding:10px">Ligação configurada pela D.PEDRO SOLUÇÕES</span>' +
     '<button class="btn btn-primary" onclick="testarAPI()"><i class="fas fa-check"></i> Testar</button>' +
     '<button class="btn btn-info" onclick="syncNow(true)"><i class="fas fa-sync"></i> Sincronizar Agora</button></div></div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-database"></i> Banco Local (IndexedDB)</h3></div>' + table(['Coleção', 'Registros', 'Ações'], countRows) + '</div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-database"></i> Cache local (IndexedDB) + PostgreSQL central</h3></div>' + table(['Coleção', 'Registros', 'Ações'], countRows) + '</div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-tools"></i> Ferramentas</h3></div>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
     '<button class="btn btn-warning" onclick="recarregarDemo()"><i class="fas fa-seedling"></i> Dados Demo</button>' +
