@@ -65,3 +65,10 @@ test('company images use private Supabase Storage with company-folder RLS', asyn
   assert.match(migration, /private\.ks_is_company_member/);
   assert.match(migration, /private\.ks_has_company_role/);
 });
+
+test('cloud media keeps content-addressed references for offline copies', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /hashCloudBlob\(blob\)/);
+  assert.match(app, /_cloudMediaRefs/);
+  assert.match(app, /DB\.cloudSyncEnabled = false/);
+});
