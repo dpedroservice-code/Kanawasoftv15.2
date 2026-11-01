@@ -2408,14 +2408,90 @@ async function gerarEtiqueta() {
 }
 function visualizarEtiqueta(id) { toast('Visualizando etiqueta', 'info'); }
 
-function renderLogisticaPicking() {
-  return header('Picking', 'Separação de pedidos', 'var(--warning)', '', 'fa-boxes') +
-    '<div class="card">' +
-    '<div class="form-group"><label>Pedido</label><select id="pickingPedido"><option value="">Selecione um pedido...</option></select></div>' +
-    '<div class="form-group"><label>Itens para separar</label><div style="padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-height:60px;color:var(--text-muted)">Selecione um pedido</div></div>' +
-    '<button class="btn btn-success" onclick="iniciarPicking()"><i class="fas fa-play"></i> Iniciar Picking</button></div>';
+async function renderLogisticaPicking() {
+  const ecommerceOrders = await getData('ecommercePedidos') || [];
+  const sales = await getData('vendas') || [];
+  const tasks = await getData('picking') || [];
+  const activeTasks = tasks.filter(function (t) { return t.status !== 'concluido'; });
+  const options = [];
+  ecommerceOrders.filter(function (o) { return !['entregue','cancelado','concluido'].includes(String(o.status || '').toLowerCase()); }).forEach(function (o) {
+    options.push({ store:'ecommercePedidos', id:o.id, ref:o.numeroPedido || o.numero || ('ECOM-' + o.id), customer:o.clienteNome || o.cliente || '' });
+  });
+  sales.filter(function (o) { return !['entregue','cancelado','concluido'].includes(String(o.status || '').toLowerCase()); }).forEach(function (o) {
+    options.push({ store:'vendas', id:o.id, ref:o.numeroFatura || o.numero || ('VEN-' + o.id), customer:o.clienteNome || o.cliente || '' });
+  });
+  return header('Picking e Separação', activeTasks.length + ' operações em curso', 'var(--warning)',
+    podeFazerModulo('logistica-picking','criar') ? '<button class="btn btn-success" onclick="iniciarPicking()"><i class="fas fa-play"></i> Iniciar separação</button>' : '', 'fa-boxes') +
+    '<div class="card"><h3>Selecionar pedido</h3><div class="form-group"><label>Pedido / venda</label><select id="pickingPedido" onchange="carregarItensPicking()"><option value="">Selecione um pedido...</option>' +
+    options.map(function (o) { return '<option value="' + esc(o.store + ':' + o.id) + '">' + esc(o.ref) + (o.customer ? ' — ' + esc(o.customer) : '') + '</option>'; }).join('') +
+    '</select></div><div id="pickingItens" class="text-muted">Selecione um pedido para consultar os artigos.</div>' +
+    (options.length ? '' : '<p class="alert alert-info">Não existem pedidos/vendas pendentes disponíveis para separação.</p>') + '</div>' +
+    '<div class="card"><h3>Operações de picking</h3>' + table(['Pedido','Origem','Estado','Iniciado','Ações'], tasks.map(function (t) {
+      const action = t.status === 'concluido' || !podeFazerModulo('logistica-picking','aprovar') ? '' :
+        '<button class="btn btn-sm btn-success" onclick="concluirPicking(' + Number(t.id) + ')">Confirmar separação</button>';
+      return [esc(t.order_ref || '-'), esc(t.order_store || '-'), badge(t.status || 'pendente', t.status === 'concluido' ? 'success' : 'warning'), fmtDT(t.started_at || t.data), action];
+    })) + '</div>';
 }
-function iniciarPicking() { toast('Picking iniciado', 'success'); }
+
+async function carregarItensPicking() {
+  const value = $('pickingPedido') && $('pickingPedido').value;
+  const output = $('pickingItens');
+  if (!value || !output) { if (output) output.textContent = 'Selecione um pedido para consultar os artigos.'; return; }
+  const parts = value.split(':');
+  const store = parts[0], rawId = parts.slice(1).join(':');
+  const id = /^\d+$/.test(rawId) ? Number(rawId) : rawId;
+  const order = await DB.get(store, id);
+  if (!order) { output.textContent = 'O pedido selecionado já não está disponível.'; return; }
+  const items = order.itens || order.items || order.produtos || [];
+  output.innerHTML = items.length ? table(['Artigo','Quantidade','Preço'], items.map(function (it) {
+    return [esc(it.nome || it.produto || it.descricao || 'Artigo'), esc(it.quantidade || it.qty || 1), fmt(it.preco || it.valorUnitario || 0)];
+  })) : '<p class="alert alert-warning">O pedido não contém uma lista de artigos detalhada. Confirme os itens no documento original antes de separar.</p>';
+}
+
+async function iniciarPicking() {
+  if (!podeFazerModulo('logistica-picking','criar')) { toast('Sem permissão para iniciar picking.','error'); return; }
+  const value = $('pickingPedido') && $('pickingPedido').value;
+  if (!value) { toast('Selecione um pedido.','warning'); return; }
+  const parts = value.split(':');
+  const store = parts[0], rawId = parts.slice(1).join(':');
+  const id = /^\d+$/.test(rawId) ? Number(rawId) : rawId;
+  const order = await DB.get(store, id);
+  if (!order) { toast('Pedido não encontrado.','error'); return; }
+  const tasks = await getData('picking') || [];
+  if (tasks.some(function (t) { return t.order_store === store && String(t.order_id) === String(id) && t.status !== 'concluido'; })) {
+    toast('Este pedido já tem uma operação de picking em curso.','warning'); return;
+  }
+  const task = {
+    order_store:store, order_id:id, order_ref:order.numeroPedido || order.numeroFatura || order.numero || ((store === 'vendas' ? 'VEN-' : 'ECOM-') + id),
+    customer:order.clienteNome || order.cliente || '', items:order.itens || order.items || order.produtos || [],
+    status:'em_separacao', started_at:now(), data:now()
+  };
+  try {
+    await saveData('picking', task);
+    if (podeFazerModulo(store === 'vendas' ? 'vendas' : 'ecommerce-pedidos','editar')) {
+      order.status = 'em_separacao';
+      await saveData(store, order);
+    }
+    toast('Operação de picking criada e registada.','success');
+    openModule('logistica-picking');
+  } catch (error) { toast(error.message || 'Não foi possível iniciar a separação.','error'); }
+}
+
+async function concluirPicking(id) {
+  if (!podeFazerModulo('logistica-picking','aprovar')) { toast('Sem permissão para confirmar a separação.','error'); return; }
+  const task = await DB.get('picking', id);
+  if (!task) { toast('Operação de picking não encontrada.','error'); return; }
+  task.status = 'concluido'; task.completed_at = now();
+  try {
+    await saveData('picking', task);
+    if (task.order_store && podeFazerModulo(task.order_store === 'vendas' ? 'vendas' : 'ecommerce-pedidos','editar')) {
+      const order = await DB.get(task.order_store, task.order_id);
+      if (order) { order.status = 'pronto_para_envio'; await saveData(task.order_store, order); }
+    }
+    toast('Separação confirmada.','success');
+    openModule('logistica-picking');
+  } catch (error) { toast(error.message || 'Não foi possível concluir a separação.','error'); }
+}
 
 async function renderLogisticaArmazens() {
   const armazens = await getData('armazens') || [];
@@ -2427,16 +2503,57 @@ async function renderLogisticaArmazens() {
 }
 async function novoArmazem() { const n = prompt('Nome do armazém:'); if (!n) return; await saveData('armazens', { nome: n, data: now() }); toast('Armazém criado', 'success'); openModule('logistica-armazens'); }
 
-function renderLogisticaCrossdocking() {
-  return header('Cross-docking', 'Transferência direta', 'var(--primary)', '', 'fa-exchange-alt') +
-    '<div class="card"><div class="form-grid">' +
-    '<div class="form-group"><label>Produto</label><input id="crossProduto"></div>' +
-    '<div class="form-group"><label>Origem</label><input id="crossOrigem" value="Recebimento"></div>' +
-    '<div class="form-group"><label>Destino</label><input id="crossDestino" value="Expedição"></div>' +
-    '<div class="form-group"><label>Quantidade</label><input id="crossQtd" type="number" value="1" min="1"></div></div>' +
-    '<button class="btn btn-success" onclick="realizarCrossdocking()"><i class="fas fa-exchange-alt"></i> Transferir</button></div>';
+async function renderLogisticaCrossdocking() {
+  const records = await getData('crossDocking') || [];
+  return header('Cross-docking', records.length + ' operações registadas', 'var(--primary)', '', 'fa-exchange-alt') +
+    '<div class="card"><h3>Registar movimento de cross-docking</h3><div class="form-grid">' +
+    '<div class="form-group"><label>Produto / código *</label><input id="crossProduto" placeholder="Nome ou código do produto"></div>' +
+    '<div class="form-group"><label>Origem *</label><input id="crossOrigem" placeholder="Ex.: Recebimento"></div>' +
+    '<div class="form-group"><label>Destino *</label><input id="crossDestino" placeholder="Ex.: Expedição"></div>' +
+    '<div class="form-group"><label>Quantidade *</label><input id="crossQtd" type="number" min="0.001" step="0.001" value="1"></div></div>' +
+    '<p class="alert alert-warning">Este registo documenta o fluxo de cross-docking, mas ainda não altera o stock por armazém: o inventário multi-armazém não está implementado.</p>' +
+    '<button class="btn btn-success" onclick="realizarCrossdocking()">Registar operação</button></div>' +
+    '<div class="card">' + table(['Produto','Quantidade','Origem','Destino','Estado','Data','Ações'], records.map(function (r) {
+      const action = r.status === 'conferido' || !podeFazerModulo('logistica-crossdocking','aprovar') ? '' :
+        '<button class="btn btn-sm btn-success" onclick="confirmarCrossdocking(' + Number(r.id) + ')">Confirmar conferência</button>';
+      return [esc(r.produto || '-'), esc(r.quantidade || 0), esc(r.origem || '-'), esc(r.destino || '-'),
+        badge(r.status || 'pendente', r.status === 'conferido' ? 'success' : 'warning'), fmtDT(r.data), action];
+    })) + '</div>';
 }
-function realizarCrossdocking() { toast('Cross-docking realizado', 'success'); }
+
+async function realizarCrossdocking() {
+  if (!podeFazerModulo('logistica-crossdocking','criar')) { toast('Sem permissão para registar cross-docking.','error'); return; }
+  const productText = $('crossProduto').value.trim();
+  const origin = $('crossOrigem').value.trim(), destination = $('crossDestino').value.trim();
+  const quantity = Number($('crossQtd').value);
+  if (!productText || !origin || !destination || !Number.isFinite(quantity) || quantity <= 0) {
+    toast('Preencha produto, origem, destino e quantidade válida.','warning'); return;
+  }
+  const products = await getData('produtos') || [];
+  const product = products.find(function (p) {
+    return String(p.codigo || '').toLowerCase() === productText.toLowerCase() ||
+      String(p.nome || '').toLowerCase() === productText.toLowerCase();
+  });
+  if (!product) { toast('Produto não encontrado no catálogo.','error'); return; }
+  try {
+    await saveData('crossDocking', {
+      produto_id:product.id, produto:product.nome, codigo:product.codigo || '',
+      quantidade:quantity, origem:origin, destino:destination,
+      status:'pendente_conferencia', stock_updated:false, data:now()
+    });
+    toast('Operação de cross-docking registada para conferência. O stock não foi alterado.','success');
+    openModule('logistica-crossdocking');
+  } catch (error) { toast(error.message || 'Não foi possível registar a operação.','error'); }
+}
+
+async function confirmarCrossdocking(id) {
+  if (!podeFazerModulo('logistica-crossdocking','aprovar')) { toast('Sem permissão para confirmar a conferência.','error'); return; }
+  const record = await DB.get('crossDocking', id);
+  if (!record) { toast('Operação não encontrada.','error'); return; }
+  record.status = 'conferido'; record.confirmed_at = now();
+  try { await saveData('crossDocking', record); toast('Conferência registada. O stock global mantém-se inalterado.','success'); openModule('logistica-crossdocking'); }
+  catch (error) { toast(error.message || 'Não foi possível confirmar a operação.','error'); }
+}
 
 async function renderLogisticaRastreio() { return await window.KanawaMaps.renderTracking(); }
 async function buscarRastreio() { return await window.KanawaMaps.searchTracking(); }
@@ -3218,8 +3335,8 @@ const EXPORTS = [
   'renderPlanosProducao','abrirModalPlanoProducao','salvarPlanoProducao','editarPlanoProducao',
   'renderLogisticaRoteirizacao','abrirModalRota','salvarRota','otimizarRotas','calcularRotaLogistica','usarLocalizacaoAtualComoOrigem',
   'renderLogisticaEtiquetas','gerarEtiqueta','visualizarEtiqueta',
-  'renderLogisticaPicking','iniciarPicking','renderLogisticaArmazens','novoArmazem',
-  'renderLogisticaCrossdocking','realizarCrossdocking','renderLogisticaRastreio','buscarRastreio','criarRastreioEncomenda','rastrearEncomenda','atualizarLocalizacaoEncomenda','iniciarGPSRastreio','pararGPSRastreio',
+  'renderLogisticaPicking','carregarItensPicking','iniciarPicking','concluirPicking','renderLogisticaArmazens','novoArmazem',
+  'renderLogisticaCrossdocking','realizarCrossdocking','confirmarCrossdocking','renderLogisticaRastreio','buscarRastreio','criarRastreioEncomenda','rastrearEncomenda','atualizarLocalizacaoEncomenda','iniciarGPSRastreio','pararGPSRastreio',
   'renderEcommerceVitrine','adicionarAoCarrinhoEcommerce','sincronizarProdutosEcommerce',
   'renderEcommerceCarrinho','removerDoCarrinhoEcommerce','limparCarrinhoEcommerce','finalizarPedidoEcommerce',
   'renderEcommercePedidos','detalharPedidoEcommerce','atualizarStatusPedidoEcommerce','exportarPedidosEcommerce',
