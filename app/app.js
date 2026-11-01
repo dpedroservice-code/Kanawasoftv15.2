@@ -1739,10 +1739,10 @@ async function restaurarSessaoCloud() {
   };
   await DB.put('empresas', empresa);
   await DB.put('usuarios', user);
-  await syncTenantRecords();
   localStorage.setItem('kanawa_user', JSON.stringify(user));
   localStorage.setItem('kanawa_empresa', JSON.stringify(empresa));
   localStorage.setItem('kanawa_setup_done', 'true');
+  await syncTenantRecords();
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = empresa.firma;
   if ($('userName')) $('userName').textContent = user.nome;
   if ($('userRole')) $('userRole').textContent = membership.role === 'owner' ? 'Proprietário' : membership.role;
