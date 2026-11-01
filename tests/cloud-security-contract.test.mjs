@@ -80,3 +80,11 @@ test('company logo uses private storage and a database path reference', async ()
   assert.match(app, /logo_path: logoPath/);
   assert.match(migration, /add column if not exists logo_path text/i);
 });
+
+test('non-certified printouts do not claim AGT approval or digital signatures', async () => {
+  const app = await read('app/app.js');
+  assert.match(app, /DOCUMENTO COMERCIAL \/ RECIBO/);
+  assert.match(app, /não possui certificação\/validação AGT/);
+  assert.match(app, /não constituem assinatura digital JWS\/RS256/);
+  assert.doesNotMatch(app, /Programa certificado Kanawa Soft|Código de Autenticação AGT|quiosqueagt\.minfin\.gov\.ao|gerarAssinatura\(/);
+});
