@@ -2777,29 +2777,87 @@ async function init() {
 
     const loginForm = $('loginForm');
     if (loginForm) {
+      let otpStep = false;
+      const emailInput = $('loginEmail');
+      const codeInput = $('loginOtpCode');
+      const codeGroup = $('otpCodeGroup');
+      const otpHelp = $('otpHelp');
+      const otpActions = $('otpActions');
+      const submit = $('loginSubmit');
+      const errorBox = $('loginError');
+
+      function showLoginError(message) {
+        if (!errorBox) return;
+        errorBox.textContent = message;
+        errorBox.classList.add('show');
+      }
+      function resetOtpStep() {
+        otpStep = false;
+        emailInput.readOnly = false;
+        codeInput.value = '';
+        codeInput.required = false;
+        codeGroup.style.display = 'none';
+        otpHelp.style.display = 'none';
+        otpActions.style.display = 'none';
+        submit.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar código de acesso';
+        if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show'); }
+      }
+      async function sendLoginCode() {
+        const email = emailInput.value.trim();
+        if (!emailInput.checkValidity()) {
+          emailInput.reportValidity();
+          return;
+        }
+        await KanawaCloud.requestOtp(email);
+        otpStep = true;
+        emailInput.readOnly = true;
+        codeGroup.style.display = 'block';
+        codeInput.required = true;
+        otpHelp.style.display = 'block';
+        otpActions.style.display = 'flex';
+        submit.innerHTML = '<i class="fas fa-unlock-alt"></i> Validar código e entrar';
+        codeInput.focus();
+        toast('Código de acesso enviado para ' + email + '.', 'success');
+      }
+
       loginForm.addEventListener('submit', async function (event) {
         event.preventDefault();
-        const email = $('loginEmail').value.trim();
-        const password = $('loginPassword').value;
-        const errorBox = $('loginError');
         if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show'); }
-        const submit = loginForm.querySelector('button[type="submit"]');
-        if (submit) submit.disabled = true;
+        submit.disabled = true;
         try {
-          const ctx = await KanawaCloud.signIn(email, password);
+          if (!otpStep) {
+            await sendLoginCode();
+            return;
+          }
+          const ctx = await KanawaCloud.verifyOtp(emailInput.value, codeInput.value);
           await activateCloudSession(ctx, true);
           localStorage.removeItem('kanawa_pending_email');
           mostrarAplicacaoAutenticada(ctx);
           toast('Sessão iniciada. Os dados estão ligados à base de dados central.', 'success');
         } catch (error) {
-          if (errorBox) {
-            errorBox.textContent = error.message || 'Email ou senha incorretos.';
-            errorBox.classList.add('show');
-          }
+          showLoginError(error.message || 'Não foi possível validar o acesso. Verifique o email e o código.');
         } finally {
-          if (submit) submit.disabled = false;
+          submit.disabled = false;
         }
       });
+
+      const resendButton = $('resendOtpBtn');
+      if (resendButton) resendButton.addEventListener('click', async function () {
+        if (resendButton.disabled) return;
+        resendButton.disabled = true;
+        try {
+          await KanawaCloud.requestOtp(emailInput.value);
+          toast('Novo código enviado. Utilize o código mais recente.', 'success');
+          if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show'); }
+        } catch (error) {
+          showLoginError(error.message || 'Não foi possível reenviar o código.');
+        } finally {
+          resendButton.disabled = false;
+        }
+      });
+
+      const changeEmailButton = $('changeOtpEmailBtn');
+      if (changeEmailButton) changeEmailButton.addEventListener('click', resetOtpStep);
     }
 
     startAutoSync();
