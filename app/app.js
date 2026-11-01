@@ -448,7 +448,11 @@ function podeAcessar(m) {
 function podeFazerModulo(m, action) {
   const p = getPerms();
   if (p.modulos === '*') return true;
-  if (p.byModule) return Array.isArray(p.byModule[m]) && p.byModule[m].includes(action);
+  if (p.byModule) {
+    if (Array.isArray(p.byModule[m]) && p.byModule[m].includes(action)) return true;
+    if (m === 'vendas' && action === 'criar' && Array.isArray(p.byModule.pdv) && p.byModule.pdv.includes('criar')) return true;
+    return false;
+  }
   return p.modulos.indexOf(m) !== -1 && p.acoes.indexOf(action) !== -1;
 }
 function podeFazer(a) { return podeFazerModulo(currentModule, a); }
