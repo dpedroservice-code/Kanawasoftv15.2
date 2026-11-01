@@ -282,6 +282,7 @@ async function activateCloudSession(ctx, migrateLocal) {
   await pullFromServer();
   try { await KanawaCloud.registerInstallation(APP_VERSION); }
   catch (e) { console.warn('Registo de instalação pendente:', e); }
+  await API.checkHealth();
 
   try {
     const license = await KanawaCloud.getLicense();
