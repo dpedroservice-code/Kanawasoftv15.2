@@ -239,25 +239,50 @@ async function processSyncQueue() {
 async function pullFromServer() {
   if (!window.KanawaCloud || !KanawaCloud.ready) return 0;
   invalidateDataCache();
-  const records = await KanawaCloud.getAllRecords();
+  const context = KanawaCloud.context || {};
+  const userId = context.user && context.user.id ? context.user.id : 'unknown-user';
+  const companyId = context.company && context.company.id ? context.company.id : 'unknown-company';
+  const syncScope = String(companyId) + ':' + String(userId);
+  const lastFullKey = 'kanawa_last_full_pull:' + syncScope;
+  const lastSyncKey = 'kanawa_last_incremental_pull:' + syncScope;
+  const nowMs = Date.now();
+  const lastFull = Number(localStorage.getItem(lastFullKey) || 0);
+  const fullRefresh = !lastFull || (nowMs - lastFull) >= 15 * 60 * 1000;
+  const lastSync = Number(localStorage.getItem(lastSyncKey) || 0);
+  const sinceMs = Math.max(0, lastSync ? lastSync - 60000 : nowMs - 15 * 60 * 1000);
+  const records = fullRefresh
+    ? await KanawaCloud.getAllRecords()
+    : await KanawaCloud.getChangedRecords(new Date(sinceMs).toISOString());
   const queue = await DB.getAll('_sync_queue');
   const dirty = new Set(queue.filter(x => !x.synced).map(x => x.entity));
   const grouped = new Map();
   for (const row of records) {
     if (!grouped.has(row.store_key)) grouped.set(row.store_key, []);
     const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
-    const id = payload.id !== undefined ? payload.id : (/^\d+$/.test(row.record_id) ? Number(row.record_id) : row.record_id);
+    const id = payload.id !== undefined ? payload.id : (/^\\d+$/.test(row.record_id) ? Number(row.record_id) : row.record_id);
     grouped.get(row.store_key).push(Object.assign({}, payload, { id: id }));
   }
   let total = 0;
-  for (const store of DB_STORES) {
-    if (KanawaCloud.isLocalOnly(store) || dirty.has(store)) continue;
-    await DB.clear(store);
-    for (const item of (grouped.get(store) || [])) {
-      await DB.put(store, item);
-      total++;
+  if (fullRefresh) {
+    for (const store of DB_STORES) {
+      if (KanawaCloud.isLocalOnly(store) || dirty.has(store)) continue;
+      await DB.clear(store);
+      for (const item of (grouped.get(store) || [])) {
+        await DB.put(store, item);
+        total++;
+      }
+    }
+    localStorage.setItem(lastFullKey, String(nowMs));
+  } else {
+    for (const [store, items] of grouped.entries()) {
+      if (KanawaCloud.isLocalOnly(store) || dirty.has(store)) continue;
+      for (const item of items) {
+        await DB.put(store, item);
+        total++;
+      }
     }
   }
+  localStorage.setItem(lastSyncKey, String(nowMs));
   invalidateDataCache();
   return total;
 }
