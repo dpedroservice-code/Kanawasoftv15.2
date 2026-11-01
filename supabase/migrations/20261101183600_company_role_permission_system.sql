@@ -69,6 +69,7 @@ DECLARE
   v_role text;
   v_permissions jsonb;
   v_actions jsonb;
+  v_pos_actions jsonb;
 BEGIN
   IF auth.uid() IS NULL OR p_company_id IS NULL OR p_module IS NULL OR p_action IS NULL THEN
     RETURN false;
@@ -82,22 +83,37 @@ BEGIN
     AND m.status = 'active';
 
   IF NOT FOUND THEN RETURN false; END IF;
-
   IF NOT private.ks_has_company_role(
     p_company_id,
     ARRAY['owner','admin','manager','operator','cashier','accountant','viewer']::text[]
   ) THEN
     RETURN false;
   END IF;
-
   IF v_role IN ('owner','admin') THEN RETURN true; END IF;
 
   v_actions := v_permissions -> p_module;
-  IF v_actions IS NULL OR jsonb_typeof(v_actions) <> 'array' THEN
-    RETURN false;
+  IF jsonb_typeof(v_actions) = 'array' AND v_actions ? p_action THEN
+    RETURN true;
   END IF;
 
-  RETURN v_actions ? p_action;
+  -- POS operators must be able to read product/customer catalogues and save a sale,
+  -- without gaining access to those management modules in the application menu.
+  IF p_action = 'ver' AND p_module IN ('produtos','clientes') THEN
+    v_pos_actions := v_permissions -> 'pdv';
+    IF jsonb_typeof(v_pos_actions) = 'array'
+       AND (v_pos_actions ? 'ver' OR v_pos_actions ? 'criar') THEN
+      RETURN true;
+    END IF;
+  END IF;
+
+  IF p_module = 'vendas' AND p_action = 'criar' THEN
+    v_pos_actions := v_permissions -> 'pdv';
+    IF jsonb_typeof(v_pos_actions) = 'array' AND v_pos_actions ? 'criar' THEN
+      RETURN true;
+    END IF;
+  END IF;
+
+  RETURN false;
 END;
 $function$
 
