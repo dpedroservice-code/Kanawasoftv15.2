@@ -11,6 +11,15 @@ Este documento descreve o que foi adicionado ao Kanawa Soft v15.2 no projecto de
 - Os critérios de licenciamento combinam número de utilizadores, instalações activas, produtos, facturas por mês, volume de facturação mensal (USD quando existe taxa de câmbio) e armazenamento. Os limites de utilizadores, produtos, instalações e facturas são verificados no PostgreSQL, não apenas na interface.
 - Após expirar a licença e terminar a tolerância, o ERP passa para modo de leitura. As políticas RLS bloqueiam as operações de escrita na nuvem e o IndexedDB aplica a mesma restrição à interface local.
 
+## Planos e limites actuais
+
+O catálogo `ks_saas_plans` está configurado com:
+- **Starter:** USD 9/mês ou USD 90/ano; 2 utilizadores, 2 instalações, 300 facturas/mês, 500 produtos e limite de volume de USD 10.000/mês.
+- **Professional:** USD 29/mês ou USD 290/ano; 10 utilizadores, 10 instalações, 5.000 facturas/mês, 10.000 produtos e limite de USD 100.000/mês.
+- **Enterprise:** sob consulta, com limites flexíveis.
+
+O administrador pode alterar os preços e limites no módulo Admin SaaS. A cobrança por utilizadores e volume é suportada. O limite de volume em USD só pode ser aplicado a empresas noutras moedas quando exista uma taxa de câmbio válida configurada. Os limites de utilizadores, produtos, instalações e facturas são aplicados por triggers PostgreSQL, não apenas pela interface.
+
 ## Como criar uma licença no ERP
 1. Entrar com a conta que está registada como administrador da plataforma.
 2. Abrir **Admin SaaS**.
