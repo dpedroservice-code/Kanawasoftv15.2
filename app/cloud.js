@@ -36,7 +36,7 @@
     if (!client || !user) throw new Error('Sessão Kanawa não encontrada.');
     const membershipResult = await client
       .from('ks_company_memberships')
-      .select('company_id, role, status')
+      .select('company_id, role, status, permissions')
       .eq('user_id', user.id)
       .eq('status', 'active')
       .order('created_at', { ascending: true })
@@ -71,6 +71,7 @@
       membership: membership,
       profile: profile || {},
       role: appRole(membership.role),
+      permissions: membership.permissions || {},
       isPlatformAdmin: !!platformAdmin,
       platformRole: platformAdmin ? platformAdmin.role : null
     };
@@ -330,6 +331,74 @@
       const result = await client.from('ks_companies').update(update).eq('id', context.company.id);
       if (result.error) throw result.error;
       context.company = Object.assign({}, context.company, update);
+    },
+
+
+    async listTeamMembers() {
+      if (!this.ready) throw new Error('Sessão Kanawa não está ativa.');
+      if (!['admin'].includes(context.role)) throw new Error('Apenas o administrador pode gerir funcionários.');
+      const rows = failIfError(await client
+        .from('ks_company_memberships')
+        .select('company_id,user_id,role,status,permissions,created_at')
+        .eq('company_id', context.company.id)
+        .order('created_at', { ascending: true })) || [];
+      const ids = rows.map(function (row) { return row.user_id; });
+      const profiles = ids.length ? (failIfError(await client
+        .from('ks_profiles')
+        .select('user_id,full_name,email,phone')
+        .in('user_id', ids)) || []) : [];
+      const byId = new Map(profiles.map(function (profile) { return [profile.user_id, profile]; }));
+      return rows.map(function (row) {
+        return Object.assign({}, row, { profile: byId.get(row.user_id) || {} });
+      });
+    },
+
+    async createTeamInvitation(details) {
+      if (!this.ready || context.role !== 'admin') throw new Error('Apenas o administrador pode convidar funcionários.');
+      const result = await client.rpc('ks_create_team_invitation', {
+        p_email: details.email,
+        p_full_name: details.fullName,
+        p_role: details.role,
+        p_permissions: details.permissions || {},
+        p_expires_hours: details.expiresHours || 72
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async updateTeamMemberAccess(details) {
+      if (!this.ready || context.role !== 'admin') throw new Error('Apenas o administrador pode alterar acessos.');
+      const result = await client.rpc('ks_update_team_member_access', {
+        p_user_id: details.userId,
+        p_role: details.role,
+        p_permissions: details.permissions || {},
+        p_status: details.status || 'active'
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async acceptTeamInvitation(details) {
+      if (!client) throw new Error('Serviço de autenticação indisponível.');
+      const result = await client.auth.signUp({
+        email: details.email,
+        password: details.password,
+        options: {
+          data: {
+            full_name: details.fullName,
+            invitation_code: details.invitationCode
+          }
+        }
+      });
+      if (result.error) throw result.error;
+      if (result.data.session && result.data.user) {
+        await loadContext(result.data.user);
+      }
+      return {
+        user: result.data.user,
+        session: result.data.session,
+        needsEmailConfirmation: !result.data.session
+      };
     },
 
     async registerInstallation(appVersion) {
