@@ -744,7 +744,7 @@ async function abrirFatura(venda) {
     (emp.regime ? '<div><strong>Regime:</strong> ' + esc(emp.regime) + '</div>' : '') +
     '<div>' + esc(emp.endereco || 'Luanda, Angola') + '</div><div><strong>Tel:</strong> ' + esc(emp.telefone || '-') + (emp.email ? ' | ' + esc(emp.email) : '') + '</div>' +
     (emp.alvara ? '<div><strong>Alvará:</strong> ' + esc(emp.alvara) + '</div>' : '') + '</div></div></div>' +
-    '<div style="text-align:right"><div style="font-size:.65rem;color:#999">FATURA / RECIBO</div>' +
+    '<div style="text-align:right"><div style="font-size:.65rem;color:#999">DOCUMENTO COMERCIAL / RECIBO</div>' +
     '<div style="font-size:1rem;font-weight:800;color:#1a3a5c">' + esc(venda.numeroFatura) + '</div>' +
     '<div style="font-size:.7rem;color:#555;margin-top:2px"><strong>Data:</strong> ' + fmtDT(venda.data) + '</div>' +
     '<div style="font-size:.7rem;color:#555"><strong>Origem:</strong> ' + esc(venda.operador || 'Admin') + '</div></div></div>' +
