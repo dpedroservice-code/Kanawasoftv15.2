@@ -28,5 +28,7 @@ jobs:
           node --check server/server.js
           node --check server/routes.js
           node --check server/database.js
+          node --check server/agt/jws.js
+          node --check scripts/agt/generate-software-keypair.js
       - name: Run security and cloud-sync regression checks
         run: node --test tests/*.test.mjs
