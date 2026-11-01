@@ -2502,18 +2502,41 @@ async function renderEcommercePedidos() {
 async function detalharPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; alert('Pedido #' + id + '\nCliente: ' + p.cliente + '\nTotal: ' + fmt(p.total) + '\nStatus: ' + p.status); }
 async function atualizarStatusPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; const s = prompt('Status (pendente, enviado, entregue, cancelado):', p.status); if (s) { p.status = s; await saveData('ecommercePedidos', p); toast('Status atualizado', 'success'); openModule('ecommerce-pedidos'); } }
 function exportarPedidosEcommerce() { toast('Exportando pedidos...', 'info'); }
-function renderEcommercePagamento() {
-  return header('Gateway de Pagamento', 'Configure os métodos de pagamento', 'var(--success)', '', 'fa-credit-card') +
-    '<div class="card"><div class="payment-methods">' +
-    '<div class="payment-method selected"><i class="fas fa-credit-card"></i> Cartão</div>' +
-    '<div class="payment-method"><i class="fas fa-money-bill-wave"></i> Dinheiro</div>' +
-    '<div class="payment-method"><i class="fas fa-mobile-alt"></i> Mobile Money</div>' +
-    '<div class="payment-method"><i class="fas fa-university"></i> Transferência</div></div>' +
-    '<div class="form-grid" style="margin-top:12px"><div class="form-group"><label>Banco</label><select><option>BPC</option><option>BIC</option><option>Banco Atlas</option></select></div><div class="form-group"><label>Chave API</label><input type="password" placeholder="Chave de API"></div></div>' +
-    '<div class="form-actions"><button class="btn btn-success" onclick="configurarPagamento()"><i class="fas fa-save"></i> Salvar</button><button class="btn btn-primary" onclick="testarPagamento()"><i class="fas fa-check"></i> Testar</button></div></div>';
+async function renderEcommercePagamento() {
+  let providers = [];
+  let loadError = null;
+  try {
+    if (!window.KanawaCloud || !KanawaCloud.ready) throw new Error('Inicie sessão na cloud para consultar os gateways.');
+    providers = await KanawaCloud.getPaymentProviderStatus();
+  } catch (error) { loadError = error; }
+  const enabled = providers.filter(function (p) { return p.enabled && p.mode !== 'not_configured'; }).length;
+  const rows = providers.map(function (p) {
+    const status = p.enabled && p.mode !== 'not_configured' ? 'Ativo' : 'Desativado';
+    const countries = Array.isArray(p.supported_countries) ? p.supported_countries.join(', ') : '-';
+    const mode = p.mode === 'manual' ? 'Manual' : p.mode === 'test' ? 'Teste' : p.mode === 'live' ? 'Produção' : 'Não configurado';
+    return [esc(p.display_name || p.provider_code), esc(countries), badge(status, p.enabled && p.mode !== 'not_configured' ? 'success' : 'warning'), esc(mode), fmtDT(p.updated_at)];
+  });
+  return header('Integrações de Pagamento', enabled + ' gateways ativos de ' + providers.length, 'var(--success)', '', 'fa-credit-card') +
+    '<div class="card"><div class="alert alert-warning">As credenciais de pagamento não devem ser introduzidas nesta página. A ativação exige configuração segura no servidor, callbacks/webhooks e testes reais do fornecedor.</div>' +
+    (loadError ? '<div class="alert alert-danger">' + esc(loadError.message || 'Não foi possível consultar os gateways.') + '</div>' :
+      (enabled ? '<div class="alert alert-success">' + enabled + ' gateway(s) com estado ativo na configuração central.</div>' :
+      '<div class="alert alert-warning">Nenhum gateway está ativo. O checkout online não pode cobrar pagamentos neste momento.</div>')) +
+    (providers.length ? '<div class="table-wrap"><table><thead><tr><th>Fornecedor</th><th>Países</th><th>Estado</th><th>Modo</th><th>Atualizado</th></tr></thead><tbody>' +
+      rows.map(function (r) { return '<tr>' + r.map(function (cell) { return '<td>' + cell + '</td>'; }).join('') + '</tr>'; }).join('') +
+      '</tbody></table></div>' : '') +
+    '<p class="text-muted" style="margin-top:12px;font-size:.8rem">Para Angola, Multicaixa Express e Unitel Money aparecem na lista, mas estão desativados até existirem credenciais válidas e integração de servidor. Transferência manual também não está ativa.</p>' +
+    '<button class="btn btn-secondary" onclick="testarPagamento()">Verificar disponibilidade</button></div>';
 }
-function configurarPagamento() { toast('Gateway configurado', 'success'); }
-function testarPagamento() { toast('Teste concluído', 'success'); }
+function configurarPagamento() {
+  toast('A configuração dos gateways é feita pelo administrador da plataforma no ambiente seguro do servidor. Não coloque chaves secretas no navegador.', 'warning');
+}
+async function testarPagamento() {
+  try {
+    const providers = await KanawaCloud.getPaymentProviderStatus();
+    const active = providers.filter(function (p) { return p.enabled && p.mode !== 'not_configured'; });
+    toast(active.length ? active.length + ' gateway(s) marcados como ativos. Ainda é necessário testar uma transação real.' : 'Nenhum gateway está ativo; não existe pagamento real para testar.', active.length ? 'warning' : 'error');
+  } catch (error) { toast(error.message || 'Não foi possível verificar os gateways.', 'error'); }
+}
 async function renderEcommerceRastreio() { return await window.KanawaMaps.renderEcommerceTracking(); }
 
 /* RH AVANÇADO */
