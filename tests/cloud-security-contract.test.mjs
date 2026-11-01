@@ -186,3 +186,18 @@ test('normalized sales schema enforces tenant isolation and transactional stock 
   assert.ok(migration.includes('stock_quantity=stock_quantity-v_qty'));
   assert.ok(migration.includes('private.ks_has_company_role'));
 });
+
+test('SaaS dashboard, license activation telemetry and globalization are integrated', async () => {
+ const app=await read('app/app.js');
+ assert.match(app,/renderSaaSAdmin/); assert.match(app,/ks_company_licenses/); assert.match(app,/ks_installations/);
+ assert.match(app,/ks_demo_requests/); assert.match(app,/ks_refresh_license_alerts/); assert.match(app,/renderGlobalizacao/);
+ assert.match(app,/ks_company_locales/); assert.match(app,/ks_tax_rules/); assert.match(app,/ks_exchange_rates/);
+});
+test('Logistics route calculation uses geocoding and road-network routing APIs', async () => {
+ const app=await read('app/app.js'); assert.match(app,/photon\\.komoot\\.io/);
+ assert.match(app,/route\\/v1\\/driving/); assert.match(app,/distance\\/1000/); assert.match(app,/guardarRotaReal/);
+});
+test('License expiry gates local writes and the platform admin UI is role-gated', async () => {
+ const app=await read('app/app.js'); assert.match(app,/ksAssertWritableStore/);
+ assert.match(app,/KS_ENTITLEMENTS\\.read_only/); assert.match(app,/if \\(m === 'saas'\\) return KS_PLATFORM_ADMIN/);
+});
