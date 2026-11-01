@@ -2,7 +2,9 @@
 /* KANAWA SOFT ERP v15.2 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
 const APP_VERSION = '15.2';
-const CLOUD_AUTH = window.supabase && window.supabase.createClient('https://jiehrswweoyesbabrpjf.supabase.co', 'sb_publishable_l9HL3zMMJ5rN7vnXUZPa1g_9ZA1q7PO', { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+const CLOUD_SUPABASE_URL = 'https://jiehrswweoyesbabrpjf.supabase.co';
+const CLOUD_PUBLISHABLE_KEY = 'sb_publishable_l9HL3zMMJ5rN7vnXUZPa1g_9ZA1q7PO';
+const CLOUD_AUTH = window.supabase && window.supabase.createClient(CLOUD_SUPABASE_URL, CLOUD_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 let CLOUD_COMPANIES = [];
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
@@ -1660,11 +1662,50 @@ async function exportarVendasCSV() {
 /* ====== USUÁRIOS ====== */
 async function renderUsuarios() {
   if (!podeAcessar('usuarios')) return '<div class="card"><h3>Sem permissão</h3></div>';
+  if (CLOUD_AUTH) {
+    const companyId = currentCloudCompanyId();
+    const { data: members, error } = await CLOUD_AUTH.from('ks_company_memberships')
+      .select('user_id,role,status,created_at').eq('company_id', companyId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    const ids = (members || []).map(m => m.user_id);
+    let profiles = [];
+    if (ids.length) {
+      const result = await CLOUD_AUTH.from('ks_profiles')
+        .select('user_id,full_name,email,phone').in('user_id', ids);
+      if (result.error) throw result.error;
+      profiles = result.data || [];
+    }
+    const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+    const roleLabels = { owner: 'Proprietário', admin: 'Administrador', manager: 'Gerente', operator: 'Operador', cashier: 'Caixa', accountant: 'Contabilista', viewer: 'Consulta' };
+    const rows = (members || []).map(m => {
+      const profile = profileMap.get(m.user_id) || {};
+      const statusLabel = m.status === 'invited' ? 'Convite pendente' : (m.status === 'active' ? 'Activo' : 'Suspenso');
+      return ['<strong>' + esc(profile.full_name || 'Utilizador') + '</strong>', esc(profile.email || 'Email indisponível'),
+        esc(roleLabels[m.role] || m.role), badge(statusLabel, m.status === 'active' ? 'success' : (m.status === 'invited' ? 'warning' : 'danger')), fmtD(m.created_at)];
+    });
+    const currentUser = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+    const currentMembership = (members || []).find(m => m.user_id === currentUser.auth_user_id);
+    const inviteButton = currentMembership && ['owner','admin'].includes(currentMembership.role)
+      ? '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-user-plus"></i> Convidar utilizador</button>' : '';
+    return header('Utilizadores', (members || []).length + ' membros da empresa', 'var(--danger)', inviteButton, 'fa-user-shield') +
+      '<div class="card"><p style="color:var(--text-muted);margin-bottom:12px">Os convites são enviados por email. O acesso só fica activo depois da confirmação do convite.</p>' +
+      table(['Nome', 'Email', 'Perfil', 'Estado', 'Adicionado'], rows) + '</div>';
+  }
   const u = await getData('usuarios');
-  const rows = u.map(x => [x.id, '<strong>' + esc(x.nome) + '</strong>', esc(x.email), badge(x.perfil || 'operador', 'primary'), badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'usuarios\',' + x.id + ')"><i class="fas fa-trash"></i></button>']);
+  const rows = u.map(x => [x.id, '<strong>' + esc(x.nome) + '</strong>', esc(x.email), badge(x.perfil || 'operador', 'primary'), badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\\'usuarios\\',' + x.id + ')"><i class="fas fa-trash"></i></button>']);
   return header('Usuários', u.length + ' usuários', 'var(--danger)', '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-plus"></i> Novo</button>', 'fa-user-shield') + '<div class="card">' + table(['#', 'Nome', 'Email', 'Perfil', 'Status', 'Ações'], rows) + '</div>';
 }
 function abrirModalUsuario() {
+  if (CLOUD_AUTH) {
+    openModal('Convidar utilizador',
+      '<div class="form-group"><label>Nome (opcional)</label><input id="uNome" autocomplete="name"></div>' +
+      '<div class="form-group"><label>Email *</label><input id="uEmail" type="email" required autocomplete="email"></div>' +
+      '<div class="form-group"><label>Perfil de acesso</label><select id="uPerfil"><option value="manager">Gerente</option><option value="operator">Operador</option><option value="cashier">Caixa</option><option value="accountant">Contabilista</option><option value="viewer">Consulta</option></select></div>' +
+      '<p style="font-size:.8rem;color:var(--text-muted)">Não defina uma senha para outra pessoa. O utilizador receberá um convite para criar a sua própria senha.</p>' +
+      '<button class="btn btn-primary btn-block" onclick="salvarUsuario()">Enviar convite</button>');
+    return;
+  }
   openModal('Novo Usuário',
     '<div class="form-group"><label>Nome *</label><input id="uNome"></div>' +
     '<div class="form-group"><label>Email *</label><input id="uEmail" type="email"></div>' +
@@ -1672,7 +1713,31 @@ function abrirModalUsuario() {
     '<div class="form-group"><label>Perfil</label><select id="uPerfil"><option value="admin">Administrador</option><option value="gerente">Gerente</option><option value="operador">Operador</option><option value="caixa">Operador de Caixa</option></select></div>' +
     '<button class="btn btn-primary btn-block" onclick="salvarUsuario()">Salvar</button>');
 }
-async function salvarUsuario() { const n = $('uNome').value.trim(), e = $('uEmail').value.trim(), s = $('uSenha').value; if (!n || !e || s.length < 6) { toast('Preencha todos os campos', 'warning'); return; } await saveData('usuarios', { nome: n, email: e, senha: s, perfil: $('uPerfil').value, ativo: true, dataCriacao: now() }); toast('Usuário criado', 'success'); closeModal(); openModule('usuarios'); }
+async function convidarUsuarioCloud() {
+  const email = $('uEmail').value.trim().toLowerCase();
+  const fullName = $('uNome').value.trim();
+  const role = $('uPerfil').value;
+  if (!email) { toast('Introduza o email do utilizador.', 'warning'); return; }
+  const { data: sessionData, error: sessionError } = await CLOUD_AUTH.auth.getSession();
+  if (sessionError || !sessionData.session) { toast('A sessão expirou. Entre novamente.', 'error'); return; }
+  const response = await fetch(CLOUD_SUPABASE_URL + '/functions/v1/ks-invite-member', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': CLOUD_PUBLISHABLE_KEY,
+      'Authorization': 'Bearer ' + sessionData.session.access_token },
+    body: JSON.stringify({ email, full_name: fullName, role, company_id: currentCloudCompanyId() })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) { toast(result.error || 'Não foi possível enviar o convite.', 'error'); return; }
+  toast('Convite enviado para ' + email + '.', 'success');
+  closeModal(); openModule('usuarios');
+}
+async function salvarUsuario() {
+  if (CLOUD_AUTH) return convidarUsuarioCloud();
+  const n = $('uNome').value.trim(), e = $('uEmail').value.trim(), s = $('uSenha').value;
+  if (!n || !e || s.length < 6) { toast('Preencha todos os campos', 'warning'); return; }
+  await saveData('usuarios', { nome: n, email: e, senha: s, perfil: $('uPerfil').value, ativo: true, dataCriacao: now() });
+  toast('Usuário criado', 'success'); closeModal(); openModule('usuarios');
+}
 
 /* ====== AUDITORIA ====== */
 async function renderAuditoria() {
@@ -2986,7 +3051,7 @@ const EXPORTS = [
   'abrirModalDocumento','salvarDocumento',
   'abrirModalTicket','salvarTicket','resolverTicket',
   'exportarBackupCompleto','exportarVendasCSV',
-  'abrirModalUsuario','salvarUsuario',
+  'abrirModalUsuario','salvarUsuario','convidarUsuarioCloud',
   'verFatura','excluirItem',
   'abrirModalPromocao','salvarPromocao','togglePublicado',
   'converterOrcamento',

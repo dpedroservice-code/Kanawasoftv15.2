@@ -138,3 +138,23 @@ test('active user can switch only between their own active company memberships',
   assert.match(app, /memberships\.find\(m => m\.company_id === currentId\) \|\| memberships\[0\]/);
   assert.match(html, /id="companySwitcher"/);
 });
+
+test('company invitations use a server-side Edge Function with admin authorization', async () => {
+  const app = await read('app/app.js');
+  const fn = await read('supabase/functions/ks-invite-member/index.ts');
+  assert.match(app, /functions\/v1\/ks-invite-member/);
+  assert.match(app, /Bearer '\\s*\\+ sessionData\.session\.access_token/);
+  assert.match(fn, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(fn, /admin\.auth\.getUser\(token\)/);
+  assert.match(fn, /inviteUserByEmail/);
+  assert.match(fn, /\["owner", "admin"\]\.includes\(membership\.role\)/);
+  assert.match(fn, /status: "invited"/);
+});
+
+test('invited users become active only after confirming their email', async () => {
+  const migration = await read('supabase/migrations/20261101155214_kanawa_company_member_invites.sql');
+  assert.match(migration, /after update of email_confirmed_at on auth\.users/i);
+  assert.match(migration, /status = 'active'[\s\S]*status = 'invited'/i);
+  assert.match(migration, /profile_read_company_admin/);
+  assert.match(migration, /membership_read_company_admin/);
+});
