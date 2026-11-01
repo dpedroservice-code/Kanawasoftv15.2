@@ -510,6 +510,17 @@
       return failIfError(await client.rpc('ks_get_company_entitlements', { p_company_id: context.company.id }));
     },
 
+    async getPaymentProviderStatus() {
+      if (!this.ready) throw new Error('Inicie sessão para consultar os gateways de pagamento.');
+      return failIfError(await client.rpc('ks_list_payment_provider_status')) || [];
+    },
+
+    async getMapProviderConfig() {
+      if (!this.ready) return null;
+      const rows = failIfError(await client.rpc('ks_get_map_provider_config')) || [];
+      return Array.isArray(rows) ? (rows[0] || null) : rows;
+    },
+
     async submitDemoRequest(details) {
       if (!client) throw new Error('Serviço de demonstração indisponível.');
       const result = await client.from('ks_demo_requests').insert({
