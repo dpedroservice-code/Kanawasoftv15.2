@@ -193,10 +193,84 @@
       });
     },
 
-    async upsertRecord(store, item) {
+    async upsertRecord(store, item, options) {
       if (!this.ready || this.isLocalOnly(store)) return false;
       const id = String(item.id === undefined || item.id === null ? '' : item.id);
       if (!id || id.length > 120) throw new Error('Identificador de registo inválido para sincronização.');
+
+      // Mirror products into the normalized table so stock and plan quotas are enforced centrally.
+      if (store === 'produtos') {
+        const stock = Math.max(0, Number(item.estoque) || 0);
+        const product = {
+          external_id: id,
+          sku: item.codigo || item.codigoBarras || null,
+          name: item.nome || 'Produto',
+          category: item.categoria || null,
+          unit: item.unidade || 'UN',
+          unit_price: Math.max(0, Number(item.preco) || 0),
+          stock_quantity: stock,
+          min_stock: Math.max(0, Number(item.estoqueMin !== undefined ? item.estoqueMin : item.estoque_min) || 0),
+          description: item.descricao || null,
+          image_path: (typeof item.imagem === 'string' && !item.imagem.startsWith('data:')) ? item.imagem : null,
+          is_active: item.ativo !== false
+        };
+        const syncProduct = await client.rpc('ks_sync_product', {
+          p_company_id: context.company.id,
+          p_product: product
+        });
+        if (syncProduct.error) throw syncProduct.error;
+        const stockUpdate = await client.from('ks_products')
+          .update({ stock_quantity: stock, updated_at: new Date().toISOString() })
+          .eq('company_id', context.company.id)
+          .eq('external_id', id);
+        if (stockUpdate.error) throw stockUpdate.error;
+      }
+
+      // Finalized POS sales go through the database transaction which checks licence limits,
+      // verifies stock, decrements inventory, and records invoice usage exactly once.
+      if (store === 'vendas' && item.status === 'finalizada' && !(options && options.skipSaleFinalize)) {
+        const saleItems = (item.itens || item.carrinho || []).map(function (line) {
+          const quantity = Number(line.qty !== undefined ? line.qty : line.quantidade) || 0;
+          const price = Number(line.preco !== undefined ? line.preco : line.unit_price) || 0;
+          return {
+            product_external_id: String(line.id !== undefined ? line.id : (line.product_external_id || line.product_id || '')),
+            product_name: line.nome || line.product_name || 'Artigo',
+            quantity: quantity,
+            unit_price: price,
+            line_total: Number(line.subtotal !== undefined ? line.subtotal : quantity * price) || 0,
+            stock_tracked: true
+          };
+        });
+        if (!saleItems.length || saleItems.some(function (line) { return !line.product_external_id || line.quantity <= 0; })) {
+          throw new Error('A venda não pode ser sincronizada: verifique os artigos e quantidades.');
+        }
+        const sale = {
+          external_id: id,
+          invoice_number: item.numeroFatura || item.invoice_number || ('FT-' + id),
+          customer_name: item.clienteNome || item.customer_name || null,
+          customer_tax_id: item.clienteNif || item.customer_tax_id || null,
+          customer_phone: item.clienteTelefone || item.customer_phone || null,
+          subtotal: Number(item.subtotal) || 0,
+          discount_value: Number(item.descontoValor !== undefined ? item.descontoValor : item.discount_value) || 0,
+          tax_amount: Number(item.iva !== undefined ? item.iva : item.tax_amount) || 0,
+          total: Number(item.total) || 0,
+          amount_received: Number(item.valorRecebido !== undefined ? item.valorRecebido : item.amount_received) || 0,
+          change_amount: Number(item.troco !== undefined ? item.troco : item.change_amount) || 0,
+          payment_method: item.pagamento || item.payment_method || 'não indicado',
+          tax_regime: item.regime || item.tax_regime || null,
+          status: 'finalizada',
+          notes: item.observacoes || item.notes || null,
+          operator_name: item.operador || item.operator_name || null,
+          sold_at: item.data || item.sold_at || new Date().toISOString()
+        };
+        const finalizeSale = await client.rpc('ks_finalize_sale', {
+          p_company_id: context.company.id,
+          p_sale: sale,
+          p_items: saleItems
+        });
+        if (finalizeSale.error) throw finalizeSale.error;
+      }
+
       const result = await client
         .from('ks_records')
         .upsert({
@@ -211,6 +285,13 @@
 
     async deleteRecord(store, id) {
       if (!this.ready || this.isLocalOnly(store)) return false;
+      if (store === 'produtos') {
+        const deactivate = await client.from('ks_products')
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq('company_id', context.company.id)
+          .eq('external_id', String(id));
+        if (deactivate.error) throw deactivate.error;
+      }
       const result = await client
         .from('ks_records')
         .delete()
