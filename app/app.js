@@ -141,7 +141,7 @@ async function hashCloudBlob(blob) {
 }
 async function prepareCloudPayload(store, item, companyId) {
   const payload = JSON.parse(JSON.stringify(item));
-  const refs = item._cloudMediaRefs || {};
+  const refs = { ...(item._cloudMediaRefs || {}) };
   for (const field of CLOUD_MEDIA_FIELDS) {
     const value = payload[field];
     if (typeof value === 'string' && /^data:image\//i.test(value)) {
@@ -159,12 +159,13 @@ async function prepareCloudPayload(store, item, companyId) {
       });
       if (error) throw error;
       payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + path;
+      refs[field] = path;
     } else if (refs[field] && typeof value === 'string' && value.includes('/storage/v1/object/sign/')) {
       payload[field] = 'storage://' + CLOUD_MEDIA_BUCKET + '/' + refs[field];
     }
   }
   delete payload._cloudMediaRefs;
-  return sanitizeCloudPayload(payload);
+  return { payload: sanitizeCloudPayload(payload), mediaRefs: refs };
 }
 async function restoreCloudMedia(payload, existing) {
   const record = { ...payload };
@@ -191,7 +192,8 @@ async function syncCloudRecord(store, item) {
   if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
   const companyId = currentCloudCompanyId();
   if (!companyId || item == null || item.id == null) throw new Error('Sessão ou empresa cloud não identificada.');
-  const payload = await prepareCloudPayload(store, item, companyId);
+  const prepared = await prepareCloudPayload(store, item, companyId);
+  const payload = prepared.payload;
   const encoded = JSON.stringify(payload);
   if (new Blob([encoded]).size > CLOUD_MAX_RECORD_BYTES) throw new Error('Registo demasiado grande para sincronização cloud.');
   const { error } = await CLOUD_AUTH.from('ks_records').upsert({
@@ -215,6 +217,14 @@ async function clearAllCloudRecords() {
   if (!companyId) throw new Error('Empresa cloud não identificada.');
   const { error } = await CLOUD_AUTH.from('ks_records').delete().eq('company_id', companyId);
   if (error) throw error;
+  if (Object.keys(prepared.mediaRefs).length) {
+    const wasEnabled = DB.cloudSyncEnabled;
+    DB.cloudSyncEnabled = false;
+    try {
+      const current = await DB.get(store, item.id);
+      if (current) await DB.put(store, { ...current, _cloudMediaRefs: prepared.mediaRefs });
+    } finally { DB.cloudSyncEnabled = wasEnabled; }
+  }
   return true;
 }
 async function deleteCloudRecord(store, id) {
