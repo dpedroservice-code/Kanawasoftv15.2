@@ -2,6 +2,7 @@
 /* KANAWA SOFT ERP v15.2 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
 const APP_VERSION = '15.2';
+const CLOUD_AUTH = window.supabase && window.supabase.createClient('https://jiehrswweoyesbabrpjf.supabase.co', 'sb_publishable_l9HL3zMMJ5rN7vnXUZPa1g_9ZA1q7PO', { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
 let API_TOKEN = localStorage.getItem('kanawa_api_token') || null;
@@ -87,33 +88,211 @@ const DB_STORES = [
   'producao','ordensProducao','mrp','boms','custosProducao','controleQualidade','planosProducao','planoContas','budgets','forecasts','conciliacoes','transacoesBancarias','previsoesVendas','tendencias','folhasPagamento','turnos','ferias','vagas','candidatos','desempenhoRH','beneficios','planosCarreira','onboarding','pontoDigital','rescisoes','automacoes','scoreLeads','campanhasMarketing','segmentacoes','cupons','fidelidade','ganttProjetos','timesheets','manutencoes','ordensManutencao','garantias','pecasEstoque','checklistsInspecao','calendarioManutencoes','gpsTracking','abastecimentos','multas','tecnicos','roteirizacao','etiquetas','transferencias','inventarios','lotes','rastreios','recebimentos','ecommerceProdutos','ecommerceCarrinhos','ecommercePedidos','avaliacoes','pagamentosEcommerce','vendasConsignadas','tabelasPrecos','assinaturasDigitais','documentosFiscais','certificacoes','quizzes','mensagensChat','mensagensWhatsApp','eventosCalendar','unidades','servicos','clientesPortal','acessos','politicasSenha','tentativasLogin','sessoes','sms2FA','integracoesAGT','ivas','irts','backups','backupsAgendados','backupsNuvem','audiobooks','ddgHistorico','bingHistorico','dashboardsCustom','modulosPersonalizados','departamentos','frequencias','feriasFuncionarios','pagamentosFuncionarios','motoristas','manutencoesAtivos','depreciacoes','historicoOS','contatosWhatsApp','templatesWhatsApp','carrinhosSalvos','feedbacks','logsSeguranca','seguranca','migracoes','tarefasProjetos','membrosProjetos','atividadesProjetos','gruposUsuarios','config','armazens'
 ];
 const DB = {
-  name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES,
-  init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; res(this.db); }; req.onerror = e => rej(e.target.error); }); },
+  name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES, cloudSyncEnabled: false,
+  init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; this.db.onversionchange = () => this.db.close(); res(this.db); }; req.onerror = e => rej(e.target.error); }); },
+  openTenant(companyId) {
+    const safeId = String(companyId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeId) return Promise.reject(new Error('Identificador de empresa inválido.'));
+    if (this.db) { this.db.close(); this.db = null; }
+    this.name = 'kanawa_erp_v15_company_' + safeId;
+    return this.init();
+  },
   _tx(s, m) { return this.db.transaction(s, m || 'readonly').objectStore(s); },
-  add(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
-  put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  add(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => { const id = r.result; if (this.cloudSyncEnabled) queueCloudUpsert(s, { ...i, id: i.id || id }); res(id); }; r.onerror = () => rej(r.error); }); },
+  put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudUpsert(s, i); res(r.result); }; r.onerror = () => rej(r.error); }); },
   get(s, id) { return new Promise((res, rej) => { const r = this._tx(s).get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   getAll(s) { return new Promise((res, rej) => { const r = this._tx(s).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); },
-  del(s, id) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').delete(id); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); },
+  del(s, id) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').delete(id); r.onsuccess = () => { if (this.cloudSyncEnabled) queueCloudDelete(s, id); res(); }; r.onerror = () => rej(r.error); }); },
   clear(s) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').clear(); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); },
   count(s) { return new Promise((res, rej) => { const r = this._tx(s).count(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 };
 
+const CLOUD_EXCLUDED_STORES = new Set([
+  'empresas','usuarios','config','integracoesAGT','integracoes_agt',
+  'backups','backupsAgendados','backupsNuvem','logsSeguranca','seguranca',
+  'sessoes','sms2FA','politicasSenha','tentativasLogin','acessos',
+  '_sync_queue','certificacoes'
+]);
+const CLOUD_MAX_RECORD_BYTES = 750000;
+function isCloudStoreAllowed(store) {
+  return DB_STORES.includes(store) && !CLOUD_EXCLUDED_STORES.has(store) && !String(store).startsWith('_');
+}
+function sanitizeCloudPayload(value) {
+  if (Array.isArray(value)) return value.map(sanitizeCloudPayload);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (/password|senha|token|secret|api.?key|private.?key|service.?role|authorization|credential/i.test(key)) continue;
+    if (typeof item === 'string' && /^data:image\//i.test(item)) continue;
+    out[key] = sanitizeCloudPayload(item);
+  }
+  return out;
+}
+function currentCloudCompanyId() {
+  try { return JSON.parse(localStorage.getItem('kanawa_empresa') || '{}').cloud_id || null; }
+  catch { return null; }
+}
+async function syncCloudRecord(store, item) {
+  if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId || item == null || item.id == null) throw new Error('Sessão ou empresa cloud não identificada.');
+  const payload = sanitizeCloudPayload(item);
+  const encoded = JSON.stringify(payload);
+  if (new Blob([encoded]).size > CLOUD_MAX_RECORD_BYTES) throw new Error('Registo demasiado grande para sincronização cloud; imagens devem usar armazenamento de ficheiros.');
+  const { error } = await CLOUD_AUTH.from('ks_records').upsert({
+    company_id: companyId, store_key: store, record_id: String(item.id), payload
+  }, { onConflict: 'company_id,store_key,record_id' });
+  if (error) throw error;
+  return true;
+}
+async function clearCloudStore(store) {
+  if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId) throw new Error('Empresa cloud não identificada.');
+  const { error } = await CLOUD_AUTH.from('ks_records').delete()
+    .eq('company_id', companyId).eq('store_key', store);
+  if (error) throw error;
+  return true;
+}
+async function clearAllCloudRecords() {
+  if (!CLOUD_AUTH) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId) throw new Error('Empresa cloud não identificada.');
+  const { error } = await CLOUD_AUTH.from('ks_records').delete().eq('company_id', companyId);
+  if (error) throw error;
+  return true;
+}
+async function deleteCloudRecord(store, id) {
+  if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId) throw new Error('Empresa cloud não identificada.');
+  const { error } = await CLOUD_AUTH.from('ks_records').delete()
+    .eq('company_id', companyId).eq('store_key', store).eq('record_id', String(id));
+  if (error) throw error;
+  return true;
+}
+async function queueCloudUpsert(store, item) {
+  if (!isCloudStoreAllowed(store) || !item || item.id == null) return;
+  try { await syncCloudRecord(store, item); }
+  catch (error) {
+    console.warn('[Kanawa Cloud] Registo pendente:', store, error.message);
+    try { await DB.add('_sync_queue', { entity: 'cloud:' + store, action: 'upsert', payload: item, data: now(), synced: false }); } catch (_) {}
+  }
+}
+async function queueCloudDelete(store, id) {
+  if (!isCloudStoreAllowed(store) || id == null) return;
+  try { await deleteCloudRecord(store, id); }
+  catch (error) {
+    console.warn('[Kanawa Cloud] Eliminação pendente:', store, error.message);
+    try { await DB.add('_sync_queue', { entity: 'cloud:' + store, action: 'delete', payload: { id }, data: now(), synced: false }); } catch (_) {}
+  }
+}
+async function syncTenantRecords() {
+  if (!CLOUD_AUTH || !currentCloudCompanyId()) return 0;
+  DB.cloudSyncEnabled = false;
+  let total = 0, offset = 0;
+  try {
+    while (true) {
+      const { data, error } = await CLOUD_AUTH.from('ks_records')
+        .select('store_key,record_id,payload')
+        .order('updated_at', { ascending: true })
+        .range(offset, offset + 499);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      for (const row of data) {
+        if (!isCloudStoreAllowed(row.store_key) || !row.payload || typeof row.payload !== 'object') continue;
+        const record = { ...row.payload };
+        if (record.id == null) record.id = row.record_id;
+        const existing = await DB.get(row.store_key, record.id);
+        if (existing) {
+          for (const key of ['imagem','foto','avatar','logo','image','photo']) {
+            if (!record[key] && typeof existing[key] === 'string' && /^data:image\//i.test(existing[key])) record[key] = existing[key];
+          }
+        }
+        await DB.put(row.store_key, record);
+        total++;
+      }
+      if (data.length < 500) break;
+      offset += data.length;
+    }
+    DB.cloudSyncEnabled = true;
+    await processSyncQueue();
+    return total;
+  } catch (error) {
+    DB.cloudSyncEnabled = true;
+    console.error('[Kanawa Cloud] Falha ao carregar dados da empresa:', error);
+    throw error;
+  }
+}
+
 /* ====== API ====== */
 const API = {
-  async req(m, e, d) { const o = { method: m, headers: { 'Content-Type': 'application/json' } }; if (API_TOKEN) o.headers['Authorization'] = 'Bearer ' + API_TOKEN; if (d) o.body = JSON.stringify(d); try { const r = await fetch(API_BASE_URL + e, o); if (!r.ok) throw new Error('HTTP ' + r.status); API_ONLINE = true; updateApiStatus(true); return await r.json(); } catch (err) { API_ONLINE = false; updateApiStatus(false); return { offline: true, error: err.message }; } },
+  async req(m, e, d) {
+    if (CLOUD_AUTH) return { offline: true, error: 'Sincronização legada SQLite desactivada no modo cloud.' };
+    const o = { method: m, headers: { 'Content-Type': 'application/json' } };
+    try {
+      if (CLOUD_AUTH) {
+        const { data } = await CLOUD_AUTH.auth.getSession();
+        const accessToken = data && data.session && data.session.access_token;
+        if (accessToken) o.headers['Authorization'] = 'Bearer ' + accessToken;
+      } else if (API_TOKEN) o.headers['Authorization'] = 'Bearer ' + API_TOKEN;
+      if (d) o.body = JSON.stringify(d);
+      const r = await fetch(API_BASE_URL + e, o);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      API_ONLINE = true; updateApiStatus(true);
+      return await r.json();
+    } catch (err) {
+      API_ONLINE = false; updateApiStatus(false);
+      return { offline: true, error: err.message };
+    }
+  },
   get(e) { return this.req('GET', e); }, post(e, d) { return this.req('POST', e, d); }, put(e, d) { return this.req('PUT', e, d); }, del(e) { return this.req('DELETE', e); },
-  async checkHealth() { try { const r = await fetch(API_BASE_URL + '/health', { signal: AbortSignal.timeout(2000) }); API_ONLINE = r.ok; } catch { API_ONLINE = false; } updateApiStatus(API_ONLINE); return API_ONLINE; }
+  async checkHealth() { if (CLOUD_AUTH) { const { data } = await CLOUD_AUTH.auth.getSession(); API_ONLINE = false; updateApiStatus(!!(data && data.session)); return false; } try { const r = await fetch(API_BASE_URL + '/health', { signal: AbortSignal.timeout(2000) }); API_ONLINE = r.ok; } catch { API_ONLINE = false; } updateApiStatus(API_ONLINE); return API_ONLINE; }
 };
 async function getData(s) { try { return await DB.getAll(s); } catch (e) { console.warn('getData:', s, e); return []; } }
 async function saveData(store, item) { const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item); if (API_ONLINE) { try { if (item.id) await API.put('/' + store + '/' + item.id, item); else await API.post('/' + store, item); } catch (e) { queueSync(store, 'create', item); } } else { queueSync(store, item.id ? 'update' : 'create', item); } return id; }
 async function deleteData(s, id) { await DB.del(s, id); if (API_ONLINE) { try { await API.del('/' + s + '/' + id); } catch (e) { queueSync(s, 'delete', { id }); } } else { queueSync(s, 'delete', { id }); } }
 async function queueSync(entity, action, payload) { try { await DB.add('_sync_queue', { entity, action, payload, data: now(), synced: false }); } catch (e) { } }
-async function processSyncQueue() { if (!API_ONLINE) return 0; const q = await DB.getAll('_sync_queue'); const p = q.filter(x => !x.synced); if (!p.length) return 0; let ok = 0; for (const i of p) { try { if (i.action === 'create') await API.post('/' + i.entity, i.payload); else if (i.action === 'update') await API.put('/' + i.entity + '/' + i.payload.id, i.payload); else if (i.action === 'delete') await API.del('/' + i.entity + '/' + i.payload.id); i.synced = true; await DB.put('_sync_queue', i); ok++; } catch (e) { break; } } return ok; }
+async function processSyncQueue() {
+  const q = await DB.getAll('_sync_queue');
+  const pending = q.filter(x => !x.synced);
+  if (!pending.length) return 0;
+  let ok = 0;
+  for (const item of pending) {
+    try {
+      if (String(item.entity).startsWith('cloud:')) {
+        const store = item.entity.slice(6);
+        if (item.action === 'delete') await deleteCloudRecord(store, item.payload.id);
+        else await syncCloudRecord(store, item.payload);
+      } else {
+        if (CLOUD_AUTH || !API_ONLINE) continue;
+        if (item.action === 'create') await API.post('/' + item.entity, item.payload);
+        else if (item.action === 'update') await API.put('/' + item.entity + '/' + item.payload.id, item.payload);
+        else if (item.action === 'delete') await API.del('/' + item.entity + '/' + item.payload.id);
+      }
+      item.synced = true; await DB.put('_sync_queue', item); ok++;
+    } catch (error) { console.warn('[Kanawa Sync] Item pendente:', item.entity, error.message); break; }
+  }
+  return ok;
+}
 async function pullFromServer() { if (!API_ONLINE) return 0; let t = 0; const stores = DB_STORES.filter(s => !s.startsWith('_')); for (const s of stores) { try { const r = await API.get('/' + s); if (r && !r.offline && Array.isArray(r)) { for (const i of r) { if (!i.id) continue; try { await DB.put(s, i); t++; } catch (e) { } } } } catch (e) { } } return t; }
-async function syncNow(flag) { const on = await API.checkHealth(); if (!on) { if (flag) toast('Servidor offline — dados salvos localmente', 'warning'); return false; } const ind = $('syncIndicator'), txt = $('syncText'); if (ind) ind.className = 'sync-indicator show syncing'; if (txt) txt.textContent = 'Sincronizando...'; const pu = await processSyncQueue(); const pl = await pullFromServer(); if (ind) ind.className = 'sync-indicator show online'; if (txt) txt.textContent = 'Sincronizado ✓'; setTimeout(() => { if (ind) ind.className = 'sync-indicator'; }, 2000); if (flag) toast('✅ Sincronizado (' + pu + ' enviados, ' + pl + ' recebidos)', 'success'); return true; }
+async function syncNow(flag) {
+  const on = await API.checkHealth();
+  const sessionResult = CLOUD_AUTH ? await CLOUD_AUTH.auth.getSession() : { data: { session: null } };
+  const cloudOnline = !!(sessionResult.data && sessionResult.data.session);
+  if (!on && !cloudOnline) { if (flag) toast('Sem ligação ao servidor cloud — os dados ficam guardados localmente.', 'warning'); return false; }
+  const ind = $('syncIndicator'), txt = $('syncText');
+  if (ind) ind.className = 'sync-indicator show syncing';
+  if (txt) txt.textContent = 'Sincronizando...';
+  const sent = await processSyncQueue();
+  const received = on && !CLOUD_AUTH ? await pullFromServer() : 0;
+  if (ind) ind.className = 'sync-indicator show online';
+  if (txt) txt.textContent = 'Sincronizado ✓';
+  if (flag) toast('Sincronização concluída (' + sent + ' pendentes enviados, ' + received + ' recebidos do servidor legado).', 'success');
+  return true;
+}
 function toggleSync() { syncNow(true); }
-function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(async () => { if (API_ONLINE) await processSyncQueue(); }, 30000); }
+function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(async () => { if (API_ONLINE || CLOUD_AUTH) await processSyncQueue(); }, 30000); }
 
 /* ====== PERMISSÕES ====== */
 const PERMISSOES = {
@@ -1470,16 +1649,28 @@ async function renderConfig() {
     '<button class="btn btn-info" onclick="exportarBackupCompleto()"><i class="fas fa-download"></i> Backup</button>' +
     '<button class="btn btn-danger" onclick="resetTotal()"><i class="fas fa-bomb"></i> Reset Total</button></div></div>';
 }
-function salvarConfigEmpresa() {
+async function salvarConfigEmpresa() {
   const empAtual = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logoAtual = empAtual.logo || 'logo.png';
   const logoNovo = localStorage.getItem('kanawa_logo_temp') || logoAtual;
-  const e = { firma: $('cfgFirma').value, nome: $('cfgNome').value, nif: $('cfgNif').value, alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value, email: $('cfgEmail').value, endereco: $('cfgEnd').value, website: $('cfgSite').value, banco: $('cfgBanco').value, iban: $('cfgIban').value, logo: logoNovo };
+  const e = { ...empAtual, firma: $('cfgFirma').value, nome: $('cfgNome').value, nif: $('cfgNif').value, alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value, email: $('cfgEmail').value, endereco: $('cfgEnd').value, website: $('cfgSite').value, banco: $('cfgBanco').value, iban: $('cfgIban').value, logo: logoNovo };
+  if (CLOUD_AUTH && e.cloud_id) {
+    const { error } = await CLOUD_AUTH.from('ks_companies').update({
+      legal_name: e.nome || e.firma,
+      trade_name: e.firma || e.nome,
+      tax_id: e.nif || null,
+      tax_regime: e.regime || 'not_configured',
+      phone: e.telefone || null,
+      email: e.email || null,
+      address: e.endereco || null
+    }).eq('id', e.cloud_id);
+    if (error) { toast('Dados locais mantidos, mas a actualização cloud falhou: ' + error.message, 'error'); return; }
+  }
   localStorage.setItem('kanawa_empresa', JSON.stringify(e));
   localStorage.removeItem('kanawa_logo_temp');
   aplicarLogo();
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = e.firma || e.nome || 'Kanawa Soft';
-  toast('✅ Empresa atualizada', 'success');
+  toast('Empresa actualizada' + (e.cloud_id ? ' na nuvem' : ' localmente'), 'success');
 }
 function escolherLogoEmpresa(input) {
   const file = input.files[0]; if (!file) return;
@@ -1510,11 +1701,20 @@ function salvarRegras() {
 }
 function salvarConfigAPI() { localStorage.setItem('kanawa_api_url', $('cfgApiUrl').value); toast('URL salva — recarregando...', 'success'); setTimeout(() => location.reload(), 800); }
 async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? '✅ Servidor Online' : '❌ Servidor Offline', ok ? 'success' : 'warning'); }
-async function limparColecao(s) { if (!confirm('Limpar ' + s + '?')) return; await DB.clear(s); toast('Limpo', 'info'); openModule('config'); }
+async function limparColecao(s) {
+  if (!confirm('Limpar ' + s + ' desta empresa? Esta operação também elimina os registos cloud desta coleção.')) return;
+  try {
+    await clearCloudStore(s);
+    await DB.clear(s);
+    toast('Coleção limpa localmente e na nuvem.', 'success');
+    openModule('config');
+  } catch (error) { toast('Não foi possível limpar a coleção na nuvem: ' + error.message, 'error'); }
+}
 async function recarregarDemo() { if (!confirm('Carregar demo?')) return; await seedDemo(); pdvCache.ts = 0; toast('Demo carregado', 'success'); openModule('config'); }
 async function resetTotal() {
   if (!confirm('⚠️ APAGAR TODOS OS DADOS?')) return;
   if (!confirm('Confirme novamente')) return;
+  try { await clearAllCloudRecords(); } catch (error) { toast('Não foi possível limpar os dados cloud. Nenhum dado local foi apagado: ' + error.message, 'error'); return; }
   for (const s of DB.stores) { try { await DB.clear(s); } catch (e) { } }
   localStorage.clear();
   location.reload();
@@ -1522,8 +1722,8 @@ async function resetTotal() {
 
 /* ====== SETUP / AUTH ====== */
 function setupNextStep(s) {
-  if (setupStep === 1) { const n = $('setupNome').value.trim(); const nif = $('setupNif').value.trim(); if (!n || !nif) { toast('Preencha nome e NIF', 'warning'); return; } }
-  if (setupStep === 2) { const n = $('setupAdminNome').value.trim(); const e = $('setupAdminEmail').value.trim(); const p = $('setupAdminSenha').value; if (!n || !e || p.length < 6) { toast('Preencha todos os campos', 'warning'); return; } }
+  if (setupStep === 1) { const n = $('setupNome').value.trim(); const nif = $('setupNif').value.trim(); if (!n) { toast('Preencha o nome da empresa', 'warning'); return; } }
+  if (setupStep === 2) { const n = $('setupAdminNome').value.trim(); const e = $('setupAdminEmail').value.trim(); const p = $('setupAdminSenha').value; if (!n || !e || p.length < 10) { toast('Preencha nome, email e uma senha com pelo menos 10 caracteres', 'warning'); return; } }
   if (s === 3) { $('setupResumo').innerHTML = '<div><strong>🏢 Empresa:</strong> ' + esc($('setupNome').value) + '</div><div><strong>📋 NIF:</strong> ' + esc($('setupNif').value) + '</div><div><strong>👤 Admin:</strong> ' + esc($('setupAdminNome').value) + '</div>'; }
   const prev = $('setupStep' + setupStep), next = $('setupStep' + s);
   if (prev) prev.style.display = 'none';
@@ -1531,23 +1731,128 @@ function setupNextStep(s) {
   $$('.setup-step').forEach(el => { const x = parseInt(el.dataset.step); el.classList.toggle('active', x === s); el.classList.toggle('done', x < s); });
   setupStep = s;
 }
-async function finalizarSetup() {
-  const e = { id: 1, firma: $('setupNome').value.trim(), nome: $('setupNome').value.trim(), nif: $('setupNif').value.trim(), regime: $('setupRegime').value, telefone: $('setupTelefone').value, email: $('setupEmail').value, endereco: $('setupEndereco').value, logo: 'logo.png', dataCriacao: now() };
-  const u = { id: 1, nome: $('setupAdminNome').value.trim(), email: $('setupAdminEmail').value.trim(), senha: $('setupAdminSenha').value, perfil: $('setupAdminPerfil').value, ativo: true, dataCriacao: now() };
-  await DB.add('empresas', e); await DB.add('usuarios', u);
-  localStorage.setItem('kanawa_empresa', JSON.stringify(e));
-  localStorage.setItem('kanawa_user', JSON.stringify({ nome: u.nome, email: u.email, role: u.perfil }));
-  localStorage.setItem('kanawa_setup_done', 'true');
-  if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
-  aplicarLogo();
-  if ($('setupWizard')) $('setupWizard').classList.remove('active');
-  if ($('authScreen')) $('authScreen').classList.add('active');
-  if ($('loginEmail')) $('loginEmail').value = u.email;
-  toast('✅ Empresa configurada', 'success');
+function abrirSetup() {
+  if (!CLOUD_AUTH) { toast('Serviço de autenticação indisponível. Recarregue a página.', 'error'); return; }
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('setupWizard')) $('setupWizard').classList.add('active');
 }
-function logout() {
+async function restaurarSessaoCloud() {
+  if (!CLOUD_AUTH) return false;
+  const { data: sessionData, error: sessionError } = await CLOUD_AUTH.auth.getSession();
+  if (sessionError || !sessionData.session) return false;
+  const authUser = sessionData.session.user;
+  const { data: memberships, error: membershipError } = await CLOUD_AUTH
+    .from('ks_company_memberships')
+    .select('company_id,role,status')
+    .eq('user_id', authUser.id)
+    .eq('status', 'active')
+    .limit(1);
+  if (membershipError || !memberships || !memberships.length) return false;
+  const membership = memberships[0];
+  const { data: company, error: companyError } = await CLOUD_AUTH
+    .from('ks_companies')
+    .select('id,legal_name,trade_name,tax_id,country_code,currency_code,tax_regime,fiscal_status,phone,email,address')
+    .eq('id', membership.company_id)
+    .maybeSingle();
+  if (companyError || !company) return false;
+
+  // Each company receives a separate local IndexedDB database.
+  // This prevents a second tenant in the same browser profile from reading
+  // the first tenant's offline records. Legacy data remains untouched.
+  await DB.openTenant(company.id);
+
+  const profileResult = await CLOUD_AUTH.from('ks_profiles')
+    .select('full_name,phone').eq('user_id', authUser.id).maybeSingle();
+  const profile = profileResult.data || {};
+  const roleMap = { owner: 'admin', admin: 'admin', manager: 'gerente', operator: 'operador', cashier: 'caixa', accountant: 'gerente', viewer: 'operador' };
+  const appRole = roleMap[membership.role] || 'operador';
+  const user = {
+    id: 1, auth_user_id: authUser.id,
+    nome: profile.full_name || authUser.email,
+    email: authUser.email, role: appRole, perfil: appRole,
+    telefone: profile.phone || ''
+  };
+  const empresa = {
+    id: 1, cloud_id: company.id,
+    firma: company.trade_name || company.legal_name,
+    nome: company.legal_name, nif: company.tax_id || '',
+    regime: company.tax_regime, moeda: company.currency_code,
+    fiscal_status: company.fiscal_status,
+    telefone: company.phone || '', email: company.email || '',
+    endereco: company.address || ''
+  };
+  await DB.put('empresas', empresa);
+  await DB.put('usuarios', user);
+  localStorage.setItem('kanawa_user', JSON.stringify(user));
+  localStorage.setItem('kanawa_empresa', JSON.stringify(empresa));
+  localStorage.setItem('kanawa_setup_done', 'true');
+  try { await syncTenantRecords(); } catch (syncError) { toast('A empresa abriu com os dados locais; sincronização cloud pendente: ' + syncError.message, 'warning'); }
+  if ($('topbarEmpresa')) $('topbarEmpresa').textContent = empresa.firma;
+  if ($('userName')) $('userName').textContent = user.nome;
+  if ($('userRole')) $('userRole').textContent = membership.role === 'owner' ? 'Proprietário' : membership.role;
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('setupWizard')) $('setupWizard').classList.remove('active');
+  if ($('app')) $('app').classList.add('active');
+  renderSidebar(); openModule('dashboard'); updateNotifBadge();
+  return true;
+}
+async function finalizarSetup() {
+  if (!CLOUD_AUTH) { toast('Serviço de autenticação indisponível.', 'error'); return; }
+  const legalName = $('setupNome').value.trim();
+  const fullName = $('setupAdminNome').value.trim();
+  const email = $('setupAdminEmail').value.trim().toLowerCase();
+  const password = $('setupAdminSenha').value;
+  if (!legalName || !fullName || !email || password.length < 10) { toast('Preencha empresa, responsável, email e senha com pelo menos 10 caracteres.', 'warning'); return; }
+  const button = document.querySelector('#setupStep3 .btn-success');
+  if (button) button.disabled = true;
+  try {
+    const { data, error } = await CLOUD_AUTH.auth.signUp({
+      email, password,
+      options: { data: {
+        full_name: fullName,
+        phone: $('setupAdminTel').value.trim(),
+        company_legal_name: legalName,
+        company_trade_name: legalName,
+        company_tax_id: $('setupNif').value.trim() || null,
+        company_phone: $('setupTelefone').value.trim() || null,
+        company_email: $('setupEmail').value.trim().toLowerCase() || null,
+        company_address: $('setupEndereco').value.trim() || null,
+        country_code: 'AO',
+        currency_code: $('setupMoeda').value,
+        tax_regime: $('setupRegime').value
+      } }
+    });
+    if (error) throw error;
+    if (data.session) {
+      const ok = await restaurarSessaoCloud();
+      if (!ok) throw new Error('A conta foi criada, mas a empresa ainda não ficou disponível. Contacte o suporte.');
+      toast('Conta e empresa criadas com sucesso.', 'success');
+    } else {
+      if ($('setupWizard')) $('setupWizard').classList.remove('active');
+      if ($('authScreen')) $('authScreen').classList.add('active');
+      if ($('loginEmail')) $('loginEmail').value = email;
+      toast('Conta criada. Confirme o email recebido e depois entre no sistema.', 'success');
+    }
+  } catch (error) {
+    toast(error.message || 'Não foi possível criar a conta.', 'error');
+  } finally { if (button) button.disabled = false; }
+}
+async function recuperarSenha() {
+  if (!CLOUD_AUTH) { toast('Serviço de autenticação indisponível.', 'error'); return; }
+  const email = $('loginEmail').value.trim().toLowerCase();
+  if (!email) { toast('Introduza o seu email no campo de login.', 'warning'); $('loginEmail').focus(); return; }
+  try {
+    const { error } = await CLOUD_AUTH.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+    if (error) throw error;
+    toast('Enviámos instruções de recuperação para o seu email.', 'success');
+  } catch (error) { toast(error.message || 'Não foi possível iniciar a recuperação.', 'error'); }
+}
+async function logout() {
   if (!confirm('Sair?')) return;
+  if (CLOUD_AUTH) await CLOUD_AUTH.auth.signOut();
   localStorage.removeItem('kanawa_user');
+  localStorage.removeItem('kanawa_empresa');
+  localStorage.removeItem('kanawa_setup_done');
   if ($('app')) $('app').classList.remove('active');
   if ($('authScreen')) $('authScreen').classList.add('active');
 }
@@ -2438,43 +2743,29 @@ async function init() {
     const themeIcon = $('themeIcon'); if (themeIcon) themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
     aplicarLogo();
     API.checkHealth().catch(() => { });
-    setTimeout(() => {
-      const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
-      const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || 'null');
-      const setupDone = localStorage.getItem('kanawa_setup_done');
-      if (!setupDone || !emp) { const wiz = $('setupWizard'); if (wiz) wiz.classList.add('active'); return; }
-      if (emp && $('topbarEmpresa')) $('topbarEmpresa').textContent = emp.firma || emp.nome || 'Kanawa Soft';
-      const user = JSON.parse(localStorage.getItem('kanawa_user') || 'null');
-      if (user) {
-        if ($('authScreen')) $('authScreen').classList.remove('active');
-        if ($('app')) $('app').classList.add('active');
-        if ($('userName')) $('userName').textContent = user.nome;
-        if ($('userRole')) $('userRole').textContent = user.role;
-        if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-        renderSidebar(); openModule('dashboard'); updateNotifBadge();
-      } else { if ($('authScreen')) $('authScreen').classList.add('active'); }
-    }, 200);
+    const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
+    if (!CLOUD_AUTH) throw new Error('Biblioteca de autenticação cloud não carregou.');
+    const hasSession = await restaurarSessaoCloud();
+    if (!hasSession && $('authScreen')) $('authScreen').classList.add('active');
     const loginForm = $('loginForm');
-    if (loginForm) {
-      loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = $('loginEmail').value.trim(); const senha = $('loginPassword').value;
-        const err = $('loginError');
-        const users = await DB.getAll('usuarios');
-        const u = users.find(x => x.email === email && x.senha === senha);
-        if (u || (email === 'admin@kanawasoft.com' && senha === 'admin123')) {
-          const user = u || { nome: 'Administrador', email, perfil: 'admin' };
-          localStorage.setItem('kanawa_user', JSON.stringify({ nome: user.nome, email: user.email, role: user.perfil, avatar: user.avatar || null, telefone: user.telefone || '', nif: user.nif || '' }));
-          if ($('authScreen')) $('authScreen').classList.remove('active');
-          if ($('app')) $('app').classList.add('active');
-          if ($('userName')) $('userName').textContent = user.nome;
-          if ($('userRole')) $('userRole').textContent = user.perfil || 'admin';
-          if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-          renderSidebar(); openModule('dashboard'); updateNotifBadge();
-          toast('✅ Login realizado', 'success');
-        } else { if (err) { err.textContent = '❌ Email ou senha incorretos'; err.classList.add('show'); } }
-      });
-    }
+    if (loginForm) loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = $('loginEmail').value.trim().toLowerCase();
+      const senha = $('loginPassword').value;
+      const err = $('loginError');
+      const submit = loginForm.querySelector('button[type="submit"]');
+      if (submit) submit.disabled = true;
+      if (err) { err.textContent = ''; err.classList.remove('show'); }
+      try {
+        const { error } = await CLOUD_AUTH.auth.signInWithPassword({ email, password: senha });
+        if (error) throw error;
+        const ok = await restaurarSessaoCloud();
+        if (!ok) throw new Error('Não existe uma empresa activa associada a esta conta.');
+        toast('Sessão iniciada com segurança.', 'success');
+      } catch (error) {
+        if (err) { err.textContent = error.message || 'Email ou senha inválidos.'; err.classList.add('show'); }
+      } finally { if (submit) submit.disabled = false; }
+    });
     startAutoSync();
   } catch (e) {
     console.error('Init error:', e);
@@ -2495,7 +2786,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','recuperarSenha','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',
