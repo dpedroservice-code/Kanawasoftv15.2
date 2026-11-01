@@ -1,0 +1,37 @@
+name: Netlify deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: e26b5da1-c0d9-4bbe-b536-fb02a1a77502
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Explain missing Netlify token
+        if: ${{ env.NETLIFY_AUTH_TOKEN == '' }}
+        run: echo "Deployment skipped. Add NETLIFY_AUTH_TOKEN as a GitHub Actions repository secret, then re-run this workflow."
+
+      - name: Deploy pull request preview
+        if: ${{ github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' }}
+        run: npx --yes netlify-cli@23.11.0 deploy --dir=app --message "Kanawa Soft PR #${{ github.event.pull_request.number }}" --json
+
+      - name: Deploy production after merge to main
+        if: ${{ github.event_name == 'push' && env.NETLIFY_AUTH_TOKEN != '' }}
+        run: npx --yes netlify-cli@23.11.0 deploy --prod --dir=app --message "Kanawa Soft production ${{ github.sha }}" --json
+
+      - name: Create manual preview
+        if: ${{ github.event_name == 'workflow_dispatch' && env.NETLIFY_AUTH_TOKEN != '' }}
+        run: npx --yes netlify-cli@23.11.0 deploy --dir=app --message "Kanawa Soft manual preview ${{ github.sha }}" --json
