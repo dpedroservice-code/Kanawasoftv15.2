@@ -25,7 +25,7 @@ A chave usada no navegador é uma chave publishable/anon, própria para exposiç
 ## Limitações conhecidas que impedem declarar o ERP pronto para produção
 - Os registos elegíveis dos módulos são guardados em `ks_records` como JSONB, não em 135 tabelas PostgreSQL normalizadas. É uma camada de sincronização multiempresa, não substitui ainda a modelação relacional/validação de domínio de cada módulo.
 - Dados sensíveis e configurações (utilizadores, integrações AGT, credenciais, sessões, backups e logs de segurança) são deliberadamente excluídos da sincronização genérica; necessitam de fluxos próprios.
-- Imagens em data URL não são sincronizadas para a tabela JSONB; precisam de Supabase Storage com políticas de acesso por empresa.
+- Imagens de registos elegíveis são enviadas para o bucket privado `ks-company-media` (limite 5 MB; JPEG, PNG, WebP e GIF), com pastas por empresa, permissões RLS por papel e URLs assinados temporários. A cópia data URL local é mantida para uso offline. O logótipo da empresa ainda precisa de um fluxo de armazenamento próprio.
 - O backend Express/SQLite antigo continua separado do modo cloud; a sincronização legada foi desactivada no cliente quando Supabase está activo para evitar misturar dados entre empresas.
 - As operações CRUD antigas do Express não devem ser expostas directamente à Internet: ainda precisam de autenticação obrigatória, autorização por empresa e testes de isolamento. O servidor actual escuta em `127.0.0.1` para uso local/desktop.
 - Ainda falta convite/gestão de membros e troca de empresa no mesmo utilizador. A recuperação de senha foi adicionada ao ecrã, mas precisa de validação do redirect/email no ambiente real; MFA e revisão de sessões continuam pendentes.
