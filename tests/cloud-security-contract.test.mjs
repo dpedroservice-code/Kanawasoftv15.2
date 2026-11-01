@@ -9,6 +9,7 @@ test('frontend separates local IndexedDB by cloud company', async () => {
   assert.match(app, /openTenant\(companyId\)/);
   assert.match(app, /kanawa_erp_v15_company_/);
   assert.match(app, /await DB\.openTenant\(company\.id\)/);
+  assert.ok(app.indexOf("localStorage.setItem('kanawa_empresa', JSON.stringify(empresa))") < app.indexOf('await syncTenantRecords()'), 'company context must be stored before cloud hydration');
 });
 
 test('ERP records are synchronized through the RLS-protected company store', async () => {
