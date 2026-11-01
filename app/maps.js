@@ -260,10 +260,18 @@
       );
     });
   }
+  function hasVerifiedPosition(record) {
+    return !!record && (record.location_source === 'device_gps' || record.location_source === 'device_gps_live') &&
+      record.lat !== null && record.lat !== undefined && record.lng !== null && record.lng !== undefined &&
+      Number.isFinite(Number(record.lat)) && Number.isFinite(Number(record.lng));
+  }
+  function trackingPermissionModule() { return 'logistica-rastreio'; }
+
   async function renderTracking(title) {
     const records = await getData('rastreios') || [];
-    const canCreate = podeFazerModulo('logistica-rastreio','criar');
-    const canEdit = podeFazerModulo('logistica-rastreio','editar');
+    const permissionModule = trackingPermissionModule();
+    const canCreate = podeFazerModulo(permissionModule,'criar');
+    const canEdit = podeFazerModulo(permissionModule,'editar');
     return header(title || 'Rastreio de Encomendas', records.length+' encomendas registadas', 'var(--success)',
       canCreate ? '<button class="btn btn-success" onclick="criarRastreioEncomenda()"><i class="fas fa-plus"></i> Nova encomenda</button>' : '', 'fa-map-marked-alt') +
       '<div class="card"><div class="form-grid">' +
@@ -291,7 +299,7 @@
       const map = maps.kanawaTrackingMap || createMap('kanawaTrackingMap');
       if (!map) return;
       clearLayers('kanawaTrackingMap');
-      const points = records.filter(r=>Number.isFinite(Number(r.lat)) && Number.isFinite(Number(r.lng)));
+      const points = records.filter(hasVerifiedPosition);
       points.forEach(r=>addMarker('kanawaTrackingMap',r.lat,r.lng,r.codigo || 'Encomenda',(r.status || 'Estado não indicado')+' · '+(r.produto || 'Encomenda')));
       if (points.length) { const b=window.L.featureGroup(mapLayers.kanawaTrackingMap).getBounds(); if(b.isValid())map.fitBounds(b,{padding:[24,24],maxZoom:15}); }
     } catch(error) { const el=document.getElementById('kanawaTrackingMap'); if(el)el.textContent='Mapa indisponível: '+error.message; }
@@ -313,11 +321,11 @@
     const r=records.find(x=>text(x.codigo).toLowerCase()===code.toLowerCase());
     const out=document.getElementById('rastreioResultado');
     if(!r){if(out){out.style.display='block';out.textContent='Não foi encontrado nenhum registo com este código.';}return;}
-    const has=Number.isFinite(Number(r.lat))&&Number.isFinite(Number(r.lng));
+    const has=hasVerifiedPosition(r);
     if(out){out.style.display='block';out.textContent='Encomenda '+r.codigo+' · Estado: '+(r.status||'não indicado')+' · Atualizado: '+(r.ultimaAtualizacao||r.data||'não disponível')+(has?' · GPS: '+r.lat+', '+r.lng:' · Ainda sem posição GPS.');}
   }
   async function updateTrackingLocation(id) {
-    if(!podeFazerModulo('logistica-rastreio','editar')){notify('Precisa de permissão para atualizar o GPS.','error');return;}
+    if(!podeFazerModulo(trackingPermissionModule(),'editar')){notify('Precisa de permissão para atualizar o GPS.','error');return;}
     try{
       const record=await DB.get('rastreios',id);if(!record)throw new Error('Encomenda não encontrada.');
       const p=await getPosition();record.lat=p.lat;record.lng=p.lng;record.gps_accuracy_m=Math.round(p.accuracy);
@@ -326,7 +334,7 @@
     }catch(e){notify(e.message||'Não foi possível atualizar o GPS.','error');}
   }
   function startLiveTracking(id) {
-    if(!podeFazerModulo('logistica-rastreio','editar')){notify('Precisa de permissão para iniciar o GPS ao vivo.','error');return;}
+    if(!podeFazerModulo(trackingPermissionModule(),'editar')){notify('Precisa de permissão para iniciar o GPS ao vivo.','error');return;}
     if(!navigator.geolocation){notify('Este dispositivo não disponibiliza GPS.','warning');return;}
     stopLiveTracking();trackingTargetId=id;lastTrackingWrite=0;
     trackingWatchId=navigator.geolocation.watchPosition(async function(position){
@@ -346,7 +354,7 @@
       canEdit?'<button class="btn btn-success" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Registar veículo</button>':'','fa-satellite')+
       '<div class="card"><div id="kanawaGpsMap" style="height:360px;width:100%;border-radius:10px;z-index:1"></div><p class="text-muted" style="margin-top:8px;font-size:.78rem">A posição é recolhida pelo GPS do dispositivo autorizado. Não são usadas coordenadas simuladas.</p></div>'+
       '<div class="card">'+table(['Veículo','Latitude','Longitude','Precisão','Atualização','Ações'],vehicles.map(function(v){
-        const has=Number.isFinite(Number(v.lat))&&Number.isFinite(Number(v.lng));
+        const has=hasVerifiedPosition(v);
         return ['<strong>'+safe(v.veiculo||'-')+'</strong>',has?Number(v.lat).toFixed(5):'-',has?Number(v.lng).toFixed(5):'-',
           v.gps_accuracy_m?Math.round(v.gps_accuracy_m)+' m':'-',fmtDT(v.ultimaAtualizacao),
           canEdit?'<button class="btn btn-sm btn-primary" onclick="atualizarGPSVeiculo('+Number(v.id)+')">Atualizar GPS</button>':''];
@@ -355,7 +363,7 @@
   async function initGpsMap() {
     const vehicles=await getData('gpsTracking')||[];
     try{await ensureLeaflet();const map=maps.kanawaGpsMap||createMap('kanawaGpsMap');if(!map)return;clearLayers('kanawaGpsMap');
-      const points=vehicles.filter(v=>Number.isFinite(Number(v.lat))&&Number.isFinite(Number(v.lng)));
+      const points=vehicles.filter(hasVerifiedPosition);
       points.forEach(v=>addMarker('kanawaGpsMap',v.lat,v.lng,v.veiculo||'Veículo','Atualizado: '+(v.ultimaAtualizacao||'não disponível')));
       if(points.length){const b=window.L.featureGroup(mapLayers.kanawaGpsMap).getBounds();if(b.isValid())map.fitBounds(b,{padding:[24,24],maxZoom:15});}
     }catch(e){const el=document.getElementById('kanawaGpsMap');if(el)el.textContent='Mapa indisponível: '+e.message;}
