@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 let jwt = null;
 try { jwt = require('jsonwebtoken'); } catch (e) { console.warn('⚠️ jsonwebtoken não instalado — auth simplificada'); }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'kanawa-erp-secret';
+const JWT_SECRET = process.env.JWT_SECRET || null;
 
 // ============================================================
 // MAPEAMENTO: store (frontend/app.js) → tabela (SQL) + campos válidos
@@ -313,6 +313,7 @@ function registerRoutes(app, db) {
   app.post('/api/auth/login', (req, res) => {
     try {
       const { email, senha } = req.body || {};
+      if (!JWT_SECRET) return res.status(503).json({ error: 'Autenticação da API não configurada. Defina JWT_SECRET forte no servidor.' });
       if (!email || !senha) return res.status(400).json({ error: 'Email e senha obrigatórios' });
       const user = db.get('SELECT * FROM usuarios WHERE email = ? AND ativo = 1', [email]);
       if (!user || !bcrypt.compareSync(senha, user.senha_hash)) {
@@ -338,16 +339,9 @@ function registerRoutes(app, db) {
   });
 
   app.post('/api/auth/register', (req, res) => {
-    try {
-      const { nome, email, senha, perfil, telefone, nif } = req.body || {};
-      if (!nome || !email || !senha) return res.status(400).json({ error: 'Dados incompletos' });
-      const hash = bcrypt.hashSync(senha, 10);
-      const r = db.run(
-        'INSERT INTO usuarios (nome, email, senha_hash, perfil, telefone, nif) VALUES (?, ?, ?, ?, ?, ?)',
-        [nome, email, hash, perfil || 'operador', telefone || null, nif || null]
-      );
-      res.status(201).json({ id: r.lastInsertRowid, nome, email, perfil: perfil || 'operador' });
-    } catch (e) { res.status(400).json({ error: e.message }); }
+    return res.status(403).json({
+      error: 'Registo público desactivado. Crie contas através do fluxo de empresa e autenticação Supabase.'
+    });
   });
 
   // ============================================================
