@@ -145,6 +145,23 @@ async function syncCloudRecord(store, item) {
   if (error) throw error;
   return true;
 }
+async function clearCloudStore(store) {
+  if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId) throw new Error('Empresa cloud não identificada.');
+  const { error } = await CLOUD_AUTH.from('ks_records').delete()
+    .eq('company_id', companyId).eq('store_key', store);
+  if (error) throw error;
+  return true;
+}
+async function clearAllCloudRecords() {
+  if (!CLOUD_AUTH) return true;
+  const companyId = currentCloudCompanyId();
+  if (!companyId) throw new Error('Empresa cloud não identificada.');
+  const { error } = await CLOUD_AUTH.from('ks_records').delete().eq('company_id', companyId);
+  if (error) throw error;
+  return true;
+}
 async function deleteCloudRecord(store, id) {
   if (!CLOUD_AUTH || !isCloudStoreAllowed(store)) return true;
   const companyId = currentCloudCompanyId();
@@ -186,6 +203,12 @@ async function syncTenantRecords() {
         if (!isCloudStoreAllowed(row.store_key) || !row.payload || typeof row.payload !== 'object') continue;
         const record = { ...row.payload };
         if (record.id == null) record.id = row.record_id;
+        const existing = await DB.get(row.store_key, record.id);
+        if (existing) {
+          for (const key of ['imagem','foto','avatar','logo','image','photo']) {
+            if (!record[key] && typeof existing[key] === 'string' && /^data:image\//i.test(existing[key])) record[key] = existing[key];
+          }
+        }
         await DB.put(row.store_key, record);
         total++;
       }
@@ -1666,11 +1689,20 @@ function salvarRegras() {
 }
 function salvarConfigAPI() { localStorage.setItem('kanawa_api_url', $('cfgApiUrl').value); toast('URL salva — recarregando...', 'success'); setTimeout(() => location.reload(), 800); }
 async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? '✅ Servidor Online' : '❌ Servidor Offline', ok ? 'success' : 'warning'); }
-async function limparColecao(s) { if (!confirm('Limpar ' + s + '?')) return; await DB.clear(s); toast('Limpo', 'info'); openModule('config'); }
+async function limparColecao(s) {
+  if (!confirm('Limpar ' + s + ' desta empresa? Esta operação também elimina os registos cloud desta coleção.')) return;
+  try {
+    await clearCloudStore(s);
+    await DB.clear(s);
+    toast('Coleção limpa localmente e na nuvem.', 'success');
+    openModule('config');
+  } catch (error) { toast('Não foi possível limpar a coleção na nuvem: ' + error.message, 'error'); }
+}
 async function recarregarDemo() { if (!confirm('Carregar demo?')) return; await seedDemo(); pdvCache.ts = 0; toast('Demo carregado', 'success'); openModule('config'); }
 async function resetTotal() {
   if (!confirm('⚠️ APAGAR TODOS OS DADOS?')) return;
   if (!confirm('Confirme novamente')) return;
+  try { await clearAllCloudRecords(); } catch (error) { toast('Não foi possível limpar os dados cloud. Nenhum dado local foi apagado: ' + error.message, 'error'); return; }
   for (const s of DB.stores) { try { await DB.clear(s); } catch (e) { } }
   localStorage.clear();
   location.reload();
