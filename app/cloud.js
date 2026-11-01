@@ -227,6 +227,28 @@
       return all;
     },
 
+    async getChangedRecords(since) {
+      if (!this.ready) return [];
+      const all = [];
+      const pageSize = 1000;
+      for (let from = 0; ; from += pageSize) {
+        const result = await client
+          .from('ks_records')
+          .select('store_key, record_id, payload, updated_at')
+          .eq('company_id', context.company.id)
+          .gte('updated_at', since)
+          .order('updated_at', { ascending: true })
+          .order('store_key', { ascending: true })
+          .order('record_id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (result.error) throw result.error;
+        const rows = result.data || [];
+        all.push.apply(all, rows);
+        if (rows.length < pageSize) break;
+      }
+      return all;
+    },
+
     async getStore(store) {
       if (!this.ready || this.isLocalOnly(store)) return null;
       const result = await client
