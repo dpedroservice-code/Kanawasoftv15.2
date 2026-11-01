@@ -8,7 +8,7 @@ Este documento descreve o que foi adicionado ao Kanawa Soft v15.2 no projecto de
 - O código da licença é gerado na base de dados no formato KS-..., sem necessidade de o administrador inventar códigos.
 - O administrador da plataforma pode emitir uma licença, seleccionar o plano, definir o estado e a duração no módulo **Admin SaaS**.
 - O catálogo canónico de planos é `ks_saas_plans`; as subscrições são registadas em `ks_subscriptions`; os códigos/validade de produto ficam em `ks_company_licenses`.
-- Os critérios de licenciamento combinam número de utilizadores, número de facturas por mês, volume de facturação mensal (USD quando existe taxa de câmbio) e armazenamento.
+- Os critérios de licenciamento combinam número de utilizadores, instalações activas, produtos, facturas por mês, volume de facturação mensal (USD quando existe taxa de câmbio) e armazenamento. Os limites de utilizadores, produtos, instalações e facturas são verificados no PostgreSQL, não apenas na interface.
 - Após expirar a licença e terminar a tolerância, o ERP passa para modo de leitura. As políticas RLS bloqueiam as operações de escrita na nuvem e o IndexedDB aplica a mesma restrição à interface local.
 
 ## Como criar uma licença no ERP
