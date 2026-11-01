@@ -166,6 +166,7 @@
     await ensureMapConfig();
     const store = routeStore();
     const canCreate = podeFazerModulo(routePermissionModule(),'criar');
+    const canDelete = podeFazerModulo(routePermissionModule(),'excluir');
     const routes = await getData(store) || [];
     window.__kanawaRoutePreview = null;
     return header(title || 'Roteirização e Rotas', routes.length + ' rotas guardadas', 'var(--primary)',
@@ -266,7 +267,7 @@
       const trip = data.trips[0];
       const ordered = (data.waypoints || []).slice().sort((a,b)=>a.waypoint_index-b.waypoint_index).map(w=>unique[w.trips_index] || unique[w.waypoint_index]).filter(Boolean);
       const first = ordered[0] || unique[0], last = ordered[ordered.length-1] || unique[unique.length-1];
-      await saveData('roteirizacao', {
+      await saveData(routeStore(), {
         origem:first.label, destino:last.label, veiculo:'Rota otimizada',
         distancia:(Number(trip.distance)/1000).toFixed(2)+' km',
         duracao:Math.round(Number(trip.duration)/60)+' min',
