@@ -264,25 +264,31 @@ async function activateCloudSession(ctx, migrateLocal) {
 
   if (previousCompanyId && previousCompanyId !== companyId) {
     for (const store of DB_STORES) await DB.clear(store);
-  } else if (!previousCompanyId) {
-    const remoteCount = await KanawaCloud.countRecords();
-    if (remoteCount > 0) {
-      for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
-    } else if (migrateLocal) {
-      for (const store of DB_STORES) {
-        if (localOnly.has(store) || store.startsWith('_')) continue;
-        const rows = await DB.getAll(store);
-        for (const row of rows) {
-          if (row && row.id !== undefined && row.id !== null) {
-            try { await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true }); }
-            catch (migrationError) { await queueSync(store, 'create', row, { skipSaleFinalize: true }); console.warn('Migração cloud pendente:', store, migrationError); }
+    localStorage.setItem('kanawa_cloud_company_id', companyId);
+  } else if (previousCompanyId === companyId) {
+    // Known company cache: keep local records available even when the network is down.
+  } else {
+    let remoteCount = null;
+    try { remoteCount = await KanawaCloud.countRecords(); }
+    catch (networkError) { console.warn('Base central indisponível; mantém-se o cache local:', networkError); }
+    if (remoteCount !== null) {
+      if (remoteCount > 0) {
+        for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
+      } else if (migrateLocal) {
+        for (const store of DB_STORES) {
+          if (localOnly.has(store) || store.startsWith('_')) continue;
+          const rows = await DB.getAll(store);
+          for (const row of rows) {
+            if (row && row.id !== undefined && row.id !== null) {
+              try { await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true }); }
+              catch (migrationError) { await queueSync(store, 'create', row, { skipSaleFinalize: true }); console.warn('Migração cloud pendente:', store, migrationError); }
+            }
           }
         }
       }
+      localStorage.setItem('kanawa_cloud_company_id', companyId);
     }
   }
-
-  localStorage.setItem('kanawa_cloud_company_id', companyId);
   const company = {
     id: 1,
     firma: ctx.company.trade_name || ctx.company.legal_name,
@@ -307,7 +313,8 @@ async function activateCloudSession(ctx, migrateLocal) {
   localStorage.setItem('kanawa_user', JSON.stringify(user));
   localStorage.setItem('kanawa_setup_done', 'true');
 
-  await pullFromServer();
+  try { await pullFromServer(); }
+  catch (pullError) { console.warn('Sincronização inicial adiada; será retomada quando houver internet:', pullError); }
   try { await KanawaCloud.registerInstallation(APP_VERSION); }
   catch (e) { console.warn('Registo de instalação pendente:', e); }
   await API.checkHealth();
