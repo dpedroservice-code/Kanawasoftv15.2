@@ -183,7 +183,7 @@
       '<div class="card"><div id="kanawaRouteMap" style="height:380px;width:100%;border-radius:10px;z-index:1"></div></div>' +
       '<div class="card">' + table(['Origem','Destino','Distância','Duração','Veículo','Ações'], routes.map(function (r) {
         return [safe(r.origem || '-'), safe(r.destino || '-'), safe(r.distancia || '-'), safe(r.duracao || '-'), safe(r.veiculo || '-'),
-          '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + Number(r.id) + ')"><i class="fas fa-trash"></i></button>'];
+          canDelete ? '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'' + store + '\',' + Number(r.id) + ')"><i class="fas fa-trash"></i></button>' : ''];
       })) + '</div>';
   }
   async function calculateRoute() {
