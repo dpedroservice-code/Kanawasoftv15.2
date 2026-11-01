@@ -3012,8 +3012,8 @@ async function renderEcommerceProdutos() {
       produtos.map(p => ['<img src="' + imgSrc(p) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px" onerror="this.src=\'' + PLACEHOLDER + '\'">', '<strong>' + esc(p.nome) + '</strong>', fmt(p.preco || 0), formatN(p.estoque || 0), badge(p.ativo !== false ? 'Ativo' : 'Inativo', p.ativo !== false ? 'success' : 'danger'),
       '<button class="btn btn-sm btn-primary" onclick="editarProdutoEcommerce(' + p.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirProdutoEcommerce(' + p.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
-function abrirFormProdutoEcommerce() { openModule('produtos-novo'); }
-async function editarProdutoEcommerce(id) { openModule('produtos-editar', { id: id }); }
+async function abrirFormProdutoEcommerce() { return await abrirModalProduto(); }
+async function editarProdutoEcommerce(id) { return await abrirModalProduto(id); }
 async function excluirProdutoEcommerce(id) { if (!confirm('Excluir este produto do catálogo?')) return; await deleteData('produtos', id); toast('Produto removido', 'info'); openModule('ecommerce-produtos'); }
 async function toggleProdutoEcommerce(id) { const p = await DB.get('produtos', id); if (p) { p.ativo = p.ativo === false ? true : false; await saveData('produtos', p); toast('Status atualizado', 'success'); openModule('ecommerce-produtos'); } }
 
