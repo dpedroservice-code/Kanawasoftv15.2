@@ -510,9 +510,47 @@ function podeFazerModulo(m, action) {
   return p.modulos.indexOf(m) !== -1 && p.acoes.indexOf(action) !== -1;
 }
 function podeFazer(a) { return podeFazerModulo(currentModule, a); }
+const STORE_MODULE_MAP = Object.freeze({
+  produtos:'produtos', unidades:'produtos', avaliacoes:'produtos-avaliacoes',
+  clientes:'clientes', clientesPortal:'portal-cliente', fornecedores:'fornecedores', transportadoras:'transportadoras',
+  vendas:'vendas', devolucoes:'vendas', vendasConsignadas:'vendas-consignadas', promocoes:'vendas-promocoes',
+  orcamentos:'orcamentos', compras:'compras', recebimentos:'compras', aprovacoes:'compras',
+  estoque:'estoque', movimentacoesEstoque:'estoque', transferencias:'estoque', inventarios:'estoque', lotes:'estoque', pecasEstoque:'estoque',
+  contasReceber:'financeiro', contasPagar:'financeiro', pagamentos:'financeiro', planoContas:'financeiro',
+  budgets:'financeiro', forecasts:'financeiro', conciliacoes:'financeiro', transacoesBancarias:'financeiro',
+  previsoesVendas:'financeiro', tendencias:'financeiro',
+  faturas:'fiscal', documentosFiscais:'fiscal', integracoesAGT:'fiscal', ivas:'fiscal', irts:'fiscal',
+  funcionarios:'rh', folhasPagamento:'rh', ferias:'rh', beneficios:'rh', planosCarreira:'rh-plano-carreira',
+  departamentos:'rh', feriasFuncionarios:'rh', pagamentosFuncionarios:'rh',
+  vagas:'rh-recrutamento', candidatos:'rh-recrutamento', desempenhoRH:'rh-desempenho',
+  onboarding:'rh-onboarding', turnos:'rh-ponto', pontoDigital:'rh-ponto', frequencias:'rh-ponto', rescisoes:'rh-rescisao',
+  producao:'producao', ordensProducao:'ordens-producao', mrp:'mrp', boms:'bom',
+  custosProducao:'custos-producao', controleQualidade:'controle-qualidade', planosProducao:'planos-producao',
+  projetos:'projetos', tarefas:'projetos-tarefas', tarefasProjetos:'projetos-tarefas',
+  ganttProjetos:'projetos-gantt', timesheets:'projetos-timesheet', membrosProjetos:'projetos-recursos', atividadesProjetos:'projetos',
+  ativos:'ativos', depreciacoes:'ativos-depreciacao', manutencoesAtivos:'ativos-manutencao', garantias:'ativos-garantia',
+  frotas:'frota', motoristas:'frota', manutencoes:'frota-manutencao', frotaRotas:'frota-rotas',
+  gpsTracking:'frota-gps', abastecimentos:'frota-combustivel', multas:'frota-multas',
+  ordensServico:'os', ordensManutencao:'os-manutencao', checklistsInspecao:'os-checklist',
+  calendarioManutencoes:'os-calendario', tecnicos:'os-tecnicos', historicoOS:'os',
+  roteirizacao:'logistica-roteirizacao', ddgHistorico:'logistica-roteirizacao', bingHistorico:'logistica-roteirizacao',
+  etiquetas:'logistica-etiquetas', armazens:'logistica-armazens', rastreios:'logistica-rastreio',
+  ecommerce:'ecommerce-vitrine', ecommerceProdutos:'ecommerce-produtos', ecommerceCarrinhos:'ecommerce-carrinho',
+  ecommercePedidos:'ecommerce-pedidos', pagamentosEcommerce:'ecommerce-pagamento', carrinhosSalvos:'ecommerce-carrinho',
+  campanhas:'marketing-campanhas', campanhasMarketing:'marketing-campanhas', eventos:'projetos', eventosCalendar:'projetos',
+  leads:'crm', contatosWhatsApp:'crm', automacoes:'crm-automacao', scoreLeads:'crm-score',
+  mensagensWhatsApp:'crm-automacao', templatesWhatsApp:'crm-automacao', segmentacoes:'clientes-segmentacao',
+  cupons:'clientes-cupons', fidelidade:'clientes-fidelidade', mensagens:'notificacoes', mensagensChat:'notificacoes',
+  notificacoes:'notificacoes', feedbacks:'notificacoes', cursos:'elearning-cursos', audiobooks:'elearning-cursos',
+  certificacoes:'elearning-certificacoes', quizzes:'elearning-quizzes',
+  documentos:'documentos', contratos:'contratos', assinaturasDigitais:'contratos', tickets:'tickets',
+  dashboardsCustom:'relatorios', auditoria:'auditoria', sincronizacao:'integracoes',
+  backups:'config', backupsAgendados:'config', backupsNuvem:'config', modulosPersonalizados:'modulos',
+  gruposUsuarios:'usuarios'
+});
+
 function moduloDoArmazenamento(store) {
-  const map = { movimentacoesEstoque:'estoque', contasReceber:'financeiro', contasPagar:'financeiro', pagamentos:'financeiro', faturas:'fiscal', documentosFiscais:'fiscal', ecommerceProdutos:'ecommerce-produtos', ecommercePedidos:'ecommerce-pedidos', ecommerceCarrinhos:'ecommerce-carrinho', promocoes:'vendas-promocoes', tabelasPrecos:'tabelas-precos', ordensProducao:'ordens-producao', boms:'bom', custosProducao:'custos-producao', controleQualidade:'controle-qualidade', planosProducao:'planos-producao', ordensServico:'os', ordensManutencao:'os-manutencao', frotas:'frota', cursos:'elearning-cursos', campanhas:'marketing-campanhas', leads:'crm' };
-  return map[store] || store;
+  return STORE_MODULE_MAP[store] || store;
 }
 function podeAlterarArmazenamento(store, action) {
   return podeFazerModulo(moduloDoArmazenamento(store), action);
