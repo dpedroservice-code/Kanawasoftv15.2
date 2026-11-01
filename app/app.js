@@ -2,6 +2,7 @@
 /* KANAWA SOFT ERP v15.2 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
 const APP_VERSION = '15.2';
+const CLOUD_AUTH = window.supabase && window.supabase.createClient('https://jiehrswweoyesbabrpjf.supabase.co', 'sb_publishable_l9HL3zMMJ5rN7vnXUZPa1g_9ZA1q7PO', { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
 let API_TOKEN = localStorage.getItem('kanawa_api_token') || null;
@@ -1531,23 +1532,80 @@ function setupNextStep(s) {
   $$('.setup-step').forEach(el => { const x = parseInt(el.dataset.step); el.classList.toggle('active', x === s); el.classList.toggle('done', x < s); });
   setupStep = s;
 }
-async function finalizarSetup() {
-  const e = { id: 1, firma: $('setupNome').value.trim(), nome: $('setupNome').value.trim(), nif: $('setupNif').value.trim(), regime: $('setupRegime').value, telefone: $('setupTelefone').value, email: $('setupEmail').value, endereco: $('setupEndereco').value, logo: 'logo.png', dataCriacao: now() };
-  const u = { id: 1, nome: $('setupAdminNome').value.trim(), email: $('setupAdminEmail').value.trim(), senha: $('setupAdminSenha').value, perfil: $('setupAdminPerfil').value, ativo: true, dataCriacao: now() };
-  await DB.add('empresas', e); await DB.add('usuarios', u);
-  localStorage.setItem('kanawa_empresa', JSON.stringify(e));
-  localStorage.setItem('kanawa_user', JSON.stringify({ nome: u.nome, email: u.email, role: u.perfil }));
-  localStorage.setItem('kanawa_setup_done', 'true');
-  if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
-  aplicarLogo();
-  if ($('setupWizard')) $('setupWizard').classList.remove('active');
-  if ($('authScreen')) $('authScreen').classList.add('active');
-  if ($('loginEmail')) $('loginEmail').value = u.email;
-  toast('✅ Empresa configurada', 'success');
+function abrirSetup() {
+  if (!CLOUD_AUTH) { toast('Serviço de autenticação indisponível. Recarregue a página.', 'error'); return; }
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('setupWizard')) $('setupWizard').classList.add('active');
 }
-function logout() {
+async function restaurarSessaoCloud() {
+  if (!CLOUD_AUTH) return false;
+  const { data: sessionData, error: sessionError } = await CLOUD_AUTH.auth.getSession();
+  if (sessionError || !sessionData.session) return false;
+  const authUser = sessionData.session.user;
+  const { data: companies, error } = await CLOUD_AUTH.from('ks_companies')
+    .select('id,legal_name,trade_name,tax_id,country_code,currency_code,tax_regime,fiscal_status')
+    .eq('owner_user_id', authUser.id).limit(1);
+  if (error || !companies || !companies.length) return false;
+  const company = companies[0];
+  const profileResult = await CLOUD_AUTH.from('ks_profiles').select('full_name,phone').eq('user_id', authUser.id).maybeSingle();
+  const profile = profileResult.data || {};
+  const user = { id: authUser.id, nome: profile.full_name || authUser.email, email: authUser.email, role: 'owner', telefone: profile.phone || '' };
+  const empresa = { id: company.id, firma: company.trade_name || company.legal_name, nome: company.legal_name, nif: company.tax_id || '', regime: company.tax_regime, moeda: company.currency_code, fiscal_status: company.fiscal_status };
+  localStorage.setItem('kanawa_user', JSON.stringify(user));
+  localStorage.setItem('kanawa_empresa', JSON.stringify(empresa));
+  localStorage.setItem('kanawa_setup_done', 'true');
+  if ($('topbarEmpresa')) $('topbarEmpresa').textContent = empresa.firma;
+  if ($('userName')) $('userName').textContent = user.nome;
+  if ($('userRole')) $('userRole').textContent = 'Proprietário';
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('setupWizard')) $('setupWizard').classList.remove('active');
+  if ($('app')) $('app').classList.add('active');
+  renderSidebar(); openModule('dashboard'); updateNotifBadge();
+  return true;
+}
+async function finalizarSetup() {
+  if (!CLOUD_AUTH) { toast('Serviço de autenticação indisponível.', 'error'); return; }
+  const legalName = $('setupNome').value.trim();
+  const fullName = $('setupAdminNome').value.trim();
+  const email = $('setupAdminEmail').value.trim().toLowerCase();
+  const password = $('setupAdminSenha').value;
+  if (!legalName || !fullName || !email || password.length < 10) { toast('Preencha empresa, responsável, email e senha com pelo menos 10 caracteres.', 'warning'); return; }
+  const button = document.querySelector('#setupStep3 .btn-success');
+  if (button) button.disabled = true;
+  try {
+    const { data, error } = await CLOUD_AUTH.auth.signUp({
+      email, password,
+      options: { data: {
+        full_name: fullName,
+        phone: $('setupAdminTel').value.trim(),
+        company_legal_name: legalName,
+        company_trade_name: legalName,
+        company_tax_id: $('setupNif').value.trim() || null,
+        country_code: 'AO',
+        currency_code: $('setupMoeda').value,
+        tax_regime: $('setupRegime').value
+      } }
+    });
+    if (error) throw error;
+    if (data.session) {
+      const ok = await restaurarSessaoCloud();
+      if (!ok) throw new Error('A conta foi criada, mas a empresa ainda não ficou disponível. Contacte o suporte.');
+      toast('Conta e empresa criadas com sucesso.', 'success');
+    } else {
+      if ($('setupWizard')) $('setupWizard').classList.remove('active');
+      if ($('authScreen')) $('authScreen').classList.add('active');
+      if ($('loginEmail')) $('loginEmail').value = email;
+      toast('Conta criada. Confirme o email recebido e depois entre no sistema.', 'success');
+    }
+  } catch (error) {
+    toast(error.message || 'Não foi possível criar a conta.', 'error');
+  } finally { if (button) button.disabled = false; }
+}
+async function logout() {
   if (!confirm('Sair?')) return;
+  if (CLOUD_AUTH) await CLOUD_AUTH.auth.signOut();
   localStorage.removeItem('kanawa_user');
+  localStorage.removeItem('kanawa_empresa');
   if ($('app')) $('app').classList.remove('active');
   if ($('authScreen')) $('authScreen').classList.add('active');
 }
@@ -2438,43 +2496,29 @@ async function init() {
     const themeIcon = $('themeIcon'); if (themeIcon) themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
     aplicarLogo();
     API.checkHealth().catch(() => { });
-    setTimeout(() => {
-      const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
-      const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || 'null');
-      const setupDone = localStorage.getItem('kanawa_setup_done');
-      if (!setupDone || !emp) { const wiz = $('setupWizard'); if (wiz) wiz.classList.add('active'); return; }
-      if (emp && $('topbarEmpresa')) $('topbarEmpresa').textContent = emp.firma || emp.nome || 'Kanawa Soft';
-      const user = JSON.parse(localStorage.getItem('kanawa_user') || 'null');
-      if (user) {
-        if ($('authScreen')) $('authScreen').classList.remove('active');
-        if ($('app')) $('app').classList.add('active');
-        if ($('userName')) $('userName').textContent = user.nome;
-        if ($('userRole')) $('userRole').textContent = user.role;
-        if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-        renderSidebar(); openModule('dashboard'); updateNotifBadge();
-      } else { if ($('authScreen')) $('authScreen').classList.add('active'); }
-    }, 200);
+    const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
+    if (!CLOUD_AUTH) throw new Error('Biblioteca de autenticação cloud não carregou.');
+    const hasSession = await restaurarSessaoCloud();
+    if (!hasSession && $('authScreen')) $('authScreen').classList.add('active');
     const loginForm = $('loginForm');
-    if (loginForm) {
-      loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = $('loginEmail').value.trim(); const senha = $('loginPassword').value;
-        const err = $('loginError');
-        const users = await DB.getAll('usuarios');
-        const u = users.find(x => x.email === email && x.senha === senha);
-        if (u || (email === 'admin@kanawasoft.com' && senha === 'admin123')) {
-          const user = u || { nome: 'Administrador', email, perfil: 'admin' };
-          localStorage.setItem('kanawa_user', JSON.stringify({ nome: user.nome, email: user.email, role: user.perfil, avatar: user.avatar || null, telefone: user.telefone || '', nif: user.nif || '' }));
-          if ($('authScreen')) $('authScreen').classList.remove('active');
-          if ($('app')) $('app').classList.add('active');
-          if ($('userName')) $('userName').textContent = user.nome;
-          if ($('userRole')) $('userRole').textContent = user.perfil || 'admin';
-          if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-          renderSidebar(); openModule('dashboard'); updateNotifBadge();
-          toast('✅ Login realizado', 'success');
-        } else { if (err) { err.textContent = '❌ Email ou senha incorretos'; err.classList.add('show'); } }
-      });
-    }
+    if (loginForm) loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = $('loginEmail').value.trim().toLowerCase();
+      const senha = $('loginPassword').value;
+      const err = $('loginError');
+      const submit = loginForm.querySelector('button[type="submit"]');
+      if (submit) submit.disabled = true;
+      if (err) { err.textContent = ''; err.classList.remove('show'); }
+      try {
+        const { error } = await CLOUD_AUTH.auth.signInWithPassword({ email, password: senha });
+        if (error) throw error;
+        const ok = await restaurarSessaoCloud();
+        if (!ok) throw new Error('Não existe uma empresa activa associada a esta conta.');
+        toast('Sessão iniciada com segurança.', 'success');
+      } catch (error) {
+        if (err) { err.textContent = error.message || 'Email ou senha inválidos.'; err.classList.add('show'); }
+      } finally { if (submit) submit.disabled = false; }
+    });
     startAutoSync();
   } catch (e) {
     console.error('Init error:', e);
@@ -2495,7 +2539,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirSetup','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',
