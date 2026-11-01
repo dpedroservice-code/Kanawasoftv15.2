@@ -1,7 +1,7 @@
 'use strict';
 /* KANAWA SOFT ERP v15.2 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
-const APP_VERSION = '15.2';
+const APP_VERSION = '15.3-cloud';
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
 let API_TOKEN = localStorage.getItem('kanawa_api_token') || null;
@@ -99,21 +99,229 @@ const DB = {
   count(s) { return new Promise((res, rej) => { const r = this._tx(s).count(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 };
 
-/* ====== API ====== */
+/* ====== CLOUD DATABASE / OFFLINE CACHE ====== */
 const API = {
-  async req(m, e, d) { const o = { method: m, headers: { 'Content-Type': 'application/json' } }; if (API_TOKEN) o.headers['Authorization'] = 'Bearer ' + API_TOKEN; if (d) o.body = JSON.stringify(d); try { const r = await fetch(API_BASE_URL + e, o); if (!r.ok) throw new Error('HTTP ' + r.status); API_ONLINE = true; updateApiStatus(true); return await r.json(); } catch (err) { API_ONLINE = false; updateApiStatus(false); return { offline: true, error: err.message }; } },
-  get(e) { return this.req('GET', e); }, post(e, d) { return this.req('POST', e, d); }, put(e, d) { return this.req('PUT', e, d); }, del(e) { return this.req('DELETE', e); },
-  async checkHealth() { try { const r = await fetch(API_BASE_URL + '/health', { signal: AbortSignal.timeout(2000) }); API_ONLINE = r.ok; } catch { API_ONLINE = false; } updateApiStatus(API_ONLINE); return API_ONLINE; }
+  async checkHealth() {
+    try { API_ONLINE = !!(window.KanawaCloud && await window.KanawaCloud.check()); }
+    catch (e) { API_ONLINE = false; }
+    updateApiStatus(API_ONLINE);
+    return API_ONLINE;
+  }
 };
-async function getData(s) { try { return await DB.getAll(s); } catch (e) { console.warn('getData:', s, e); return []; } }
-async function saveData(store, item) { const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item); if (API_ONLINE) { try { if (item.id) await API.put('/' + store + '/' + item.id, item); else await API.post('/' + store, item); } catch (e) { queueSync(store, 'create', item); } } else { queueSync(store, item.id ? 'update' : 'create', item); } return id; }
-async function deleteData(s, id) { await DB.del(s, id); if (API_ONLINE) { try { await API.del('/' + s + '/' + id); } catch (e) { queueSync(s, 'delete', { id }); } } else { queueSync(s, 'delete', { id }); } }
-async function queueSync(entity, action, payload) { try { await DB.add('_sync_queue', { entity, action, payload, data: now(), synced: false }); } catch (e) { } }
-async function processSyncQueue() { if (!API_ONLINE) return 0; const q = await DB.getAll('_sync_queue'); const p = q.filter(x => !x.synced); if (!p.length) return 0; let ok = 0; for (const i of p) { try { if (i.action === 'create') await API.post('/' + i.entity, i.payload); else if (i.action === 'update') await API.put('/' + i.entity + '/' + i.payload.id, i.payload); else if (i.action === 'delete') await API.del('/' + i.entity + '/' + i.payload.id); i.synced = true; await DB.put('_sync_queue', i); ok++; } catch (e) { break; } } return ok; }
-async function pullFromServer() { if (!API_ONLINE) return 0; let t = 0; const stores = DB_STORES.filter(s => !s.startsWith('_')); for (const s of stores) { try { const r = await API.get('/' + s); if (r && !r.offline && Array.isArray(r)) { for (const i of r) { if (!i.id) continue; try { await DB.put(s, i); t++; } catch (e) { } } } } catch (e) { } } return t; }
-async function syncNow(flag) { const on = await API.checkHealth(); if (!on) { if (flag) toast('Servidor offline — dados salvos localmente', 'warning'); return false; } const ind = $('syncIndicator'), txt = $('syncText'); if (ind) ind.className = 'sync-indicator show syncing'; if (txt) txt.textContent = 'Sincronizando...'; const pu = await processSyncQueue(); const pl = await pullFromServer(); if (ind) ind.className = 'sync-indicator show online'; if (txt) txt.textContent = 'Sincronizado ✓'; setTimeout(() => { if (ind) ind.className = 'sync-indicator'; }, 2000); if (flag) toast('✅ Sincronizado (' + pu + ' enviados, ' + pl + ' recebidos)', 'success'); return true; }
+
+async function getData(store) {
+  try {
+    if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
+      const pending = await DB.getAll('_sync_queue');
+      if (!pending.some(x => !x.synced && x.entity === store)) {
+        try {
+          const remote = await KanawaCloud.getStore(store);
+          if (Array.isArray(remote)) {
+            await DB.clear(store);
+            for (const item of remote) await DB.put(store, item);
+          }
+        } catch (cloudError) {
+          console.warn('Kanawa cloud read:', store, cloudError);
+        }
+      }
+    }
+    return await DB.getAll(store);
+  } catch (e) {
+    console.warn('getData:', store, e);
+    return [];
+  }
+}
+
+async function saveData(store, item) {
+  const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item);
+  const record = Object.assign({}, item, { id: id });
+  if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
+    try {
+      if (store === 'empresas') await KanawaCloud.updateCompany(record);
+      else await KanawaCloud.upsertRecord(store, record);
+    } catch (e) {
+      await queueSync(store, item.id ? 'update' : 'create', record);
+      console.warn('Kanawa cloud write queued:', store, e);
+    }
+  }
+  return id;
+}
+
+async function deleteData(store, id) {
+  await DB.del(store, id);
+  if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
+    try { await KanawaCloud.deleteRecord(store, id); }
+    catch (e) { await queueSync(store, 'delete', { id: id }); }
+  }
+}
+
+async function queueSync(entity, action, payload) {
+  if (window.KanawaCloud && KanawaCloud.isLocalOnly(entity)) return;
+  try { await DB.add('_sync_queue', { entity: entity, action: action, payload: payload, data: now(), synced: false }); }
+  catch (e) { console.warn('Não foi possível guardar fila de sincronização:', e); }
+}
+
+async function processSyncQueue() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) return 0;
+  const queue = await DB.getAll('_sync_queue');
+  let sent = 0;
+  for (const item of queue.filter(x => !x.synced)) {
+    try {
+      if (item.action === 'delete') await KanawaCloud.deleteRecord(item.entity, item.payload.id);
+      else await KanawaCloud.upsertRecord(item.entity, item.payload);
+      await DB.del('_sync_queue', item.id);
+      sent++;
+    } catch (e) {
+      console.warn('Fila de sincronização aguardando:', item.entity, e);
+      break;
+    }
+  }
+  return sent;
+}
+
+async function pullFromServer() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) return 0;
+  const records = await KanawaCloud.getAllRecords();
+  const queue = await DB.getAll('_sync_queue');
+  const dirty = new Set(queue.filter(x => !x.synced).map(x => x.entity));
+  const grouped = new Map();
+  for (const row of records) {
+    if (!grouped.has(row.store_key)) grouped.set(row.store_key, []);
+    const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+    const id = payload.id !== undefined ? payload.id : (/^\d+$/.test(row.record_id) ? Number(row.record_id) : row.record_id);
+    grouped.get(row.store_key).push(Object.assign({}, payload, { id: id }));
+  }
+  let total = 0;
+  for (const store of DB_STORES) {
+    if (KanawaCloud.isLocalOnly(store) || dirty.has(store)) continue;
+    await DB.clear(store);
+    for (const item of (grouped.get(store) || [])) {
+      await DB.put(store, item);
+      total++;
+    }
+  }
+  return total;
+}
+
+async function syncNow(showMessage) {
+  const online = await API.checkHealth();
+  if (!online) {
+    if (showMessage) toast('Sem ligação à base de dados. Os dados ficam guardados neste dispositivo.', 'warning');
+    return false;
+  }
+  const indicator = $('syncIndicator'), label = $('syncText');
+  if (indicator) indicator.className = 'sync-indicator show syncing';
+  if (label) label.textContent = 'A sincronizar com PostgreSQL...';
+  try {
+    const sent = await processSyncQueue();
+    const received = await pullFromServer();
+    if (indicator) indicator.className = 'sync-indicator show online';
+    if (label) label.textContent = 'Base de dados sincronizada ✓';
+    if (showMessage) toast('Sincronização concluída: ' + sent + ' enviados, ' + received + ' recebidos.', 'success');
+    setTimeout(() => { if (indicator) indicator.className = 'sync-indicator'; }, 2200);
+    return true;
+  } catch (e) {
+    if (indicator) indicator.className = 'sync-indicator show offline';
+    if (label) label.textContent = 'Sincronização pendente';
+    if (showMessage) toast('Falha na sincronização: ' + e.message, 'error');
+    return false;
+  }
+}
 function toggleSync() { syncNow(true); }
-function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(async () => { if (API_ONLINE) await processSyncQueue(); }, 30000); }
+function startAutoSync() {
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    if (window.KanawaCloud && KanawaCloud.ready) syncNow(false);
+  }, 60000);
+}
+
+async function activateCloudSession(ctx, migrateLocal) {
+  const companyId = ctx.company.id;
+  const previousCompanyId = localStorage.getItem('kanawa_cloud_company_id');
+  const localOnly = new Set(['empresas','usuarios','config','dispositivos','sessoes','tentativasLogin','politicasSenha','sms2FA','acessos','logsSeguranca','seguranca','migracoes','_sync_queue']);
+
+  if (previousCompanyId && previousCompanyId !== companyId) {
+    for (const store of DB_STORES) await DB.clear(store);
+  } else if (!previousCompanyId) {
+    const remoteCount = await KanawaCloud.countRecords();
+    if (remoteCount > 0) {
+      for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
+    } else if (migrateLocal) {
+      for (const store of DB_STORES) {
+        if (localOnly.has(store) || store.startsWith('_')) continue;
+        const rows = await DB.getAll(store);
+        for (const row of rows) {
+          if (row && row.id !== undefined && row.id !== null) {
+            await KanawaCloud.upsertRecord(store, row);
+          }
+        }
+      }
+    }
+  }
+
+  localStorage.setItem('kanawa_cloud_company_id', companyId);
+  const company = {
+    id: 1,
+    firma: ctx.company.trade_name || ctx.company.legal_name,
+    nome: ctx.company.legal_name,
+    nif: ctx.company.tax_id || '',
+    telefone: ctx.company.phone || '',
+    email: ctx.company.email || ctx.user.email || '',
+    regime: ctx.company.tax_regime || 'not_configured',
+    dataCriacao: ctx.company.created_at || now()
+  };
+  const user = {
+    id: 1,
+    nome: (ctx.profile && ctx.profile.full_name) || ctx.user.email,
+    email: ctx.user.email,
+    perfil: ctx.role,
+    role: ctx.role,
+    avatar: null
+  };
+  await DB.put('empresas', company);
+  await DB.put('usuarios', user);
+  localStorage.setItem('kanawa_empresa', JSON.stringify(company));
+  localStorage.setItem('kanawa_user', JSON.stringify(user));
+  localStorage.setItem('kanawa_setup_done', 'true');
+
+  await pullFromServer();
+  try { await KanawaCloud.registerInstallation(APP_VERSION); }
+  catch (e) { console.warn('Registo de instalação pendente:', e); }
+
+  try {
+    const license = await KanawaCloud.getLicense();
+    if (license && license.expires_at) {
+      const expiry = new Date(license.expires_at);
+      const days = Math.ceil((expiry.getTime() - Date.now()) / 86400000);
+      if (license.status === 'expired' || days < 0) toast('A licença Kanawa Soft expirou. Contacte a D.PEDRO SOLUÇÕES.', 'warning');
+      else if (days <= 5) toast('A licença expira em ' + Math.max(0, days) + ' dia(s).', 'warning');
+    }
+  } catch (e) { console.warn('Não foi possível consultar a licença:', e); }
+  return { company: company, user: user };
+}
+
+function mostrarAplicacaoAutenticada(ctx) {
+  const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+  const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
+  if ($('setupWizard')) $('setupWizard').classList.remove('active');
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('app')) $('app').classList.add('active');
+  if ($('topbarEmpresa')) $('topbarEmpresa').textContent = company.firma || company.nome || 'Kanawa Soft';
+  if ($('userName')) $('userName').textContent = user.nome || 'Utilizador';
+  if ($('userRole')) $('userRole').textContent = user.role || user.perfil || 'operador';
+  if ($('userAvatar')) {
+    $('userAvatar').src = user.avatar || 'logo.png';
+    $('userAvatar').onerror = function () { this.src = 'logo.png'; };
+  }
+  renderSidebar();
+  openModule('dashboard');
+  updateNotifBadge();
+}
+
+async function abrirCadastroEmpresa() {
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('setupWizard')) $('setupWizard').classList.add('active');
+}
 
 /* ====== PERMISSÕES ====== */
 const PERMISSOES = {
@@ -1508,7 +1716,7 @@ function salvarRegras() {
   localStorage.setItem('kanawa_gaveta_auto', $('cfgGavetaAuto').checked ? 'true' : 'false');
   toast('✅ Regras salvas', 'success');
 }
-function salvarConfigAPI() { localStorage.setItem('kanawa_api_url', $('cfgApiUrl').value); toast('URL salva — recarregando...', 'success'); setTimeout(() => location.reload(), 800); }
+function salvarConfigAPI() { toast('A ligação central é gerida automaticamente pelo Kanawa Soft Cloud.', 'info'); }
 async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? '✅ Servidor Online' : '❌ Servidor Offline', ok ? 'success' : 'warning'); }
 async function limparColecao(s) { if (!confirm('Limpar ' + s + '?')) return; await DB.clear(s); toast('Limpo', 'info'); openModule('config'); }
 async function recarregarDemo() { if (!confirm('Carregar demo?')) return; await seedDemo(); pdvCache.ts = 0; toast('Demo carregado', 'success'); openModule('config'); }
@@ -1532,21 +1740,59 @@ function setupNextStep(s) {
   setupStep = s;
 }
 async function finalizarSetup() {
-  const e = { id: 1, firma: $('setupNome').value.trim(), nome: $('setupNome').value.trim(), nif: $('setupNif').value.trim(), regime: $('setupRegime').value, telefone: $('setupTelefone').value, email: $('setupEmail').value, endereco: $('setupEndereco').value, logo: 'logo.png', dataCriacao: now() };
-  const u = { id: 1, nome: $('setupAdminNome').value.trim(), email: $('setupAdminEmail').value.trim(), senha: $('setupAdminSenha').value, perfil: $('setupAdminPerfil').value, ativo: true, dataCriacao: now() };
-  await DB.add('empresas', e); await DB.add('usuarios', u);
-  localStorage.setItem('kanawa_empresa', JSON.stringify(e));
-  localStorage.setItem('kanawa_user', JSON.stringify({ nome: u.nome, email: u.email, role: u.perfil }));
-  localStorage.setItem('kanawa_setup_done', 'true');
-  if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
-  aplicarLogo();
-  if ($('setupWizard')) $('setupWizard').classList.remove('active');
-  if ($('authScreen')) $('authScreen').classList.add('active');
-  if ($('loginEmail')) $('loginEmail').value = u.email;
-  toast('✅ Empresa configurada', 'success');
+  const companyName = $('setupNome').value.trim();
+  const taxId = $('setupNif').value.trim();
+  const fullName = $('setupAdminNome').value.trim();
+  const email = $('setupAdminEmail').value.trim();
+  const password = $('setupAdminSenha').value;
+  if (!companyName || !taxId || !fullName || !email || password.length < 8) {
+    toast('Preencha os dados e utilize uma senha com pelo menos 8 caracteres.', 'warning');
+    return;
+  }
+
+  const company = {
+    id: 1, firma: companyName, nome: companyName, nif: taxId,
+    regime: $('setupRegime').value, telefone: $('setupTelefone').value,
+    email: $('setupEmail').value, endereco: $('setupEndereco').value,
+    logo: 'logo.png', dataCriacao: now()
+  };
+  const localUser = { id: 1, nome: fullName, email: email, perfil: 'admin', role: 'admin', ativo: true, dataCriacao: now() };
+
+  try {
+    const result = await KanawaCloud.signUp({
+      email: email,
+      password: password,
+      fullName: fullName,
+      phone: $('setupTelefone').value,
+      companyName: companyName,
+      taxId: taxId,
+      taxRegime: $('setupRegime').value
+    });
+
+    await DB.put('empresas', company);
+    await DB.put('usuarios', localUser);
+    if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
+
+    if (result.session && KanawaCloud.ready) {
+      await activateCloudSession(KanawaCloud.context, true);
+      mostrarAplicacaoAutenticada(KanawaCloud.context);
+      toast('Conta criada e empresa ligada à base de dados central.', 'success');
+    } else {
+      localStorage.setItem('kanawa_pending_email', email);
+      if ($('setupWizard')) $('setupWizard').classList.remove('active');
+      if ($('authScreen')) $('authScreen').classList.add('active');
+      if ($('loginEmail')) $('loginEmail').value = email;
+      toast('Conta criada. Confirme o email recebido e depois entre no Kanawa Soft.', 'success');
+    }
+  } catch (e) {
+    console.error('Erro ao criar conta Kanawa:', e);
+    toast('Não foi possível criar a conta: ' + (e.message || 'erro de ligação'), 'error');
+  }
 }
-function logout() {
-  if (!confirm('Sair?')) return;
+
+async function logout() {
+  if (!confirm('Sair da conta Kanawa Soft?')) return;
+  try { await KanawaCloud.signOut(); } catch (e) { console.warn('Logout:', e); }
   localStorage.removeItem('kanawa_user');
   if ($('app')) $('app').classList.remove('active');
   if ($('authScreen')) $('authScreen').classList.add('active');
@@ -2432,54 +2678,64 @@ async function init() {
     const manifest = { name: 'Kanawa Soft ERP', short_name: 'Kanawa', start_url: '.', display: 'standalone', background_color: '#1a3a5c', theme_color: '#1a3a5c', orientation: 'any', icons: [{ src: 'logo.png', sizes: '192x192', type: 'image/png' }, { src: 'logo.png', sizes: '512x512', type: 'image/png' }] };
     const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
     const manifestLink = $('pwaManifest'); if (manifestLink) manifestLink.href = URL.createObjectURL(blob);
+
     await DB.init();
     const theme = localStorage.getItem('kanawa_theme') || 'light';
     document.documentElement.setAttribute('data-theme', theme);
     const themeIcon = $('themeIcon'); if (themeIcon) themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
     aplicarLogo();
-    API.checkHealth().catch(() => { });
-    setTimeout(() => {
-      const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
-      const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || 'null');
-      const setupDone = localStorage.getItem('kanawa_setup_done');
-      if (!setupDone || !emp) { const wiz = $('setupWizard'); if (wiz) wiz.classList.add('active'); return; }
-      if (emp && $('topbarEmpresa')) $('topbarEmpresa').textContent = emp.firma || emp.nome || 'Kanawa Soft';
-      const user = JSON.parse(localStorage.getItem('kanawa_user') || 'null');
-      if (user) {
-        if ($('authScreen')) $('authScreen').classList.remove('active');
-        if ($('app')) $('app').classList.add('active');
-        if ($('userName')) $('userName').textContent = user.nome;
-        if ($('userRole')) $('userRole').textContent = user.role;
-        if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-        renderSidebar(); openModule('dashboard'); updateNotifBadge();
-      } else { if ($('authScreen')) $('authScreen').classList.add('active'); }
-    }, 200);
+
+    let cloudContext = null;
+    try { cloudContext = await KanawaCloud.init(); }
+    catch (cloudError) { console.warn('Sessão cloud:', cloudError); }
+
+    const loading = $('loadingScreen');
+    if (loading) loading.classList.add('hidden');
+
+    if (cloudContext && KanawaCloud.ready) {
+      await activateCloudSession(cloudContext, true);
+      mostrarAplicacaoAutenticada(cloudContext);
+    } else {
+      localStorage.removeItem('kanawa_user');
+      if ($('app')) $('app').classList.remove('active');
+      if ($('setupWizard')) $('setupWizard').classList.remove('active');
+      if ($('authScreen')) $('authScreen').classList.add('active');
+      if ($('loginEmail')) $('loginEmail').value = localStorage.getItem('kanawa_pending_email') || '';
+    }
+
     const loginForm = $('loginForm');
     if (loginForm) {
-      loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = $('loginEmail').value.trim(); const senha = $('loginPassword').value;
-        const err = $('loginError');
-        const users = await DB.getAll('usuarios');
-        const u = users.find(x => x.email === email && x.senha === senha);
-        if (u || (email === 'admin@kanawasoft.com' && senha === 'admin123')) {
-          const user = u || { nome: 'Administrador', email, perfil: 'admin' };
-          localStorage.setItem('kanawa_user', JSON.stringify({ nome: user.nome, email: user.email, role: user.perfil, avatar: user.avatar || null, telefone: user.telefone || '', nif: user.nif || '' }));
-          if ($('authScreen')) $('authScreen').classList.remove('active');
-          if ($('app')) $('app').classList.add('active');
-          if ($('userName')) $('userName').textContent = user.nome;
-          if ($('userRole')) $('userRole').textContent = user.perfil || 'admin';
-          if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-          renderSidebar(); openModule('dashboard'); updateNotifBadge();
-          toast('✅ Login realizado', 'success');
-        } else { if (err) { err.textContent = '❌ Email ou senha incorretos'; err.classList.add('show'); } }
+      loginForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const email = $('loginEmail').value.trim();
+        const password = $('loginPassword').value;
+        const errorBox = $('loginError');
+        if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show'); }
+        const submit = loginForm.querySelector('button[type="submit"]');
+        if (submit) submit.disabled = true;
+        try {
+          const ctx = await KanawaCloud.signIn(email, password);
+          await activateCloudSession(ctx, true);
+          localStorage.removeItem('kanawa_pending_email');
+          mostrarAplicacaoAutenticada(ctx);
+          toast('Sessão iniciada. Os dados estão ligados à base de dados central.', 'success');
+        } catch (error) {
+          if (errorBox) {
+            errorBox.textContent = error.message || 'Email ou senha incorretos.';
+            errorBox.classList.add('show');
+          }
+        } finally {
+          if (submit) submit.disabled = false;
+        }
       });
     }
+
     startAutoSync();
   } catch (e) {
     console.error('Init error:', e);
     const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
-    alert('Erro: ' + e.message);
+    const errorBox = $('loginError');
+    if (errorBox) { errorBox.textContent = 'Erro ao iniciar o Kanawa Soft: ' + e.message; errorBox.classList.add('show'); }
   }
 }
 
@@ -2495,7 +2751,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirCadastroEmpresa','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',
