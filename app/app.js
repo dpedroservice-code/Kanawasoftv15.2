@@ -1,10 +1,8 @@
 'use strict';
-/* KANAWA SOFT ERP v15.2 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
+/* KANAWA SOFT ERP v15.3 CLOUD — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
-const APP_VERSION = '15.2';
+const APP_VERSION = '15.3-cloud';
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
-const API_BASE_URL = IS_DESKTOP ? window.location.origin + '/api' : (localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api');
-let API_TOKEN = localStorage.getItem('kanawa_api_token') || null;
 let API_ONLINE = false;
 let setupStep = 1;
 let currentModule = 'dashboard';
@@ -86,11 +84,17 @@ const DB_STORES = [
   'produtos','clientes','fornecedores','vendas','compras','estoque','contasReceber','contasPagar','funcionarios','categorias','projetos','tarefas','ativos','frotas','ordensServico','notificacoes','documentos','mensagens','cursos','leads','campanhas','eventos','devolucoes','faturas','pagamentos','empresas','usuarios','movimentacoesEstoque','promocoes','ecommerce','auditoria','orcamentos','transportadoras','contratos','aprovacoes','sincronizacao','tickets','dispositivos','_sync_queue',
   'producao','ordensProducao','mrp','boms','custosProducao','controleQualidade','planosProducao','planoContas','budgets','forecasts','conciliacoes','transacoesBancarias','previsoesVendas','tendencias','folhasPagamento','turnos','ferias','vagas','candidatos','desempenhoRH','beneficios','planosCarreira','onboarding','pontoDigital','rescisoes','automacoes','scoreLeads','campanhasMarketing','segmentacoes','cupons','fidelidade','ganttProjetos','timesheets','manutencoes','ordensManutencao','garantias','pecasEstoque','checklistsInspecao','calendarioManutencoes','gpsTracking','abastecimentos','multas','tecnicos','roteirizacao','etiquetas','transferencias','inventarios','lotes','rastreios','recebimentos','ecommerceProdutos','ecommerceCarrinhos','ecommercePedidos','avaliacoes','pagamentosEcommerce','vendasConsignadas','tabelasPrecos','assinaturasDigitais','documentosFiscais','certificacoes','quizzes','mensagensChat','mensagensWhatsApp','eventosCalendar','unidades','servicos','clientesPortal','acessos','politicasSenha','tentativasLogin','sessoes','sms2FA','integracoesAGT','ivas','irts','backups','backupsAgendados','backupsNuvem','audiobooks','ddgHistorico','bingHistorico','dashboardsCustom','modulosPersonalizados','departamentos','frequencias','feriasFuncionarios','pagamentosFuncionarios','motoristas','manutencoesAtivos','depreciacoes','historicoOS','contatosWhatsApp','templatesWhatsApp','carrinhosSalvos','feedbacks','logsSeguranca','seguranca','migracoes','tarefasProjetos','membrosProjetos','atividadesProjetos','gruposUsuarios','config','armazens'
 ];
+let lastGeneratedRecordId = 0;
+function nextGeneratedRecordId() {
+  const candidate = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  lastGeneratedRecordId = Math.max(candidate, lastGeneratedRecordId + 1);
+  return lastGeneratedRecordId;
+}
 const DB = {
   name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES,
   init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; res(this.db); }; req.onerror = e => rej(e.target.error); }); },
   _tx(s, m) { return this.db.transaction(s, m || 'readonly').objectStore(s); },
-  add(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  add(s, i) { if (s !== '_sync_queue' && i && (i.id === undefined || i.id === null)) i.id = nextGeneratedRecordId(); return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   get(s, id) { return new Promise((res, rej) => { const r = this._tx(s).get(id); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   getAll(s) { return new Promise((res, rej) => { const r = this._tx(s).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); },
@@ -99,21 +103,286 @@ const DB = {
   count(s) { return new Promise((res, rej) => { const r = this._tx(s).count(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 };
 
-/* ====== API ====== */
+/* ====== CLOUD DATABASE / OFFLINE CACHE ====== */
 const API = {
-  async req(m, e, d) { const o = { method: m, headers: { 'Content-Type': 'application/json' } }; if (API_TOKEN) o.headers['Authorization'] = 'Bearer ' + API_TOKEN; if (d) o.body = JSON.stringify(d); try { const r = await fetch(API_BASE_URL + e, o); if (!r.ok) throw new Error('HTTP ' + r.status); API_ONLINE = true; updateApiStatus(true); return await r.json(); } catch (err) { API_ONLINE = false; updateApiStatus(false); return { offline: true, error: err.message }; } },
-  get(e) { return this.req('GET', e); }, post(e, d) { return this.req('POST', e, d); }, put(e, d) { return this.req('PUT', e, d); }, del(e) { return this.req('DELETE', e); },
-  async checkHealth() { try { const r = await fetch(API_BASE_URL + '/health', { signal: AbortSignal.timeout(2000) }); API_ONLINE = r.ok; } catch { API_ONLINE = false; } updateApiStatus(API_ONLINE); return API_ONLINE; }
+  async checkHealth() {
+    try { API_ONLINE = !!(window.KanawaCloud && await window.KanawaCloud.check()); }
+    catch (e) { API_ONLINE = false; }
+    updateApiStatus(API_ONLINE);
+    return API_ONLINE;
+  }
 };
-async function getData(s) { try { return await DB.getAll(s); } catch (e) { console.warn('getData:', s, e); return []; } }
-async function saveData(store, item) { const id = item.id ? (await DB.put(store, item), item.id) : await DB.add(store, item); if (API_ONLINE) { try { if (item.id) await API.put('/' + store + '/' + item.id, item); else await API.post('/' + store, item); } catch (e) { queueSync(store, 'create', item); } } else { queueSync(store, item.id ? 'update' : 'create', item); } return id; }
-async function deleteData(s, id) { await DB.del(s, id); if (API_ONLINE) { try { await API.del('/' + s + '/' + id); } catch (e) { queueSync(s, 'delete', { id }); } } else { queueSync(s, 'delete', { id }); } }
-async function queueSync(entity, action, payload) { try { await DB.add('_sync_queue', { entity, action, payload, data: now(), synced: false }); } catch (e) { } }
-async function processSyncQueue() { if (!API_ONLINE) return 0; const q = await DB.getAll('_sync_queue'); const p = q.filter(x => !x.synced); if (!p.length) return 0; let ok = 0; for (const i of p) { try { if (i.action === 'create') await API.post('/' + i.entity, i.payload); else if (i.action === 'update') await API.put('/' + i.entity + '/' + i.payload.id, i.payload); else if (i.action === 'delete') await API.del('/' + i.entity + '/' + i.payload.id); i.synced = true; await DB.put('_sync_queue', i); ok++; } catch (e) { break; } } return ok; }
-async function pullFromServer() { if (!API_ONLINE) return 0; let t = 0; const stores = DB_STORES.filter(s => !s.startsWith('_')); for (const s of stores) { try { const r = await API.get('/' + s); if (r && !r.offline && Array.isArray(r)) { for (const i of r) { if (!i.id) continue; try { await DB.put(s, i); t++; } catch (e) { } } } } catch (e) { } } return t; }
-async function syncNow(flag) { const on = await API.checkHealth(); if (!on) { if (flag) toast('Servidor offline — dados salvos localmente', 'warning'); return false; } const ind = $('syncIndicator'), txt = $('syncText'); if (ind) ind.className = 'sync-indicator show syncing'; if (txt) txt.textContent = 'Sincronizando...'; const pu = await processSyncQueue(); const pl = await pullFromServer(); if (ind) ind.className = 'sync-indicator show online'; if (txt) txt.textContent = 'Sincronizado ✓'; setTimeout(() => { if (ind) ind.className = 'sync-indicator'; }, 2000); if (flag) toast('✅ Sincronizado (' + pu + ' enviados, ' + pl + ' recebidos)', 'success'); return true; }
+
+async function getData(store) {
+  try {
+    if (window.KanawaCloud && KanawaCloud.ready && !KanawaCloud.isLocalOnly(store)) {
+      const pending = await DB.getAll('_sync_queue');
+      if (!pending.some(x => !x.synced && x.entity === store)) {
+        try {
+          const remote = await KanawaCloud.getStore(store);
+          if (Array.isArray(remote)) {
+            await DB.clear(store);
+            for (const item of remote) await DB.put(store, item);
+          }
+        } catch (cloudError) {
+          console.warn('Kanawa cloud read:', store, cloudError);
+        }
+      }
+    }
+    return await DB.getAll(store);
+  } catch (e) {
+    console.warn('getData:', store, e);
+    return [];
+  }
+}
+
+async function saveData(store, item, options) {
+  const existed = !!item.id;
+  const id = existed ? (await DB.put(store, item), item.id) : await DB.add(store, item);
+  const record = Object.assign({}, item, { id: id });
+  if (window.KanawaCloud && store === 'empresas' && KanawaCloud.ready) {
+    try { await KanawaCloud.updateCompany(record); }
+    catch (e) { console.warn('Atualização da empresa pendente:', e); }
+  } else if (window.KanawaCloud && !KanawaCloud.isLocalOnly(store)) {
+    if (KanawaCloud.ready) {
+      try { await KanawaCloud.upsertRecord(store, record, options || {}); }
+      catch (e) {
+        // A database validation/quota error must not be reported as a completed invoice.
+        if (store === 'vendas' && item.status === 'finalizada' && e && e.code) {
+          await DB.del(store, id);
+          throw e;
+        }
+        await queueSync(store, existed ? 'update' : 'create', record, options || {});
+        if (store === 'vendas' && item.status === 'finalizada') {
+          toast('Venda guardada neste dispositivo; sincronização pendente: ' + (e.message || 'sem ligação'), 'warning');
+        }
+        console.warn('Kanawa cloud write queued:', store, e);
+      }
+    } else {
+      await queueSync(store, existed ? 'update' : 'create', record, options || {});
+    }
+  }
+  return id;
+}
+
+async function deleteData(store, id) {
+  await DB.del(store, id);
+  if (window.KanawaCloud && !KanawaCloud.isLocalOnly(store)) {
+    if (KanawaCloud.ready) {
+      try { await KanawaCloud.deleteRecord(store, id); }
+      catch (e) { await queueSync(store, 'delete', { id: id }); }
+    } else {
+      await queueSync(store, 'delete', { id: id });
+    }
+  }
+}
+
+async function queueSync(entity, action, payload, options) {
+  if (window.KanawaCloud && KanawaCloud.isLocalOnly(entity)) return;
+  try { await DB.add('_sync_queue', { entity: entity, action: action, payload: payload, options: options || {}, data: now(), synced: false }); }
+  catch (e) { console.warn('Não foi possível guardar fila de sincronização:', e); }
+}
+
+async function processSyncQueue() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) return 0;
+  const queue = await DB.getAll('_sync_queue');
+  let sent = 0;
+  for (const item of queue.filter(x => !x.synced)) {
+    try {
+      if (item.action === 'delete') await KanawaCloud.deleteRecord(item.entity, item.payload.id);
+      else await KanawaCloud.upsertRecord(item.entity, item.payload, item.options || {});
+      await DB.del('_sync_queue', item.id);
+      sent++;
+    } catch (e) {
+      console.warn('Fila de sincronização aguardando:', item.entity, e);
+      break;
+    }
+  }
+  return sent;
+}
+
+async function pullFromServer() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) return 0;
+  const records = await KanawaCloud.getAllRecords();
+  const queue = await DB.getAll('_sync_queue');
+  const dirty = new Set(queue.filter(x => !x.synced).map(x => x.entity));
+  const grouped = new Map();
+  for (const row of records) {
+    if (!grouped.has(row.store_key)) grouped.set(row.store_key, []);
+    const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+    const id = payload.id !== undefined ? payload.id : (/^\d+$/.test(row.record_id) ? Number(row.record_id) : row.record_id);
+    grouped.get(row.store_key).push(Object.assign({}, payload, { id: id }));
+  }
+  let total = 0;
+  for (const store of DB_STORES) {
+    if (KanawaCloud.isLocalOnly(store) || dirty.has(store)) continue;
+    await DB.clear(store);
+    for (const item of (grouped.get(store) || [])) {
+      await DB.put(store, item);
+      total++;
+    }
+  }
+  return total;
+}
+
+async function syncNow(showMessage) {
+  const online = await API.checkHealth();
+  if (!online) {
+    if (showMessage) toast('Sem ligação à base de dados. Os dados ficam guardados neste dispositivo.', 'warning');
+    return false;
+  }
+  const indicator = $('syncIndicator'), label = $('syncText');
+  if (indicator) indicator.className = 'sync-indicator show syncing';
+  if (label) label.textContent = 'A sincronizar com PostgreSQL...';
+  try {
+    const sent = await processSyncQueue();
+    const received = await pullFromServer();
+    if (indicator) indicator.className = 'sync-indicator show online';
+    if (label) label.textContent = 'Base de dados sincronizada ✓';
+    if (showMessage) toast('Sincronização concluída: ' + sent + ' enviados, ' + received + ' recebidos.', 'success');
+    setTimeout(() => { if (indicator) indicator.className = 'sync-indicator'; }, 2200);
+    return true;
+  } catch (e) {
+    if (indicator) indicator.className = 'sync-indicator show offline';
+    if (label) label.textContent = 'Sincronização pendente';
+    if (showMessage) toast('Falha na sincronização: ' + e.message, 'error');
+    return false;
+  }
+}
 function toggleSync() { syncNow(true); }
-function startAutoSync() { if (syncTimer) clearInterval(syncTimer); syncTimer = setInterval(async () => { if (API_ONLINE) await processSyncQueue(); }, 30000); }
+function startAutoSync() {
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    if (window.KanawaCloud && KanawaCloud.ready) syncNow(false);
+  }, 60000);
+}
+
+async function activateCloudSession(ctx, migrateLocal) {
+  const companyId = ctx.company.id;
+  const previousCompanyId = localStorage.getItem('kanawa_cloud_company_id');
+  const localOnly = new Set(['empresas','usuarios','config','dispositivos','sessoes','tentativasLogin','politicasSenha','sms2FA','acessos','logsSeguranca','seguranca','migracoes','_sync_queue']);
+
+  if (previousCompanyId && previousCompanyId !== companyId) {
+    for (const store of DB_STORES) await DB.clear(store);
+    localStorage.setItem('kanawa_cloud_company_id', companyId);
+    localStorage.removeItem('kanawa_legacy_company');
+  } else if (previousCompanyId !== companyId) {
+    let remoteRows = null;
+    try { remoteRows = await KanawaCloud.getAllRecords(); }
+    catch (networkError) { console.warn('Base central indisponível; mantém-se o cache local:', networkError); }
+
+    if (remoteRows !== null) {
+      let localCompany = null;
+      try {
+        localCompany = JSON.parse(
+          localStorage.getItem('kanawa_legacy_company') ||
+          localStorage.getItem('kanawa_empresa') || 'null'
+        );
+      } catch (e) { localCompany = null; }
+
+      const localNif = String(localCompany && (localCompany.nif || localCompany.tax_id) || '').replace(/\D/g, '');
+      const cloudNif = String(ctx.company.tax_id || '').replace(/\D/g, '');
+      const localName = String(localCompany && (localCompany.nome || localCompany.firma || localCompany.legal_name) || '').trim().toLowerCase();
+      const cloudName = String(ctx.company.legal_name || ctx.company.trade_name || '').trim().toLowerCase();
+      const sameCompany = (!!localNif && !!cloudNif && localNif === cloudNif) ||
+        (!localNif && !cloudNif && !!localName && !!cloudName && localName === cloudName);
+
+      if (remoteRows.length > 0 && !sameCompany) {
+        for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
+      } else if (migrateLocal && sameCompany) {
+        const remoteKeys = new Set(remoteRows.map(function (row) { return row.store_key + ':' + row.record_id; }));
+        for (const store of DB_STORES) {
+          if (localOnly.has(store) || store.startsWith('_')) continue;
+          const rows = await DB.getAll(store);
+          for (const row of rows) {
+            if (!row || row.id === undefined || row.id === null) continue;
+            const key = store + ':' + String(row.id);
+            if (remoteKeys.has(key)) continue;
+            try {
+              await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true });
+              remoteKeys.add(key);
+            } catch (migrationError) {
+              await queueSync(store, 'create', row, { skipSaleFinalize: true });
+              console.warn('Migração cloud pendente:', store, migrationError);
+            }
+          }
+        }
+      } else if (remoteRows.length > 0) {
+        for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
+      }
+      localStorage.setItem('kanawa_cloud_company_id', companyId);
+      localStorage.removeItem('kanawa_legacy_company');
+    }
+  }
+
+  const company = {
+    id: 1,
+    firma: ctx.company.trade_name || ctx.company.legal_name,
+    nome: ctx.company.legal_name,
+    nif: ctx.company.tax_id || '',
+    telefone: ctx.company.phone || '',
+    email: ctx.company.email || ctx.user.email || '',
+    regime: ctx.company.tax_regime || 'not_configured',
+    dataCriacao: ctx.company.created_at || now()
+  };
+  const user = {
+    id: 1,
+    nome: (ctx.profile && ctx.profile.full_name) || ctx.user.email,
+    email: ctx.user.email,
+    perfil: ctx.role,
+    role: ctx.role,
+    avatar: null
+  };
+  await DB.put('empresas', company);
+  await DB.put('usuarios', user);
+  localStorage.setItem('kanawa_empresa', JSON.stringify(company));
+  localStorage.setItem('kanawa_user', JSON.stringify(user));
+  localStorage.setItem('kanawa_setup_done', 'true');
+
+  try { await pullFromServer(); }
+  catch (pullError) { console.warn('Sincronização inicial adiada; será retomada quando houver internet:', pullError); }
+  try { await KanawaCloud.registerInstallation(APP_VERSION); }
+  catch (e) { console.warn('Registo de instalação pendente:', e); }
+
+  try {
+    const license = await KanawaCloud.getLicense();
+    if (license) localStorage.setItem('kanawa_license', JSON.stringify(license));
+    const entitlements = await KanawaCloud.getEntitlements();
+    if (entitlements) localStorage.setItem('kanawa_entitlements', JSON.stringify(entitlements));
+    if (entitlements && entitlements.read_only) toast('A licença ou os limites do plano estão em modo de consulta. Verifique a subscrição.', 'warning');
+    if (license && license.expires_at) {
+      const expiry = new Date(license.expires_at);
+      const days = Math.ceil((expiry.getTime() - Date.now()) / 86400000);
+      if (license.status === 'expired' || days < 0) toast('A licença Kanawa Soft expirou. Contacte a D.PEDRO SOLUÇÕES.', 'warning');
+      else if (days <= 5) toast('A licença expira em ' + Math.max(0, days) + ' dia(s).', 'warning');
+    }
+  } catch (e) { console.warn('Não foi possível consultar a licença:', e); }
+  await API.checkHealth();
+  return { company: company, user: user };
+}
+
+function mostrarAplicacaoAutenticada(ctx) {
+  const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+  const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
+  if ($('setupWizard')) $('setupWizard').classList.remove('active');
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('app')) $('app').classList.add('active');
+  if ($('topbarEmpresa')) $('topbarEmpresa').textContent = company.firma || company.nome || 'Kanawa Soft';
+  if ($('userName')) $('userName').textContent = user.nome || 'Utilizador';
+  if ($('userRole')) $('userRole').textContent = user.role || user.perfil || 'operador';
+  if ($('userAvatar')) {
+    $('userAvatar').src = user.avatar || 'logo.png';
+    $('userAvatar').onerror = function () { this.src = 'logo.png'; };
+  }
+  renderSidebar();
+  openModule('dashboard');
+  updateNotifBadge();
+}
+
+async function abrirCadastroEmpresa() {
+  if ($('authScreen')) $('authScreen').classList.remove('active');
+  if ($('setupWizard')) $('setupWizard').classList.add('active');
+}
 
 /* ====== PERMISSÕES ====== */
 const PERMISSOES = {
@@ -746,8 +1015,9 @@ async function pdvFinalizarVenda(modo) {
   const numeroFatura = 'FT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6);
   const venda = { numeroFatura, clienteNome: pdvState.cliente.nome, clienteNif: pdvState.cliente.nif, clienteTelefone: pdvState.cliente.telefone, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, preco: i.preco, qty: i.qty, subtotal: i.subtotal })), subtotal: c.subtotal, desconto: pdvState.desconto, descontoValor: c.descontoValor, iva: c.iva, total: c.total, valorRecebido: pdvState.valorRecebido, troco: c.troco, pagamento: pdvState.pagamento, regime: pdvState.regime, aplicarIVA: pdvState.aplicarIVA, observacoes: pdvState.observacoes, status: modo, data: now(), hash: gerarHash({ total: c.total, data: Date.now() }), operador: user.nome || 'Admin', empresa: emp };
   venda.assinatura = gerarAssinatura(venda);
-  await saveData('vendas', venda);
-  for (const item of pdvState.carrinho) { const p = await DB.get('produtos', item.id); if (p) { p.estoque = Math.max(0, (p.estoque || 0) - item.qty); await saveData('produtos', p); } }
+  try { await saveData('vendas', venda); }
+  catch (saleError) { toast('Venda não finalizada no servidor: ' + (saleError.message || 'verifique licença e stock'), 'error'); return; }
+  for (const item of pdvState.carrinho) { const p = await DB.get('produtos', item.id); if (p) { p.estoque = Math.max(0, (p.estoque || 0) - item.qty); await saveData('produtos', p, { skipStockSync: true }); } }
   await saveData('movimentacoesEstoque', { tipo: 'saida', descricao: 'Venda ' + numeroFatura, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, qtd: i.qty })), data: now() });
   if (pdvState.pagamento === 'credito') await saveData('contasReceber', { cliente: pdvState.cliente.nome, valor: c.total, descricao: 'Venda ' + numeroFatura, vencimento: new Date(Date.now() + 30 * 86400000).toISOString(), status: 'pendente', data: now() });
   await criarNotificacao('Nova Venda', numeroFatura + ' - ' + fmt(c.total), 'success', 'vendas');
@@ -1455,15 +1725,15 @@ async function renderConfig() {
     '<div class="form-group"><label>Desconto Máximo (%)</label><input type="number" id="cfgDescMax" value="' + (regras.descontoMax || 50) + '"></div></div>' +
     '<button class="btn btn-success btn-lg" style="margin-top:16px" onclick="salvarRegras()"><i class="fas fa-save"></i> Salvar Regras</button></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-server"></i> Servidor (Opcional)</h3></div>' +
-    '<p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px">O sistema funciona 100% offline. Configure para compartilhar dados com outras telas/dispositivos.</p>' +
+    '<p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px">Os dados são guardados no PostgreSQL central e sincronizados com o cache local para permitir trabalho temporário sem internet.</p>' +
     '<div class="form-grid">' +
-    '<div class="form-group full"><label>URL do Servidor</label><input id="cfgApiUrl" value="' + esc(localStorage.getItem('kanawa_api_url') || 'http://localhost:3000/api') + '"></div>' +
+    '<div class="form-group full"><label>Base de dados central</label><input value="Supabase PostgreSQL — Kanawa Cloud" disabled></div>' +
     '<div class="form-group"><label>Status</label><div style="padding:10px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (API_ONLINE ? '#4ade80' : '#f87171') + ';margin-right:6px"></span>' + (API_ONLINE ? 'Conectado' : 'Desconectado') + '</div></div></div>' +
     '<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">' +
-    '<button class="btn btn-success" onclick="salvarConfigAPI()"><i class="fas fa-save"></i> Salvar URL</button>' +
+    '<span style="font-size:.8rem;color:var(--text-muted);padding:10px">Ligação configurada pela D.PEDRO SOLUÇÕES</span>' +
     '<button class="btn btn-primary" onclick="testarAPI()"><i class="fas fa-check"></i> Testar</button>' +
     '<button class="btn btn-info" onclick="syncNow(true)"><i class="fas fa-sync"></i> Sincronizar Agora</button></div></div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-database"></i> Banco Local (IndexedDB)</h3></div>' + table(['Coleção', 'Registros', 'Ações'], countRows) + '</div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-database"></i> Cache local (IndexedDB) + PostgreSQL central</h3></div>' + table(['Coleção', 'Registros', 'Ações'], countRows) + '</div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-tools"></i> Ferramentas</h3></div>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
     '<button class="btn btn-warning" onclick="recarregarDemo()"><i class="fas fa-seedling"></i> Dados Demo</button>' +
@@ -1508,7 +1778,7 @@ function salvarRegras() {
   localStorage.setItem('kanawa_gaveta_auto', $('cfgGavetaAuto').checked ? 'true' : 'false');
   toast('✅ Regras salvas', 'success');
 }
-function salvarConfigAPI() { localStorage.setItem('kanawa_api_url', $('cfgApiUrl').value); toast('URL salva — recarregando...', 'success'); setTimeout(() => location.reload(), 800); }
+function salvarConfigAPI() { toast('A ligação central é gerida automaticamente pelo Kanawa Soft Cloud.', 'info'); }
 async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? '✅ Servidor Online' : '❌ Servidor Offline', ok ? 'success' : 'warning'); }
 async function limparColecao(s) { if (!confirm('Limpar ' + s + '?')) return; await DB.clear(s); toast('Limpo', 'info'); openModule('config'); }
 async function recarregarDemo() { if (!confirm('Carregar demo?')) return; await seedDemo(); pdvCache.ts = 0; toast('Demo carregado', 'success'); openModule('config'); }
@@ -1532,21 +1802,69 @@ function setupNextStep(s) {
   setupStep = s;
 }
 async function finalizarSetup() {
-  const e = { id: 1, firma: $('setupNome').value.trim(), nome: $('setupNome').value.trim(), nif: $('setupNif').value.trim(), regime: $('setupRegime').value, telefone: $('setupTelefone').value, email: $('setupEmail').value, endereco: $('setupEndereco').value, logo: 'logo.png', dataCriacao: now() };
-  const u = { id: 1, nome: $('setupAdminNome').value.trim(), email: $('setupAdminEmail').value.trim(), senha: $('setupAdminSenha').value, perfil: $('setupAdminPerfil').value, ativo: true, dataCriacao: now() };
-  await DB.add('empresas', e); await DB.add('usuarios', u);
-  localStorage.setItem('kanawa_empresa', JSON.stringify(e));
-  localStorage.setItem('kanawa_user', JSON.stringify({ nome: u.nome, email: u.email, role: u.perfil }));
-  localStorage.setItem('kanawa_setup_done', 'true');
-  if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
-  aplicarLogo();
-  if ($('setupWizard')) $('setupWizard').classList.remove('active');
-  if ($('authScreen')) $('authScreen').classList.add('active');
-  if ($('loginEmail')) $('loginEmail').value = u.email;
-  toast('✅ Empresa configurada', 'success');
+  const companyName = $('setupNome').value.trim();
+  const taxId = $('setupNif').value.trim();
+  const fullName = $('setupAdminNome').value.trim();
+  const email = $('setupAdminEmail').value.trim();
+  const password = $('setupAdminSenha').value;
+  if (!companyName || !taxId || !fullName || !email || password.length < 8) {
+    toast('Preencha os dados e utilize uma senha com pelo menos 8 caracteres.', 'warning');
+    return;
+  }
+
+  const company = {
+    id: 1, firma: companyName, nome: companyName, nif: taxId,
+    regime: $('setupRegime').value, telefone: $('setupTelefone').value,
+    email: $('setupEmail').value, endereco: $('setupEndereco').value,
+    logo: 'logo.png', dataCriacao: now()
+  };
+  const localUser = { id: 1, nome: fullName, email: email, perfil: 'admin', role: 'admin', ativo: true, dataCriacao: now() };
+
+  try {
+    const result = await KanawaCloud.signUp({
+      email: email,
+      password: password,
+      fullName: fullName,
+      phone: $('setupTelefone').value,
+      companyName: companyName,
+      taxId: taxId,
+      taxRegime: $('setupRegime').value
+    });
+
+    const existingLocalCompany = await DB.get('empresas', 1);
+    const oldNif = String(existingLocalCompany && (existingLocalCompany.nif || existingLocalCompany.tax_id) || '').replace(/\D/g, '');
+    const newNif = String(company.nif || '').replace(/\D/g, '');
+    const oldName = String(existingLocalCompany && (existingLocalCompany.nome || existingLocalCompany.firma || existingLocalCompany.legal_name) || '').trim().toLowerCase();
+    const newName = String(company.nome || company.firma || '').trim().toLowerCase();
+    const sameLocalCompany = existingLocalCompany && ((oldNif && newNif && oldNif === newNif) || (!oldNif && !newNif && oldName && oldName === newName));
+    if (existingLocalCompany && !sameLocalCompany) {
+      for (const store of DB_STORES) if (!KanawaCloud.isLocalOnly(store)) await DB.clear(store);
+    }
+    localStorage.setItem('kanawa_legacy_company', JSON.stringify(sameLocalCompany ? existingLocalCompany : company));
+    await DB.put('empresas', company);
+    await DB.put('usuarios', localUser);
+    if ($('setupCarregarDemo') && $('setupCarregarDemo').checked) await seedDemo();
+
+    if (result.session && KanawaCloud.ready) {
+      await activateCloudSession(KanawaCloud.context, true);
+      mostrarAplicacaoAutenticada(KanawaCloud.context);
+      toast('Conta criada e empresa ligada à base de dados central.', 'success');
+    } else {
+      localStorage.setItem('kanawa_pending_email', email);
+      if ($('setupWizard')) $('setupWizard').classList.remove('active');
+      if ($('authScreen')) $('authScreen').classList.add('active');
+      if ($('loginEmail')) $('loginEmail').value = email;
+      toast('Conta criada. Confirme o email recebido e depois entre no Kanawa Soft.', 'success');
+    }
+  } catch (e) {
+    console.error('Erro ao criar conta Kanawa:', e);
+    toast('Não foi possível criar a conta: ' + (e.message || 'erro de ligação'), 'error');
+  }
 }
-function logout() {
-  if (!confirm('Sair?')) return;
+
+async function logout() {
+  if (!confirm('Sair da conta Kanawa Soft?')) return;
+  try { await KanawaCloud.signOut(); } catch (e) { console.warn('Logout:', e); }
   localStorage.removeItem('kanawa_user');
   if ($('app')) $('app').classList.remove('active');
   if ($('authScreen')) $('authScreen').classList.add('active');
@@ -2423,7 +2741,7 @@ async function seedDemo() {
   await DB.add('categorias', { nome: 'Eletrônicos', descricao: 'Dispositivos' });
   await DB.add('categorias', { nome: 'Acessórios', descricao: 'Acessórios diversos' });
   await DB.add('funcionarios', { nome: 'Ana Costa', cargo: 'Vendedora', salario: 120000 });
-  await DB.add('notificacoes', { titulo: '🎉 Bem-vindo', mensagem: 'Kanawa Soft ERP v15.2 configurado!', tipo: 'success', data: now(), lida: false });
+  await DB.add('notificacoes', { titulo: '🎉 Bem-vindo', mensagem: 'Kanawa Soft ERP v15.3 Cloud ligado à base central!', tipo: 'success', data: now(), lida: false });
 }
 
 /* ====== INIT ====== */
@@ -2432,54 +2750,64 @@ async function init() {
     const manifest = { name: 'Kanawa Soft ERP', short_name: 'Kanawa', start_url: '.', display: 'standalone', background_color: '#1a3a5c', theme_color: '#1a3a5c', orientation: 'any', icons: [{ src: 'logo.png', sizes: '192x192', type: 'image/png' }, { src: 'logo.png', sizes: '512x512', type: 'image/png' }] };
     const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
     const manifestLink = $('pwaManifest'); if (manifestLink) manifestLink.href = URL.createObjectURL(blob);
+
     await DB.init();
     const theme = localStorage.getItem('kanawa_theme') || 'light';
     document.documentElement.setAttribute('data-theme', theme);
     const themeIcon = $('themeIcon'); if (themeIcon) themeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
     aplicarLogo();
-    API.checkHealth().catch(() => { });
-    setTimeout(() => {
-      const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
-      const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || 'null');
-      const setupDone = localStorage.getItem('kanawa_setup_done');
-      if (!setupDone || !emp) { const wiz = $('setupWizard'); if (wiz) wiz.classList.add('active'); return; }
-      if (emp && $('topbarEmpresa')) $('topbarEmpresa').textContent = emp.firma || emp.nome || 'Kanawa Soft';
-      const user = JSON.parse(localStorage.getItem('kanawa_user') || 'null');
-      if (user) {
-        if ($('authScreen')) $('authScreen').classList.remove('active');
-        if ($('app')) $('app').classList.add('active');
-        if ($('userName')) $('userName').textContent = user.nome;
-        if ($('userRole')) $('userRole').textContent = user.role;
-        if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-        renderSidebar(); openModule('dashboard'); updateNotifBadge();
-      } else { if ($('authScreen')) $('authScreen').classList.add('active'); }
-    }, 200);
+
+    let cloudContext = null;
+    try { cloudContext = await KanawaCloud.init(); }
+    catch (cloudError) { console.warn('Sessão cloud:', cloudError); }
+
+    const loading = $('loadingScreen');
+    if (loading) loading.classList.add('hidden');
+
+    if (cloudContext && KanawaCloud.ready) {
+      await activateCloudSession(cloudContext, true);
+      mostrarAplicacaoAutenticada(cloudContext);
+    } else {
+      localStorage.removeItem('kanawa_user');
+      if ($('app')) $('app').classList.remove('active');
+      if ($('setupWizard')) $('setupWizard').classList.remove('active');
+      if ($('authScreen')) $('authScreen').classList.add('active');
+      if ($('loginEmail')) $('loginEmail').value = localStorage.getItem('kanawa_pending_email') || '';
+    }
+
     const loginForm = $('loginForm');
     if (loginForm) {
-      loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = $('loginEmail').value.trim(); const senha = $('loginPassword').value;
-        const err = $('loginError');
-        const users = await DB.getAll('usuarios');
-        const u = users.find(x => x.email === email && x.senha === senha);
-        if (u || (email === 'admin@kanawasoft.com' && senha === 'admin123')) {
-          const user = u || { nome: 'Administrador', email, perfil: 'admin' };
-          localStorage.setItem('kanawa_user', JSON.stringify({ nome: user.nome, email: user.email, role: user.perfil, avatar: user.avatar || null, telefone: user.telefone || '', nif: user.nif || '' }));
-          if ($('authScreen')) $('authScreen').classList.remove('active');
-          if ($('app')) $('app').classList.add('active');
-          if ($('userName')) $('userName').textContent = user.nome;
-          if ($('userRole')) $('userRole').textContent = user.perfil || 'admin';
-          if ($('userAvatar')) { $('userAvatar').src = user.avatar || 'logo.png'; $('userAvatar').onerror = function () { this.src = 'logo.png'; }; }
-          renderSidebar(); openModule('dashboard'); updateNotifBadge();
-          toast('✅ Login realizado', 'success');
-        } else { if (err) { err.textContent = '❌ Email ou senha incorretos'; err.classList.add('show'); } }
+      loginForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        const email = $('loginEmail').value.trim();
+        const password = $('loginPassword').value;
+        const errorBox = $('loginError');
+        if (errorBox) { errorBox.textContent = ''; errorBox.classList.remove('show'); }
+        const submit = loginForm.querySelector('button[type="submit"]');
+        if (submit) submit.disabled = true;
+        try {
+          const ctx = await KanawaCloud.signIn(email, password);
+          await activateCloudSession(ctx, true);
+          localStorage.removeItem('kanawa_pending_email');
+          mostrarAplicacaoAutenticada(ctx);
+          toast('Sessão iniciada. Os dados estão ligados à base de dados central.', 'success');
+        } catch (error) {
+          if (errorBox) {
+            errorBox.textContent = error.message || 'Email ou senha incorretos.';
+            errorBox.classList.add('show');
+          }
+        } finally {
+          if (submit) submit.disabled = false;
+        }
       });
     }
+
     startAutoSync();
   } catch (e) {
     console.error('Init error:', e);
     const loading = $('loadingScreen'); if (loading) loading.classList.add('hidden');
-    alert('Erro: ' + e.message);
+    const errorBox = $('loginError');
+    if (errorBox) { errorBox.textContent = 'Erro ao iniciar o Kanawa Soft: ' + e.message; errorBox.classList.add('show'); }
   }
 }
 
@@ -2495,7 +2823,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirCadastroEmpresa','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',
