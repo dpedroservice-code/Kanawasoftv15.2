@@ -29,6 +29,8 @@
     if (role === 'owner' || role === 'admin') return 'admin';
     if (role === 'manager') return 'gerente';
     if (role === 'cashier') return 'caixa';
+    if (role === 'accountant') return 'contabilista';
+    if (role === 'viewer') return 'consulta';
     return 'operador';
   }
 
@@ -147,6 +149,13 @@
       if (result.error) throw result.error;
       context = null;
       try { localStorage.removeItem('kanawa_cloud_context'); } catch (e) { }
+    },
+
+    async refreshContext() {
+      if (!client || !context) throw new Error('Sessão Kanawa não está ativa.');
+      const result = await client.auth.getUser();
+      if (result.error || !result.data || !result.data.user) throw (result.error || new Error('Sessão expirada.'));
+      return await loadContext(result.data.user);
     },
 
     async check() {
