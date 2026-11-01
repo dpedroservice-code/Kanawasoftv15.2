@@ -2849,15 +2849,53 @@ async function renderFrotaCombustivel() {
       a.map(x => [esc(x.veiculo || '-'), fmtD(x.data), (x.litros || 0) + 'L', fmt(x.custo || 0), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'abastecimentos\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
 async function novoAbastecimento() { const v = prompt('Placa do veículo:'); if (!v) return; await saveData('abastecimentos', { veiculo: v, data: now(), litros: parseFloat(prompt('Litros:', '0')) || 0, custo: parseFloat(prompt('Custo:', '0')) || 0 }); toast('Abastecimento registrado', 'success'); openModule('frota-combustivel'); }
-function renderFrotaDocumentos() {
-  return header('Documentação da Frota', 'Documentos dos veículos', 'var(--primary)', '', 'fa-file-alt') +
-    '<div class="card"><div class="form-grid">' +
-    '<div class="form-group"><label>Veículo</label><select id="docVeiculo"><option value="">Selecione...</option></select></div>' +
-    '<div class="form-group"><label>Tipo</label><select><option>Licenciamento</option><option>Seguro</option><option>Inspeção</option></select></div>' +
-    '<div class="form-group"><label>Validade</label><input type="date" id="docValidade"></div></div>' +
-    '<button class="btn btn-success" onclick="salvarDocumentoFrota()"><i class="fas fa-save"></i> Salvar</button></div>';
+async function renderFrotaDocumentos() {
+  const vehicles = await getData('frotas') || [];
+  const docs = await getData('frotaDocumentos') || [];
+  const options = vehicles.map(function (v) {
+    return '<option value="' + esc(v.id) + '">' + esc(v.placa || v.matricula || v.nome || ('Veículo ' + v.id)) + '</option>';
+  }).join('');
+  const rows = docs.map(function (d) {
+    const expiry = d.validade ? new Date(d.validade + 'T23:59:59') : null;
+    const days = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400000) : null;
+    const status = days === null ? 'Sem validade' : days < 0 ? 'Expirado' : days <= 30 ? 'A expirar' : 'Válido';
+    const type = days !== null && days < 0 ? 'danger' : days !== null && days <= 30 ? 'warning' : 'success';
+    return [esc(d.veiculo || '-'), esc(d.tipo || '-'), esc(d.numero || '-'), fmtD(d.validade),
+      badge(status, type), d.link ? '<a href="' + esc(d.link) + '" target="_blank" rel="noopener">Abrir</a>' : '-',
+      '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'frotaDocumentos\',' + Number(d.id) + ')">Eliminar</button>'];
+  });
+  return header('Documentação da Frota', docs.length + ' documentos registados', 'var(--primary)',
+    '<button class="btn btn-success" onclick="salvarDocumentoFrota()"><i class="fas fa-save"></i> Guardar documento</button>', 'fa-file-alt') +
+    '<div class="card"><h3>Registar documento</h3><div class="form-grid">' +
+    '<div class="form-group"><label>Veículo *</label><select id="docVeiculo"><option value="">Selecione...</option>' + options + '</select></div>' +
+    '<div class="form-group"><label>Tipo de documento *</label><select id="docTipo"><option value="">Selecione...</option><option>Licenciamento</option><option>Seguro</option><option>Inspeção</option><option>Outro</option></select></div>' +
+    '<div class="form-group"><label>Número / referência</label><input id="docNumero" placeholder="Número do documento"></div>' +
+    '<div class="form-group"><label>Validade</label><input type="date" id="docValidade"></div>' +
+    '<div class="form-group"><label>Link / localização do ficheiro</label><input id="docLink" placeholder="https://... ou referência interna"></div>' +
+    '<div class="form-group"><label>Observações</label><input id="docObservacao" placeholder="Observações"></div></div>' +
+    (vehicles.length ? '' : '<p class="alert alert-warning">Registe primeiro um veículo no módulo Frota.</p>') +
+    '<button class="btn btn-success" onclick="salvarDocumentoFrota()">Guardar documento</button></div>' +
+    '<div class="card">' + table(['Veículo','Tipo','Número','Validade','Estado','Ficheiro','Ações'], rows) + '</div>';
 }
-function salvarDocumentoFrota() { toast('Documento salvo', 'success'); }
+
+async function salvarDocumentoFrota() {
+  if (!podeFazerModulo('frota-documentos','criar')) { toast('Sem permissão para registar documentos da frota.','error'); return; }
+  const vehicleId = $('docVeiculo') && $('docVeiculo').value;
+  const type = $('docTipo') && $('docTipo').value;
+  if (!vehicleId || !type) { toast('Selecione o veículo e o tipo de documento.','warning'); return; }
+  const vehicles = await getData('frotas') || [];
+  const vehicle = vehicles.find(function (v) { return String(v.id) === String(vehicleId); });
+  if (!vehicle) { toast('Veículo não encontrado.','error'); return; }
+  try {
+    await saveData('frotaDocumentos', {
+      veiculo_id:vehicle.id, veiculo:vehicle.placa || vehicle.matricula || vehicle.nome || String(vehicle.id),
+      tipo:type, numero:$('docNumero').value.trim(), validade:$('docValidade').value || null,
+      link:$('docLink').value.trim(), observacao:$('docObservacao').value.trim(), data:now()
+    });
+    toast('Documento da frota guardado.','success');
+    openModule('frota-documentos');
+  } catch (error) { toast(error.message || 'Não foi possível guardar o documento.','error'); }
+}
 async function renderFrotaMultas() {
   const m = await getData('multas') || [];
   return header('Multas', m.length + ' multas', 'var(--danger)',
