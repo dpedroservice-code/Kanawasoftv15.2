@@ -1,5 +1,4 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { initDB } = require('./database');
@@ -7,7 +6,7 @@ const { registerRoutes } = require('./routes');
 
 /* ============================================================
    KANAWA SOFT ERP v15.2 — server.js
-   Express · SQLite (sql.js) · CORS · Static · SPA fallback
+   Express · SQLite local shell · Supabase Cloud · Static · SPA fallback
    Helmet/rateLimit/morgan (opcionais) · Graceful shutdown
    Contrato: startServer({ dataDir, port }) → { port, server }
    ============================================================ */
@@ -102,9 +101,6 @@ async function startServer(options = {}) {
     console.log('[Kanawa] Helmet ativo (headers de segurança)');
   }
 
-  /* ====== CORS ====== */
-  app.use(cors());
-
   /* ====== RATE LIMIT (opcional) ====== */
   if (rateLimit) {
     const limiter = rateLimit({
@@ -123,8 +119,8 @@ async function startServer(options = {}) {
   }
 
   /* ====== BODY PARSERS ====== */
-  app.use(express.json({ limit: '200mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   /* ====== LOG ====== */
   if (morgan) {
