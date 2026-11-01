@@ -246,7 +246,7 @@ tr:hover td{background:var(--bg-hover)}
       <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">📋 Dados da Empresa</h3>
       <div class="form-grid">
         <div class="form-group full"><label>Nome da Empresa *</label><input id="setupNome" placeholder="Ex: Kanawa Soft, LDA"></div>
-        <div class="form-group"><label>NIF *</label><input id="setupNif" placeholder="Ex: 006518595L"></div>
+        <div class="form-group"><label>NIF (opcional nesta fase)</label><input id="setupNif" placeholder="Pode adicionar depois"></div>
         <div class="form-group"><label>Regime Fiscal</label>
           <select id="setupRegime">
             <option value="geral">Regime Geral (IVA 14%)</option>
@@ -268,18 +268,11 @@ tr:hover td{background:var(--bg-hover)}
     <div id="setupStep2" style="display:none">
       <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">👤 Conta de Administrador</h3>
       <div class="form-grid">
-        <div class="form-group full"><label>Nome Completo *</label><input id="setupAdminNome" value="Administrador"></div>
-        <div class="form-group"><label>Email *</label><input type="email" id="setupAdminEmail" value="admin@kanawasoft.com"></div>
-        <div class="form-group"><label>Senha *</label><input type="password" id="setupAdminSenha" value="admin123" minlength="6"></div>
+        <div class="form-group full"><label>Nome Completo *</label><input id="setupAdminNome" placeholder="Nome do responsável" required></div>
+        <div class="form-group"><label>Email *</label><input type="email" id="setupAdminEmail" placeholder="email@empresa.com" required></div>
+        <div class="form-group"><label>Senha *</label><input type="password" id="setupAdminSenha" placeholder="Mínimo 10 caracteres" minlength="10" required autocomplete="new-password"></div>
         <div class="form-group"><label>Telefone</label><input id="setupAdminTel" placeholder="+244 900 000 000"></div>
-        <div class="form-group"><label>Perfil</label>
-          <select id="setupAdminPerfil">
-            <option value="admin">Administrador</option>
-            <option value="gerente">Gerente</option>
-            <option value="operador">Operador</option>
-            <option value="caixa">Operador de Caixa</option>
-          </select>
-        </div>
+        <div class="form-group"><label>Permissão inicial</label><input value="Proprietário da empresa — acesso administrativo" disabled></div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-top:16px">
         <button class="btn btn-secondary" onclick="setupNextStep(1)"><i class="fas fa-arrow-left"></i> Voltar</button>
@@ -291,7 +284,7 @@ tr:hover td{background:var(--bg-hover)}
       <div style="background:var(--bg);border-radius:var(--radius-sm);padding:16px;margin-bottom:14px">
         <div id="setupResumo" style="font-size:.9rem;line-height:1.9"></div>
       </div>
-      <div class="form-group"><label><input type="checkbox" id="setupCarregarDemo" checked> Carregar dados de demonstração</label></div>
+      <p style="color:var(--text-muted);font-size:.82rem;margin:10px 0">A empresa será criada sem exigir adesão ou certificação AGT. A configuração fiscal pode ser concluída mais tarde.</p>
       <div style="display:flex;justify-content:space-between;margin-top:16px">
         <button class="btn btn-secondary" onclick="setupNextStep(2)"><i class="fas fa-arrow-left"></i> Voltar</button>
         <button class="btn btn-success btn-lg" onclick="finalizarSetup()"><i class="fas fa-check-circle"></i> Concluir</button>
@@ -310,11 +303,12 @@ tr:hover td{background:var(--bg-hover)}
     </div>
     <div id="loginError" class="alert alert-danger"></div>
     <form id="loginForm">
-      <div class="form-group"><label>📧 Email</label><input type="email" id="loginEmail" required value="admin@kanawasoft.com"></div>
-      <div class="form-group"><label>🔒 Senha</label><input type="password" id="loginPassword" required value="admin123"></div>
+      <div class="form-group"><label>📧 Email</label><input type="email" id="loginEmail" required autocomplete="username" placeholder="O seu email"></div>
+      <div class="form-group"><label>🔒 Senha</label><input type="password" id="loginPassword" required autocomplete="current-password" placeholder="A sua senha"></div>
       <button type="submit" class="btn btn-primary btn-block btn-lg"><i class="fas fa-sign-in-alt"></i> Entrar</button>
     </form>
-    <div style="text-align:center;margin-top:16px;font-size:.78rem;color:var(--text-muted)">Demo: admin@kanawasoft.com / admin123</div>
+    <div style="text-align:center;margin-top:10px;font-size:.85rem"><button type="button" class="btn btn-link" onclick="recuperarSenha()">Esqueci a minha senha</button></div>
+    <div style="text-align:center;margin-top:18px;font-size:.88rem"><button type="button" class="btn btn-secondary btn-block" onclick="abrirSetup()">Criar empresa e conta</button><p style="margin-top:12px;color:var(--text-muted);font-size:.76rem">Acesso protegido por autenticação de utilizador. Não existe senha padrão de administrador.</p></div>
   </div>
 </div>
 
@@ -378,6 +372,7 @@ tr:hover td{background:var(--bg-hover)}
 <script src="libs/xlsx.min.js"></script>
 
 <!-- App principal -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 </body>
 </html>
