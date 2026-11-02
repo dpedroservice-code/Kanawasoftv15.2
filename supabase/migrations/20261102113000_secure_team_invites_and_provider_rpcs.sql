@@ -85,7 +85,7 @@ AS $function$
   LIMIT 1;
 $function$;
 
--- Payment provider metadata is visible only to platform administrators.
+-- Provider status metadata is readable by authenticated users; only platform administrators can change provider configuration.
 DROP POLICY IF EXISTS ks_payment_provider_admin_all ON public.ks_payment_provider_settings;
 DROP POLICY IF EXISTS ks_payment_provider_admin_select ON public.ks_payment_provider_settings;
 DROP POLICY IF EXISTS ks_payment_provider_status_read ON public.ks_payment_provider_settings;
