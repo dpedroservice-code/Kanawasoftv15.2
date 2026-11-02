@@ -34,3 +34,25 @@
   for = "/cloud.js"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
+
+# O service worker e o manifesto devem ser revalidados para que as atualizações entrem em vigor.
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+# Recursos estáticos locais podem ser mantidos em cache durante uma semana.
+[[headers]]
+  for = "/libs/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
