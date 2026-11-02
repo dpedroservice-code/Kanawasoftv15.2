@@ -338,6 +338,8 @@ async function activateCloudSession(ctx, migrateLocal) {
     email: ctx.user.email,
     perfil: ctx.role,
     role: ctx.role,
+    permissions: (ctx.membership && ctx.membership.permissions) || {},
+    cloudUser: true,
     avatar: null
   };
   await DB.put('empresas', company);
@@ -396,11 +398,26 @@ const PERMISSOES = {
   admin: { modulos: '*', acoes: ['criar','editar','excluir','ver','configurar','aprovar','cancelar','exportar','importar'], verFinanceiro: true, excluir: true, configurar: true, descontoMax: 100 },
   gerente: { modulos: ['dashboard','pdv','vendas','produtos','categorias','ecommerce','estoque','compras','clientes','fornecedores','crm','financeiro','fiscal','rh','projetos','tarefas','ativos','frota','os','documentos','relatorios','notificacoes','orcamentos','transportadoras','contratos','tickets','perfil','dispositivos','producao','ordens-producao','mrp','bom','custos-producao','controle-qualidade','planos-producao','logistica-roteirizacao','logistica-etiquetas','logistica-picking','logistica-armazens','logistica-crossdocking','logistica-rastreio','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos','ecommerce-produtos','ecommerce-pagamento','ecommerce-rastreio','rh-recrutamento','rh-desempenho','rh-beneficios','rh-onboarding','rh-ponto','rh-rescisao','rh-plano-carreira','projetos-tarefas','projetos-kanban','projetos-gantt','projetos-recursos','projetos-timesheet','projetos-custos','projetos-riscos','ativos-depreciacao','ativos-manutencao','ativos-garantia','frota-manutencao','frota-rotas','frota-gps','frota-combustivel','frota-documentos','frota-multas','frota-desempenho','os-manutencao','os-checklist','os-calendario','os-tecnicos','produtos-avaliacoes','tabelas-precos','vendas-consignadas','vendas-promocoes','clientes-fidelidade','clientes-cupons','portal-cliente','clientes-segmentacao','crm-pipeline','crm-automacao','crm-score','crm-remarketing','marketing-campanhas','marketing-analise','elearning-cursos','elearning-certificacoes','elearning-quizzes','elearning-progresso','elearning-relatorios','servicos'], acoes: ['criar','editar','ver','aprovar','cancelar','exportar'], verFinanceiro: true, excluir: false, configurar: false, descontoMax: 30 },
   operador: { modulos: ['dashboard','pdv','vendas','produtos','clientes','estoque','notificacoes','perfil','producao','ordens-producao','controle-qualidade','os','os-manutencao','os-checklist','os-calendario','projetos-tarefas','projetos-kanban','tarefas'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 10 },
-  caixa: { modulos: ['pdv','vendas','clientes','notificacoes','perfil','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 5 }
+  caixa: { modulos: ['pdv','vendas','clientes','notificacoes','perfil','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 5 },
+  contabilista: { modulos: ['dashboard','vendas','compras','clientes','fornecedores','financeiro','fiscal','relatorios','perfil','notificacoes'], acoes: ['ver'], verFinanceiro: true, excluir: false, configurar: false, descontoMax: 0 },
+  visualizador: { modulos: ['dashboard','vendas','produtos','clientes','estoque','relatorios','perfil','notificacoes'], acoes: ['ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 0 }
 };
-function getPerms() { const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}'); return PERMISSOES[u.role || u.perfil || 'operador'] || PERMISSOES.operador; }
-function podeAcessar(m) { const p = getPerms(); return p.modulos === '*' || p.modulos.indexOf(m) !== -1; }
-function podeFazer(a) { return getPerms().acoes.indexOf(a) !== -1; }
+function getPerms() {
+  const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+  const role = u.role || u.perfil || 'visualizador';
+  if (u.cloudUser && window.KanawaPermissions) return window.KanawaPermissions.fromMembership(role, u.permissions || {});
+  return PERMISSOES[role] || PERMISSOES.visualizador;
+}
+function podeAcessar(m) {
+  const p = getPerms();
+  if (window.KanawaPermissions) return window.KanawaPermissions.canAccess(p, m);
+  return p.modulos === '*' || (Array.isArray(p.modulos) && p.modulos.indexOf(m) !== -1);
+}
+function podeFazer(a, modulo) {
+  const p = getPerms();
+  if (window.KanawaPermissions) return window.KanawaPermissions.canDo(p, a, modulo || currentModule);
+  return p.acoes.indexOf(a) !== -1;
+}
 
 /* ====== MENU ====== */
 const MENU = [
@@ -1677,20 +1694,55 @@ async function exportarVendasCSV() {
 
 /* ====== USUÁRIOS ====== */
 async function renderUsuarios() {
-  if (!podeAcessar('usuarios')) return '<div class="card"><h3>Sem permissão</h3></div>';
-  const u = await getData('usuarios');
-  const rows = u.map(x => [x.id, '<strong>' + esc(x.nome) + '</strong>', esc(x.email), badge(x.perfil || 'operador', 'primary'), badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'usuarios\',' + x.id + ')"><i class="fas fa-trash"></i></button>']);
-  return header('Usuários', u.length + ' usuários', 'var(--danger)', '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-plus"></i> Novo</button>', 'fa-user-shield') + '<div class="card">' + table(['#', 'Nome', 'Email', 'Perfil', 'Status', 'Ações'], rows) + '</div>';
+  if (!podeAcessar('usuarios') || !window.KanawaCloud || !KanawaCloud.ready) {
+    return '<div class="card"><h3>Gestão de equipa indisponível</h3><p>Entre com uma conta proprietária ou administradora da empresa.</p></div>';
+  }
+  try {
+    const members = await KanawaCloud.listCompanyMembers();
+    const rows = members.map(function (member) {
+      const statusLabel = member.status === 'active' ? 'Ativo' : (member.status === 'invited' ? 'Convite pendente' : 'Suspenso');
+      const statusColor = member.status === 'active' ? 'success' : (member.status === 'invited' ? 'warning' : 'danger');
+      const roleLabels = { owner: 'Proprietário', admin: 'Administrador', manager: 'Gerente', operator: 'Operador', cashier: 'Caixa', accountant: 'Contabilista', viewer: 'Visualizador' };
+      return [
+        '<strong>' + esc(member.full_name || 'Utilizador') + '</strong>',
+        esc(member.email || '-'),
+        badge(roleLabels[member.role] || member.role, 'primary'),
+        badge(statusLabel, statusColor),
+        '<small>' + Object.keys(member.permissions || {}).length + ' módulos autorizados</small>'
+      ];
+    });
+    return header('Equipa e permissões', members.length + ' membros', 'var(--danger)',
+      '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-envelope"></i> Convidar utilizador</button>', 'fa-user-shield') +
+      '<div class="card"><p style="margin-bottom:12px;color:var(--text-muted)">As permissões são aplicadas no servidor por empresa e por módulo. Os utilizadores recebem um convite por email; não crie nem guarde senhas neste dispositivo.</p>' +
+      table(['Nome', 'Email', 'Perfil', 'Estado', 'Permissões'], rows) + '</div>';
+  } catch (error) {
+    return header('Equipa e permissões', 'Não foi possível carregar os membros', 'var(--danger)', '', 'fa-user-shield') +
+      '<div class="card"><p>' + esc(error.message || 'Erro ao consultar a equipa.') + '</p></div>';
+  }
 }
 function abrirModalUsuario() {
-  openModal('Novo Usuário',
-    '<div class="form-group"><label>Nome *</label><input id="uNome"></div>' +
-    '<div class="form-group"><label>Email *</label><input id="uEmail" type="email"></div>' +
-    '<div class="form-group"><label>Senha *</label><input id="uSenha" type="password" minlength="6"></div>' +
-    '<div class="form-group"><label>Perfil</label><select id="uPerfil"><option value="admin">Administrador</option><option value="gerente">Gerente</option><option value="operador">Operador</option><option value="caixa">Operador de Caixa</option></select></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarUsuario()">Salvar</button>');
+  openModal('Convidar utilizador',
+    '<div class="form-group"><label>Nome completo *</label><input id="uNome" autocomplete="name"></div>' +
+    '<div class="form-group"><label>Email *</label><input id="uEmail" type="email" autocomplete="email"></div>' +
+    '<div class="form-group"><label>Perfil de acesso</label><select id="uPerfil">' +
+    '<option value="manager">Gerente</option><option value="operator">Operador</option><option value="cashier">Caixa</option>' +
+    '<option value="accountant">Contabilista</option><option value="viewer">Visualizador</option></select></div>' +
+    '<p style="font-size:.8rem;color:var(--text-muted);margin:10px 0">O utilizador receberá um email para confirmar a conta. As permissões iniciais serão atribuídas pelo perfil e aplicadas no servidor.</p>' +
+    '<button class="btn btn-primary btn-block" onclick="salvarUsuario()"><i class="fas fa-paper-plane"></i> Enviar convite</button>');
 }
-async function salvarUsuario() { const n = $('uNome').value.trim(), e = $('uEmail').value.trim(), s = $('uSenha').value; if (!n || !e || s.length < 6) { toast('Preencha todos os campos', 'warning'); return; } await saveData('usuarios', { nome: n, email: e, senha: s, perfil: $('uPerfil').value, ativo: true, dataCriacao: now() }); toast('Usuário criado', 'success'); closeModal(); openModule('usuarios'); }
+async function salvarUsuario() {
+  const fullName = $('uNome').value.trim(), email = $('uEmail').value.trim(), role = $('uPerfil').value;
+  if (!fullName || !email) { toast('Preencha o nome e o email.', 'warning'); return; }
+  if (!window.KanawaCloud || !KanawaCloud.ready) { toast('É necessário iniciar sessão na nuvem.', 'error'); return; }
+  try {
+    await KanawaCloud.inviteMember({ full_name: fullName, email: email, role: role });
+    toast('Convite enviado para ' + email + '.', 'success');
+    closeModal();
+    openModule('usuarios');
+  } catch (error) {
+    toast(error.message || 'Não foi possível enviar o convite.', 'error');
+  }
+}
 
 /* ====== AUDITORIA ====== */
 async function renderAuditoria() {
