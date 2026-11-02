@@ -578,7 +578,7 @@ function renderSidebar() {
   });
   sb.innerHTML = Array.from(groups.entries()).map(([label, modules]) => {
     const expanded = modules.some(module => module.id === currentModule);
-    const buttons = modules.map(module => '<button type="button" class="sidebar-item" data-id="' + module.id + '" title="' + module.label + '" aria-label="' + module.label + '" aria-current="' + (module.id === currentModule ? 'page' : 'false') + '" onclick="openModule(\\'' + module.id + '\\')"><i class="fas ' + module.icon + '" aria-hidden="true"></i><span>' + module.label + '</span></button>').join('');
+    const buttons = modules.map(module => '<button type="button" class="sidebar-item" data-id="' + module.id + '" title="' + module.label + '" aria-label="' + module.label + '" aria-current="' + (module.id === currentModule ? 'page' : 'false') + '" onclick="openModule(\'' + module.id + '\')"><i class="fas ' + module.icon + '" aria-hidden="true"></i><span>' + module.label + '</span></button>').join('');
     return '<details class="sidebar-group" ' + (expanded ? 'open' : '') + '><summary aria-label="' + label + '"><i class="fas ' + moduleGroupIcon(label) + '" aria-hidden="true"></i><span>' + label + '</span><i class="fas fa-chevron-down sidebar-group-chevron" aria-hidden="true"></i></summary>' + buttons + '</details>';
   }).join('');
 }
