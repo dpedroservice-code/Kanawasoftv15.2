@@ -3057,12 +3057,80 @@ async function novoCurso() { const n = prompt('Nome do curso:'); if (!n) return;
 function abrirCurso(id) { toast('Abrindo curso...', 'info'); }
 async function renderElearningCertificacoes() {
   const c = await getData('certificacoes') || [];
-  return header('Certificações', c.length + ' certificações', 'var(--warning)',
-    '<button class="btn btn-success" onclick="novaCertificacao()"><i class="fas fa-plus"></i> Nova Certificação</button>', 'fa-certificate') +
-    '<div class="card">' + table(['Aluno', 'Curso', 'Data', 'Validade', 'Status'],
-      c.map(x => { const v = new Date(x.validade) > new Date(); return [esc(x.aluno || '-'), esc(x.curso || '-'), fmtD(x.data), fmtD(x.validade), badge(v ? 'Válida' : 'Expirada', v ? 'success' : 'danger')]; })) + '</div>';
+  const cfg = JSON.parse(localStorage.getItem('kanawa_certificado_config') || '{}');
+  const tema = cfg.tema || 'azul';
+  return header('Certificações', c.length + ' certificados emitidos', 'var(--warning)',
+    '<button class="btn btn-success" onclick="novaCertificacao()"><i class="fas fa-plus"></i> Emitir certificado</button>', 'fa-certificate') +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-palette"></i> Personalizar modelo de certificado</h3></div>' +
+    '<div class="form-grid">' +
+    '<div class="form-group"><label>Design</label><select id="certTema"><option value="azul" ' + (tema === 'azul' ? 'selected' : '') + '>Azul e dourado — clássico</option><option value="verde" ' + (tema === 'verde' ? 'selected' : '') + '>Verde — institucional</option><option value="minimal" ' + (tema === 'minimal' ? 'selected' : '') + '>Azul-marinho — minimalista</option></select></div>' +
+    '<div class="form-group"><label>Instituição / empresa emissora</label><input id="certEmissor" value="' + esc(cfg.emissor || localStorage.getItem('kanawa_empresa') || 'Instituição de Formação') + '" placeholder="Nome da instituição"></div>' +
+    '<div class="form-group"><label>Texto complementar</label><input id="certSubtitulo" value="' + esc(cfg.subtitulo || 'Certifica-se que') + '" placeholder="Ex.: concluiu com aproveitamento"></div>' +
+    '<div class="form-group"><label>Nome do responsável pela assinatura</label><input id="certResponsavel" value="' + esc(cfg.responsavel || '') + '" placeholder="Nome do diretor / responsável"></div>' +
+    '<div class="form-group"><label>Cargo do responsável</label><input id="certCargo" value="' + esc(cfg.cargo || 'Direção') + '" placeholder="Cargo"></div>' +
+    '<div class="form-group"><label>Local de emissão</label><input id="certLocal" value="' + esc(cfg.local || 'Luanda, Angola') + '" placeholder="Cidade, país"></div>' +
+    '</div><button class="btn btn-primary" onclick="salvarConfigCertificados()"><i class="fas fa-save"></i> Guardar personalização</button> ' +
+    '<button class="btn btn-outline" onclick="prévisualizarModeloCertificado()"><i class="fas fa-eye"></i> Pré-visualizar modelo</button></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title">Certificados emitidos</h3><span class="badge">' + c.length + '</span></div>' +
+    (c.length ? '<div class="table-responsive"><table><thead><tr><th>Aluno</th><th>Curso</th><th>Emissão</th><th>Validade</th><th>Estado</th><th>Acções</th></tr></thead><tbody>' +
+    c.map(x => { const v = new Date(x.validade) > new Date(); return '<tr><td>' + esc(x.aluno || '-') + '</td><td>' + esc(x.curso || '-') + '</td><td>' + fmtD(x.data) + '</td><td>' + fmtD(x.validade) + '</td><td>' + badge(v ? 'Válida' : 'Expirada', v ? 'success' : 'danger') + '</td><td><button class="btn btn-sm btn-primary" onclick="imprimirCertificado(' + Number(x.id) + ')"><i class="fas fa-print"></i> Imprimir / PDF</button></td></tr>'; }).join('') +
+    '</tbody></table></div>' : emptyState('fa-certificate', 'Ainda não existem certificados emitidos')) + '</div>';
 }
-async function novaCertificacao() { const a = prompt('Nome do aluno:'); if (!a) return; const c = prompt('Curso:'); if (!c) return; await saveData('certificacoes', { aluno: a, curso: c, data: now(), validade: new Date(Date.now() + 365 * 86400000).toISOString() }); toast('Certificação emitida', 'success'); openModule('elearning-certificacoes'); }
+function lerConfigCertificados() {
+  const get = id => { const el = $(id); return el ? el.value.trim() : ''; };
+  return { tema: get('certTema') || 'azul', emissor: get('certEmissor'), subtitulo: get('certSubtitulo'), responsavel: get('certResponsavel'), cargo: get('certCargo'), local: get('certLocal') };
+}
+function salvarConfigCertificados() {
+  const cfg = lerConfigCertificados();
+  if (!cfg.emissor) return toast('Indique a instituição emissora.', 'warning');
+  localStorage.setItem('kanawa_certificado_config', JSON.stringify(cfg));
+  toast('Modelo de certificado personalizado e guardado neste dispositivo.', 'success');
+}
+function htmlModeloCertificado(dados, cfg) {
+  const temas = {
+    azul: { principal: '#173b68', acento: '#c6a04a', fundo: '#f7f9fc' },
+    verde: { principal: '#145b48', acento: '#c7a44b', fundo: '#f7fbf8' },
+    minimal: { principal: '#17243a', acento: '#8293aa', fundo: '#ffffff' }
+  };
+  const t = temas[cfg.tema] || temas.azul;
+  const emissor = esc(cfg.emissor || 'Instituição de Formação');
+  const aluno = esc(dados.aluno || 'Nome do formando');
+  const curso = esc(dados.curso || 'Nome do curso');
+  const emissao = fmtD(dados.data);
+  const validade = fmtD(dados.validade);
+  const codigo = esc(String(dados.codigo || ('KS-' + dados.id)));
+  return '<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>Certificado — ' + aluno + '</title><style>' +
+    '*{box-sizing:border-box}body{margin:0;background:#e9edf3;font-family:Georgia,"Times New Roman",serif;color:#243247}.sheet{width:297mm;min-height:210mm;margin:12mm auto;padding:13mm;background:' + t.fundo + ';border:3px solid ' + t.principal + ';position:relative;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center}.sheet:before{content:"";position:absolute;inset:5mm;border:1px solid ' + t.acento + ';pointer-events:none}.top{font:700 13pt Arial,sans-serif;letter-spacing:3px;text-transform:uppercase;color:' + t.principal + ';margin-bottom:8mm}.orn{width:55mm;height:2px;background:' + t.acento + ';margin:0 auto 8mm}.eyebrow{font:11pt Arial,sans-serif;letter-spacing:2px;text-transform:uppercase;color:#68758a}.heading{font-size:34pt;letter-spacing:4px;color:' + t.principal + ';margin:5mm 0}.sub{font:13pt Arial,sans-serif;color:#526176}.student{font-size:29pt;font-weight:bold;color:#17243a;border-bottom:1px solid ' + t.acento + ';padding:4mm 15mm 2mm;margin:5mm 0}.course{font-size:19pt;color:' + t.principal + ';font-weight:bold;margin:3mm 0}.copy{font:12pt/1.7 Arial,sans-serif;max-width:220mm;color:#465469}.footer{display:flex;justify-content:space-between;align-items:end;width:82%;margin-top:14mm;font:10pt Arial,sans-serif}.sign{width:65mm;border-top:1px solid #667085;padding-top:3mm}.meta{position:absolute;bottom:9mm;right:13mm;font:8pt Arial,sans-serif;color:#68758a}.print{position:fixed;top:12px;right:12px;font:14px Arial,sans-serif;padding:10px 16px;background:' + t.principal + ';color:white;border:0;border-radius:6px}@page{size:A4 landscape;margin:0}@media print{body{background:white}.sheet{margin:0;width:297mm;height:210mm;min-height:210mm;page-break-after:avoid}.print{display:none}}@media screen and (max-width:900px){.sheet{transform:scale(.55);transform-origin:top left;margin:8px;width:297mm}}</style></head><body><button class="print" onclick="window.print()">Imprimir / Guardar PDF</button><main class="sheet"><div class="top">' + emissor + '</div><div class="orn"></div><div class="eyebrow">Certificado de conclusão</div><h1 class="heading">CERTIFICADO</h1><div class="sub">' + esc(cfg.subtitulo || 'Certifica-se que') + '</div><div class="student">' + aluno + '</div><div class="copy">concluiu com aproveitamento o curso de</div><div class="course">' + curso + '</div><div class="copy">Este certificado é emitido para os devidos efeitos e comprova a participação e conclusão da formação indicada.</div><div class="footer"><div class="sign">' + esc(cfg.local || 'Luanda, Angola') + '<br>Emissão: ' + emissao + '<br>Validade: ' + validade + '</div><div class="sign">' + esc(cfg.responsavel || 'Responsável') + '<br>' + esc(cfg.cargo || 'Direção') + '</div></div><div class="meta">Código: ' + codigo + '</div></main></body></html>';
+}
+async function imprimirCertificado(id) {
+  const win = window.open('', '_blank');
+  if (!win) return toast('Permita janelas pop-up para imprimir o certificado.', 'warning');
+  try {
+    const lista = await getData('certificacoes');
+    const reg = lista.find(x => Number(x.id) === Number(id));
+    if (!reg) { win.close(); return toast('Certificado não encontrado.', 'error'); }
+    const cfg = JSON.parse(localStorage.getItem('kanawa_certificado_config') || '{}');
+    win.document.open(); win.document.write(htmlModeloCertificado(reg, cfg)); win.document.close();
+    toast('Certificado preparado. Escolha Imprimir ou Guardar como PDF.', 'success');
+  } catch (e) { win.close(); toast('Não foi possível preparar o certificado: ' + (e.message || e), 'error'); }
+}
+function prévisualizarModeloCertificado() {
+  const cfg = lerConfigCertificados();
+  if (!cfg.emissor) return toast('Indique a instituição emissora antes da pré-visualização.', 'warning');
+  const win = window.open('', '_blank');
+  if (!win) return toast('Permita janelas pop-up para pré-visualizar.', 'warning');
+  win.document.open(); win.document.write(htmlModeloCertificado({ id: 'PREVIEW', aluno: 'NOME DO FORMANDO', curso: 'NOME DO CURSO', data: now(), validade: new Date(Date.now() + 365 * 86400000).toISOString() }, cfg)); win.document.close();
+}
+async function novaCertificacao() {
+  const a = prompt('Nome completo do aluno:'); if (!a) return;
+  const c = prompt('Nome do curso concluído:'); if (!c) return;
+  const validade = prompt('Validade em meses (0 = sem validade):', '12');
+  const meses = Math.max(0, parseInt(validade, 10) || 0);
+  const data = now();
+  const expira = meses ? new Date(Date.now() + meses * 30 * 86400000).toISOString() : null;
+  await saveData('certificacoes', { aluno: a.trim(), curso: c.trim(), data, validade: expira, codigo: 'KS-' + Date.now().toString(36).toUpperCase() });
+  toast('Certificado emitido com sucesso.', 'success'); openModule('elearning-certificacoes');
+}
 async function renderElearningQuizzes() {
   const q = await getData('quizzes') || [];
   return header('Quizzes', q.length + ' quizzes', 'var(--info)',
