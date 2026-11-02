@@ -407,7 +407,12 @@ const PERMISSOES = {
 function getPerms() {
   const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const role = u.role || u.perfil || 'visualizador';
-  if (u.cloudUser && window.KanawaPermissions) return window.KanawaPermissions.fromMembership(role, u.permissions || {});
+  if (u.cloudUser && window.KanawaPermissions) {
+    const cloudGrants = u.permissions || {};
+    if (Object.keys(cloudGrants).length) return window.KanawaPermissions.fromMembership(role, cloudGrants);
+    const roleAliases = { manager: 'gerente', staff: 'operador', cashier: 'caixa', accountant: 'contabilista', viewer: 'visualizador' };
+    return PERMISSOES[roleAliases[role] || role] || PERMISSOES.visualizador;
+  }
   return PERMISSOES[role] || PERMISSOES.visualizador;
 }
 function podeAcessar(m) {
