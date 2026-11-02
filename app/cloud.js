@@ -360,6 +360,11 @@
       return result.data;
     },
 
+    async listPaymentProviderStatus() {
+      if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
+      return failIfError(await client.rpc('ks_list_payment_provider_status')) || [];
+    },
+
     async registerInstallation(appVersion) {
       if (!this.ready) return null;
       let key = localStorage.getItem('kanawa_installation_key');
