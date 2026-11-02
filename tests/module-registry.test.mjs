@@ -61,3 +61,11 @@ test('integration diagnostics are registered in the core module system', () => {
 test('manager roles receive technical module access', () => {
   assert.match(permissions, /role === 'manager' \|\| role === 'gerente'.*grants\.tecnica/);
 });
+ 
+test('menu groups display representative icons and accessible item labels', () => {
+  assert.ok(app.includes('function moduleGroupIcon(label)'));
+  assert.ok(app.includes('moduleGroupIcon(label)'));
+  assert.ok(app.includes('aria-label="\' + module.label'));
+  assert.ok(html.includes('.sidebar-group summary>i:first-child'));
+  assert.ok(html.includes('.sidebar-item:focus-visible'));
+});
