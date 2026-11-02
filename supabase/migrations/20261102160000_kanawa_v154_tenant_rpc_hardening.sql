@@ -21,6 +21,9 @@ BEGIN
      OR p_reference_id IS NULL OR jsonb_typeof(p_items)<>'array' OR jsonb_array_length(p_items)=0 THEN
     RAISE EXCEPTION 'Tipo de referência ou dados de reserva inválidos.' USING ERRCODE='22023';
   END IF;
+  IF EXISTS (SELECT 1 FROM (SELECT value->>'product_id' AS product_id FROM jsonb_array_elements(p_items) GROUP BY value->>'product_id' HAVING count(*)>1) duplicates) THEN
+    RAISE EXCEPTION 'Cada produto deve aparecer apenas uma vez na lista de reserva.' USING ERRCODE='22023';
+  END IF;
   IF p_reference_type='quote' AND NOT EXISTS(
     SELECT 1 FROM public.ks_technical_quotes q WHERE q.id=p_reference_id AND q.company_id=v_company_id AND q.status IN ('negotiation','approved')
   ) THEN RAISE EXCEPTION 'Orçamento inválido para reserva.' USING ERRCODE='23503'; END IF;
