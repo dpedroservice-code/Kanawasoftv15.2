@@ -240,7 +240,7 @@ $function$;
 
 DROP TRIGGER IF EXISTS ks_technical_quote_status_guard ON public.ks_technical_quotes;
 CREATE TRIGGER ks_technical_quote_status_guard
-BEFORE INSERT OR UPDATE OF status ON public.ks_technical_quotes
+BEFORE INSERT OR UPDATE ON public.ks_technical_quotes
 FOR EACH ROW EXECUTE FUNCTION private.ks_guard_technical_quote_status();
 
 -- RPCs execute with owner privileges only after validating the active tenant and role.
