@@ -1,7 +1,7 @@
 {
   "name": "kanawa-soft-erp",
-  "version": "15.3.0",
-  "description": "Kanawa Soft ERP — Sistema de Gestão Empresarial (Angola · AGT)",
+  "version": "15.4.0",
+  "description": "Kanawa Soft ERP v15.4 — Gestão Empresarial e Operações Técnicas (Angola)",
   "main": "desktop/main.js",
   "author": "Kanawa Soft",
   "license": "UNLICENSED",
