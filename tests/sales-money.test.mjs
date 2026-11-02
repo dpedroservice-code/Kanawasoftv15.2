@@ -57,3 +57,7 @@ test('rejects totals that do not reconcile with subtotal, discount and tax', () 
 test('rejects line totals that do not reconcile with quantity and unit price', () => {
   assert.throws(() => normalizeSale(sale({ itens: [{ id: 7, nome: 'Produto', preco: 100.10, qty: 2, subtotal: 199 }] })), /Artigo inválido/);
 });
+
+test('rejects negative received amounts instead of treating them as blank', () => {
+  assert.throws(() => normalizeSale(sale({ valorRecebido: -1 })), /não pode ser negativo/);
+});
