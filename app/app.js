@@ -1,7 +1,7 @@
 'use strict';
-/* KANAWA SOFT ERP v15.3.0 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
+/* KANAWA SOFT ERP v15.4.0 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
-const APP_VERSION = '15.3.0';
+const APP_VERSION = '15.4.0';
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 let API_ONLINE = false;
 let setupStep = 1;
@@ -2961,7 +2961,7 @@ async function seedDemo() {
   await DB.add('categorias', { nome: 'Eletrônicos', descricao: 'Dispositivos' });
   await DB.add('categorias', { nome: 'Acessórios', descricao: 'Acessórios diversos' });
   await DB.add('funcionarios', { nome: 'Ana Costa', cargo: 'Vendedora', salario: 120000 });
-  await DB.add('notificacoes', { titulo: '🎉 Bem-vindo', mensagem: 'Kanawa Soft ERP v15.3 Cloud ligado à base central!', tipo: 'success', data: now(), lida: false });
+  await DB.add('notificacoes', { titulo: '🎉 Bem-vindo', mensagem: 'Kanawa Soft ERP v15.4 Técnica ligado à base central!', tipo: 'success', data: now(), lida: false });
 }
 
 /* ====== INIT ====== */
