@@ -2494,14 +2494,16 @@ function coordenadasRastreio(latValue, lngValue) {
   }
   return { lat: lat, lng: lng };
 }
+function iframeMapaRastreio(lat, lng) {
+  return '<iframe title="Mapa da localização da encomenda" loading="lazy" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:320px;border:0;border-radius:10px" src="https://www.openstreetmap.org/export/embed.html?bbox=' + encodeURIComponent((lng - 0.012) + ',' + (lat - 0.008) + ',' + (lng + 0.012) + ',' + (lat + 0.008)) + '&layer=mapnik&marker=' + encodeURIComponent(lat + ',' + lng) + '"></iframe>';
+}
 function mapaRastreioHtml(registo) {
   const lat = Number(registo.lat), lng = Number(registo.lng);
   const valido = registo.coordinates_valid === true && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-  const mapa = valido
-    ? '<iframe title="Mapa da localização da encomenda" loading="lazy" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:320px;border:0;border-radius:10px" src="https://www.openstreetmap.org/export/embed.html?bbox=' + encodeURIComponent((lng - 0.012) + ',' + (lat - 0.008) + ',' + (lng + 0.012) + ',' + (lat + 0.008)) + '&layer=mapnik&marker=' + encodeURIComponent(lat + ',' + lng) + '"></iframe>'
-    : '<div class="alert alert-warning">Ainda não há coordenadas confirmadas para esta encomenda. Obtenha a posição pelo GPS ou introduza as coordenadas manualmente para carregar o mapa.</div>';
+  const mapa = valido ? iframeMapaRastreio(lat, lng) : '<div class="alert alert-warning">Ainda não há coordenadas confirmadas para esta encomenda. Obtenha a posição pelo GPS ou introduza as coordenadas manualmente para carregar o mapa.</div>';
   return '<div class="form-grid"><div class="form-group"><label>Latitude</label><input id="rastreioMapaLat" type="number" step="any" min="-90" max="90" value="' + (valido ? lat : '') + '" placeholder="-8.8383"></div>' +
     '<div class="form-group"><label>Longitude</label><input id="rastreioMapaLng" type="number" step="any" min="-180" max="180" value="' + (valido ? lng : '') + '" placeholder="13.2344"></div></div>' +
+    '<input id="rastreioLocationSource" type="hidden" value="' + (registo.location_source === 'gps' ? 'gps' : 'manual') + '">' +
     '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">' +
     '<button class="btn btn-primary" onclick="obterGPSRastreio(' + Number(registo.id) + ')"><i class="fas fa-crosshairs"></i> Usar GPS atual</button>' +
     '<button class="btn btn-info" onclick="atualizarMapaRastreio(' + Number(registo.id) + ')"><i class="fas fa-sync"></i> Atualizar mapa</button>' +
@@ -2521,7 +2523,8 @@ function atualizarMapaRastreio(id) {
   try {
     const coords = coordenadasRastreio($('rastreioMapaLat').value, $('rastreioMapaLng').value);
     const preview = $('rastreioMapaPreview');
-    if (preview) preview.innerHTML = mapaRastreioHtml({ id: id, lat: coords.lat, lng: coords.lng, coordinates_valid: true, location_source: 'manual' });
+    if (preview) preview.innerHTML = iframeMapaRastreio(coords.lat, coords.lng);
+    const source = $('rastreioLocationSource'); if (source) source.value = 'manual';
   } catch (error) { toast(error.message, 'warning'); }
 }
 function obterGPSRastreio(id) {
@@ -2533,8 +2536,13 @@ function obterGPSRastreio(id) {
     const lat = $('rastreioMapaLat'), lng = $('rastreioMapaLng');
     if (lat) lat.value = position.coords.latitude.toFixed(6);
     if (lng) lng.value = position.coords.longitude.toFixed(6);
-    atualizarMapaRastreio(id);
-    toast('Posição GPS obtida. Confirme no mapa e carregue em Guardar posição.', 'success');
+    const source = $('rastreioLocationSource'); if (source) source.value = 'gps';
+    try {
+      const coords = coordenadasRastreio(position.coords.latitude, position.coords.longitude);
+      const preview = $('rastreioMapaPreview');
+      if (preview) preview.innerHTML = iframeMapaRastreio(coords.lat, coords.lng);
+      toast('Posição GPS obtida. Confirme no mapa e carregue em Guardar posição.', 'success');
+    } catch (error) { toast(error.message, 'warning'); }
   }, function (error) {
     const mensagens = { 1: 'Permissão de localização recusada.', 2: 'A posição GPS não está disponível.', 3: 'Tempo de espera do GPS esgotado.' };
     toast(mensagens[error.code] || 'Não foi possível obter a posição GPS.', 'warning');
@@ -2546,7 +2554,8 @@ async function guardarLocalizacaoRastreio(id) {
     const registos = await getData('rastreios') || [];
     const registo = registos.find(item => Number(item.id) === Number(id));
     if (!registo) { toast('Encomenda não encontrada.', 'warning'); return; }
-    Object.assign(registo, coords, { coordinates_valid: true, location_source: 'manual', ultimaAtualizacao: now() });
+    const source = $('rastreioLocationSource');
+    Object.assign(registo, coords, { coordinates_valid: true, location_source: source && source.value === 'gps' ? 'gps' : 'manual', ultimaAtualizacao: now() });
     await saveData('rastreios', registo);
     toast('Localização calibrada e guardada. Confirme que o ponto corresponde ao local real.', 'success');
     closeModal();
