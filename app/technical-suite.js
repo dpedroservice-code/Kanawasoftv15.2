@@ -97,7 +97,6 @@
       field('Retenção na fonte (%) — se aplicável','retencaoPercent','number','0',null,false),
       field('Estado inicial','status','select','',[['Rascunho','Rascunho'],['Em negociação','Em negociação']],false),
       field('Escopo / memória descritiva','escopo','textarea','Incluído, excluído, método, materiais, premissas e riscos...',null,true),
-      field('Plano de pagamento','pagamento','textarea','50% adjudicação + 50% entrega; ou marcos...',null,true),
       field('Itens para pré-reserva (SKU ou ID | quantidade, uma linha por item)','itensStock','textarea','CAM-001 | 2\nCABO-10M | 3',null,true),
       field('Escopo excluído / exclusões','escopoExcluido','textarea','Obras civis, alimentação eléctrica, licenças...',null,true),
       field('Referências de anexos / fichas técnicas privadas','anexosReferencia','textarea','Caminhos privados de ficheiros, nunca links públicos...',null,true),
