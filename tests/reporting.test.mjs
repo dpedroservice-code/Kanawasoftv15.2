@@ -21,7 +21,7 @@ test('relatórios incluem atividades, auditoria e eventos de segurança', () => 
 test('interface oferece filtros de período e impressão separada', () => {
   assert.match(source, /id="relatorioInicio"/);
   assert.match(source, /id="relatorioFim"/);
-  assert.ok(source.includes("imprimirRelatorio(\\\\'movimentos\\\\')"));
-  assert.ok(source.includes("imprimirRelatorio(\\\\'atividades\\\\')"));
+  assert.match(source, /imprimirRelatorio\(\s*\\?'movimentos\\?'\)/);
+  assert.match(source, /imprimirRelatorio\(\s*\\?'atividades\\?'\)/);
   assert.match(source, /window\.print\(\)/);
 });
