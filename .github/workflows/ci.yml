@@ -30,6 +30,8 @@ jobs:
           node --check app/permissions.js
           node --check app/cloud.js
           node --check app/app.js
+          node --check app/technical-pricing.js
+          node --check app/technical-suite.js
       - name: Check Supabase Edge Function
         run: deno check supabase/functions/ks-invite-member/index.ts
       - name: Run unit tests
