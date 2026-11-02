@@ -2052,6 +2052,31 @@ async function renderConfig() {
     '<div class="form-group"><label>Estoque Mínimo Padrão</label><input type="number" id="cfgEstMin" value="' + (regras.estoqueMin || 10) + '"></div>' +
     '<div class="form-group"><label>Desconto Máximo (%)</label><input type="number" id="cfgDescMax" value="' + (regras.descontoMax || 50) + '"></div></div>' +
     '<button class="btn btn-success btn-lg" style="margin-top:16px" onclick="salvarRegras()"><i class="fas fa-save"></i> Salvar Regras</button></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-globe-africa"></i> Região, idioma e formatos</h3></div>' +
+    '<p style="font-size:.85rem;color:var(--text-muted)">Preferências de apresentação deste dispositivo. A moeda e o fuso devem ser confirmados pela empresa antes de emitir documentos.</p>' +
+    '<div class="form-grid">' +
+    '<div class="form-group"><label>Moeda principal</label><select id="cfgMoeda"><option value="AOA">Kwanza (AOA)</option><option value="USD">Dólar (USD)</option><option value="EUR">Euro (EUR)</option></select></div>' +
+    '<div class="form-group"><label>Idioma</label><select id="cfgIdioma"><option value="pt-AO">Português (Angola)</option><option value="pt-PT">Português (Portugal)</option><option value="en">English</option><option value="fr">Français</option></select></div>' +
+    '<div class="form-group"><label>Fuso horário</label><select id="cfgFuso"><option value="Africa/Luanda">Africa/Luanda (WAT)</option><option value="Europe/Lisbon">Europe/Lisbon</option><option value="UTC">UTC</option></select></div>' +
+    '<div class="form-group"><label>Formato de data</label><select id="cfgDataFormato"><option value="dd/MM/yyyy">DD/MM/AAAA</option><option value="yyyy-MM-dd">AAAA-MM-DD</option><option value="MM/dd/yyyy">MM/DD/AAAA</option></select></div>' +
+    '<div class="form-group"><label>Casas decimais</label><select id="cfgDecimais"><option value="0">0</option><option value="2">2</option></select></div>' +
+    '</div>' +
+    '<div class="card-header" style="margin-top:18px"><h3 class="card-title"><i class="fas fa-file-invoice"></i> Numeração e documentos</h3></div>' +
+    '<div class="form-grid">' +
+    '<div class="form-group"><label>Prefixo de documentos</label><input id="cfgDocPrefixo" maxlength="12" placeholder="Ex.: DPS"></div>' +
+    '<div class="form-group"><label>Observação padrão em documentos</label><input id="cfgDocObs" maxlength="180" placeholder="Obrigado pela preferência."></div>' +
+    '<div class="form-group"><label>Prazo padrão de pagamento (dias)</label><input id="cfgPrazoPagamento" type="number" min="0" max="365" value="0"></div>' +
+    '<div class="form-group"><label>Rodapé dos documentos</label><input id="cfgDocRodape" maxlength="180" placeholder="Contacto, endereço ou mensagem"></div>' +
+    '</div>' +
+    '<div class="card-header" style="margin-top:18px"><h3 class="card-title"><i class="fas fa-bell"></i> Preferências e manutenção</h3></div>' +
+    '<div class="form-grid">' +
+    '<div class="form-group"><label><input id="cfgAvisoEstoque" type="checkbox" checked> Mostrar aviso de stock baixo</label></div>' +
+    '<div class="form-group"><label><input id="cfgAvisoBackup" type="checkbox" checked> Mostrar lembrete de backup</label></div>' +
+    '<div class="form-group"><label><input id="cfgConfirmarAcao" type="checkbox" checked> Pedir confirmação antes de ações destrutivas</label></div>' +
+    '<div class="form-group"><label>Tempo de sessão preferido (minutos)</label><select id="cfgSessao"><option value="30">30 minutos</option><option value="60">1 hora</option><option value="120">2 horas</option><option value="480">8 horas</option></select></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-success" onclick="salvarPreferenciasConfig()"><i class="fas fa-save"></i> Guardar preferências</button><button class="btn btn-secondary" onclick="openModule(\'usuarios\')"><i class="fas fa-users-cog"></i> Utilizadores e permissões</button><button class="btn btn-secondary" onclick="openModule(\'auditoria\')"><i class="fas fa-clipboard-list"></i> Auditoria</button><button class="btn btn-secondary" onclick="openModule(\'dispositivos\')"><i class="fas fa-print"></i> Impressoras e dispositivos</button></div>' +
+    '<p style="font-size:.78rem;color:var(--text-muted);margin-top:10px">Estas preferências adicionais são guardadas localmente neste navegador. O tempo de sessão e os avisos só alteram o comportamento quando os respetivos módulos os consultam; não substituem políticas de segurança do servidor.</p></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-server"></i> Servidor (Opcional)</h3></div>' +
     '<p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px">Os dados são guardados no PostgreSQL central e sincronizados com o cache local para permitir trabalho temporário sem internet.</p>' +
     '<div class="form-grid">' +
@@ -2068,6 +2093,33 @@ async function renderConfig() {
     '<button class="btn btn-warning" onclick="recarregarDemo()"><i class="fas fa-seedling"></i> Dados Demo</button>' +
     '<button class="btn btn-info" onclick="exportarBackupCompleto()"><i class="fas fa-download"></i> Backup</button>' +
     '<button class="btn btn-danger" onclick="resetTotal()"><i class="fas fa-bomb"></i> Reset Total</button></div></div>';
+}
+function carregarPreferenciasConfig() {
+  try { return JSON.parse(localStorage.getItem('kanawa_config_preferencias') || '{}'); }
+  catch (error) { return {}; }
+}
+function aplicarPreferenciasConfigNaTela() {
+  const p = carregarPreferenciasConfig();
+  const defaults = { moeda: 'AOA', idioma: 'pt-AO', fuso: 'Africa/Luanda', formatoData: 'dd/MM/yyyy', decimais: '0', docPrefixo: '', docObs: '', prazoPagamento: '0', docRodape: '', avisoEstoque: true, avisoBackup: true, confirmarAcao: true, sessao: '60' };
+  const v = Object.assign({}, defaults, p);
+  const campos = { cfgMoeda: 'moeda', cfgIdioma: 'idioma', cfgFuso: 'fuso', cfgDataFormato: 'formatoData', cfgDecimais: 'decimais', cfgDocPrefixo: 'docPrefixo', cfgDocObs: 'docObs', cfgPrazoPagamento: 'prazoPagamento', cfgDocRodape: 'docRodape', cfgSessao: 'sessao' };
+  Object.entries(campos).forEach(([id, key]) => { const el = $(id); if (el) el.value = v[key]; });
+  [['cfgAvisoEstoque','avisoEstoque'],['cfgAvisoBackup','avisoBackup'],['cfgConfirmarAcao','confirmarAcao']].forEach(([id,key]) => { const el=$(id); if(el) el.checked = v[key] !== false; });
+}
+function salvarPreferenciasConfig() {
+  const valor = (id) => $(id) ? $(id).value : '';
+  const marcado = (id) => !!($(id) && $(id).checked);
+  const p = {
+    moeda: valor('cfgMoeda'), idioma: valor('cfgIdioma'), fuso: valor('cfgFuso'),
+    formatoData: valor('cfgDataFormato'), decimais: valor('cfgDecimais'),
+    docPrefixo: valor('cfgDocPrefixo').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0,12),
+    docObs: valor('cfgDocObs').trim().slice(0,180), prazoPagamento: String(Math.max(0, Math.min(365, Number(valor('cfgPrazoPagamento')) || 0))),
+    docRodape: valor('cfgDocRodape').trim().slice(0,180),
+    avisoEstoque: marcado('cfgAvisoEstoque'), avisoBackup: marcado('cfgAvisoBackup'),
+    confirmarAcao: marcado('cfgConfirmarAcao'), sessao: ['30','60','120','480'].includes(valor('cfgSessao')) ? valor('cfgSessao') : '60'
+  };
+  localStorage.setItem('kanawa_config_preferencias', JSON.stringify(p));
+  toast('Preferências guardadas neste dispositivo. Não alteram por si só regras fiscais nem segurança do servidor.', 'success');
 }
 async function salvarConfigEmpresa() {
   const empAtual = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
