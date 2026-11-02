@@ -406,6 +406,7 @@ DECLARE
   v_product_id uuid;
   v_qty numeric(18,3);
   v_available numeric(18,3);
+  v_existing public.ks_technical_stock_reservations%ROWTYPE;
   v_reserved integer := 0;
 BEGIN
   SELECT m.company_id INTO v_company_id
@@ -429,6 +430,16 @@ BEGIN
     v_product_id := (v_item->>'product_id')::uuid;
     v_qty := (v_item->>'quantity')::numeric;
     IF v_qty<=0 THEN RAISE EXCEPTION 'Quantidade de reserva inválida.' USING ERRCODE='23514'; END IF;
+
+    SELECT * INTO v_existing FROM public.ks_technical_stock_reservations
+    WHERE company_id=v_company_id AND reference_type=p_reference_type AND reference_id=p_reference_id
+      AND warehouse_id=p_warehouse_id AND product_id=v_product_id FOR UPDATE;
+    IF FOUND THEN
+      IF v_existing.status='reserved' AND v_existing.quantity=v_qty THEN
+        CONTINUE;
+      END IF;
+      RAISE EXCEPTION 'Já existe uma reserva para este artigo e referência; liberte-a antes de alterar a quantidade.' USING ERRCODE='23505';
+    END IF;
 
     PERFORM 1 FROM public.ks_technical_stock_balances b
     WHERE b.company_id=v_company_id AND b.warehouse_id=p_warehouse_id AND b.product_id=v_product_id
