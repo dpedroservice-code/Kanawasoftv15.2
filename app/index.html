@@ -268,7 +268,8 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
   .sidebar-group summary span{font-size:.55rem;line-height:1.05}
   .sidebar-group-chevron{display:none}
   .sidebar-group[open]{z-index:500}
-  .sidebar-group[open]>.sidebar-item{position:absolute;left:0;bottom:calc(100% + 8px);width:190px;max-width: min(190px,80vw);height:auto;min-height:46px;display:flex;flex-direction:row;justify-content:flex-start;padding:10px 12px;background:var(--bg-card);box-shadow:var(--shadow-hover);border:1px solid var(--border);border-radius:9px;text-align:left}
+  .sidebar-group[open]{position:fixed;left:8px;bottom:calc(76px + env(safe-area-inset-bottom));width:min(240px,82vw);max-height:65dvh;overflow-y:auto;z-index:1000;padding:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-hover)}
+  .sidebar-group[open]>.sidebar-item{position:static;width:100%;max-width:none;height:auto;min-height:44px;display:flex;flex-direction:row;justify-content:flex-start;padding:10px 12px;background:transparent;border:0;border-radius:8px;text-align:left}
   .sidebar-group[open]>.sidebar-item span{font-size:.78rem;max-width:none;text-align:left}
   .sidebar-group[open]>.sidebar-item i{font-size:1rem}
   .content{order:1;flex:1 1 auto;padding:12px 10px calc(16px + env(safe-area-inset-bottom));overflow-x:hidden}
