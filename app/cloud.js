@@ -326,6 +326,31 @@
       context.company = Object.assign({}, context.company, update);
     },
 
+    async updateCompany(details) {
+      if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
+      if (!context.company || context.company.owner_user_id !== context.user.id) {
+        throw new Error('Apenas o proprietário da empresa pode alterar os dados principais.');
+      }
+      const patch = {
+        legal_name: details.nome || details.firma,
+        trade_name: details.firma || details.nome,
+        tax_id: details.nif || null,
+        tax_regime: details.regime || 'not_configured',
+        phone: details.telefone || null,
+        email: details.email || null,
+        address: details.endereco || null
+      };
+      const result = await client.from('ks_companies')
+        .update(patch)
+        .eq('id', context.company.id)
+        .select('*')
+        .maybeSingle();
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('A empresa não foi atualizada. Verifique a permissão do proprietário.');
+      context.company = Object.assign({}, context.company, result.data);
+      return result.data;
+    },
+
     async listCompanyMembers() {
       if (!this.ready) throw new Error('Sessão da empresa não está ativa.');
       if (context.role !== 'admin') throw new Error('Apenas administradores podem consultar a equipa.');
