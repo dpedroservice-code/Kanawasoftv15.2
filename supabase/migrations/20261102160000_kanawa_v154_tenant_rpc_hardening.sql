@@ -205,6 +205,54 @@ BEGIN
 END;
 $function$;
 
+
+-- Least-privilege read policies: cost, tax, payroll, payment and customer evidence
+-- are not exposed to ordinary field operators, cashiers or read-only viewers.
+DO $read_policies$
+DECLARE p record;
+BEGIN
+  FOR p IN SELECT * FROM (VALUES
+    ('ks_technical_products','owner,admin,manager,accountant'),
+    ('ks_technical_product_suppliers','owner,admin,manager,accountant'),
+    ('ks_technical_quotes','owner,admin,manager,accountant'),
+    ('ks_technical_quote_lines','owner,admin,manager,accountant'),
+    ('ks_technical_quote_installments','owner,admin,manager,accountant,cashier'),
+    ('ks_technical_price_tables','owner,admin,manager,accountant'),
+    ('ks_technical_exchange_rates','owner,admin,manager,accountant'),
+    ('ks_technical_tax_profiles','owner,admin,manager,accountant'),
+    ('ks_technical_payment_transactions','owner,admin,manager,accountant,cashier'),
+    ('ks_technical_bank_reconciliations','owner,admin,manager,accountant'),
+    ('ks_technical_customer_requests','owner,admin,manager,operator'),
+    ('ks_technical_evaluations','owner,admin,manager,operator'),
+    ('ks_technical_tracking_events','owner,admin,manager,operator'),
+    ('ks_technical_staff_skills','owner,admin,manager,operator'),
+    ('ks_technical_audit_events','owner,admin,manager,accountant'),
+    ('ks_technical_stock_balances','owner,admin,manager,operator'),
+    ('ks_technical_stock_reservations','owner,admin,manager,operator'),
+    ('ks_technical_stock_movements','owner,admin,manager,operator'),
+    ('ks_technical_work_orders','owner,admin,manager,operator'),
+    ('ks_technical_production_orders','owner,admin,manager,operator'),
+    ('ks_technical_boms','owner,admin,manager,operator'),
+    ('ks_technical_bom_lines','owner,admin,manager,operator'),
+    ('ks_technical_services','owner,admin,manager,operator')
+  ) AS x(table_name,roles)
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I',p.table_name||'_tenant_read',p.table_name);
+    EXECUTE format(
+      'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated USING (private.ks_has_company_role(company_id,string_to_array(%L,'','')::text[]))',
+      p.table_name||'_tenant_read',p.table_name,p.roles
+    );
+  END LOOP;
+END;
+$read_policies$;
+
+-- Bank reconciliation rows are financial records: restrict writes to finance roles.
+DROP POLICY IF EXISTS ks_technical_bank_reconciliations_manager_write ON public.ks_technical_bank_reconciliations;
+CREATE POLICY ks_technical_bank_reconciliations_finance_write
+ON public.ks_technical_bank_reconciliations FOR ALL TO authenticated
+USING (private.ks_has_company_role(company_id,ARRAY['owner','admin','manager','accountant']::text[]))
+WITH CHECK (private.ks_has_company_role(company_id,ARRAY['owner','admin','manager','accountant']::text[]));
+
 REVOKE ALL ON FUNCTION public.ks_technical_reserve_stock(text,uuid,uuid,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.ks_technical_release_stock_reservation(uuid,text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.ks_technical_approve_quote(uuid) FROM PUBLIC;
