@@ -86,21 +86,36 @@
 
     async init() {
       if (!client) return null;
-      const result = await client.auth.getSession();
-      if (result.error) throw result.error;
-      const session = result.data && result.data.session;
-      if (!session) return null;
-      try { return await loadContext(session.user); }
-      catch (networkError) {
-        // Permit an already-authenticated installation to open its local cache while offline.
-        try {
-          const cached = JSON.parse(localStorage.getItem('kanawa_cloud_context') || 'null');
-          if (cached && cached.user && cached.user.id === session.user.id && cached.company && cached.company.id) {
-            context = cached;
-            return context;
-          }
-        } catch (e) { }
-        throw networkError;
+      const sessionResult = await client.auth.getSession();
+      if (sessionResult.error) throw sessionResult.error;
+      const session = sessionResult.data && sessionResult.data.session;
+      if (!session || !session.user) return null;
+
+      try {
+        // Validate the persisted token with Supabase Auth before trusting the cached identity.
+        const userResult = await client.auth.getUser();
+        if (userResult.error) throw userResult.error;
+        const user = userResult.data && userResult.data.user;
+        if (!user) return null;
+        return await loadContext(user);
+      } catch (authOrNetworkError) {
+        const message = String(authOrNetworkError && authOrNetworkError.message || '');
+        const name = String(authOrNetworkError && authOrNetworkError.name || '');
+        const networkFailure = navigator.onLine === false ||
+          name === 'TypeError' || /network|fetch|timeout|load failed|connection/i.test(name + ' ' + message);
+
+        // Use the cached context only for a genuine connectivity failure. Never bypass
+        // a server-side 401, missing membership, suspended user, or RLS denial.
+        if (networkFailure) {
+          try {
+            const cached = JSON.parse(localStorage.getItem('kanawa_cloud_context') || 'null');
+            if (cached && cached.user && cached.user.id === session.user.id && cached.company && cached.company.id) {
+              context = Object.assign({}, cached, { offline: true });
+              return context;
+            }
+          } catch (e) { }
+        }
+        throw authOrNetworkError;
       }
     },
 
@@ -169,15 +184,23 @@
     },
 
     async check() {
-      if (!client || !context) return false;
+      if (!client || !context || !context.user || !context.company) return false;
+      const authResult = await client.auth.getUser();
+      if (authResult.error || !authResult.data || !authResult.data.user) return false;
+      if (authResult.data.user.id !== context.user.id) return false;
       const result = await client
         .from('ks_company_memberships')
-        .select('company_id')
+        .select('company_id, role, status')
         .eq('company_id', context.company.id)
-        .eq('user_id', context.user.id)
+        .eq('user_id', authResult.data.user.id)
         .eq('status', 'active')
         .maybeSingle();
-      return !result.error && !!result.data;
+      if (result.error || !result.data) return false;
+      context.membership = result.data;
+      context.role = appRole(result.data.role);
+      context.offline = false;
+      try { localStorage.setItem('kanawa_cloud_context', JSON.stringify(context)); } catch (e) { }
+      return true;
     },
 
     async countRecords() {
