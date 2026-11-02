@@ -571,7 +571,7 @@ async function openModule(id) {
   if (!podeAcessar(id)) { toast('🔒 Sem permissão', 'error'); return; }
   currentModule = id;
   document.querySelectorAll('.sidebar-group').forEach(group => { group.open = !!group.querySelector('[data-id="' + id + '"]'); });
-  $('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+  $$('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   const c = $('content');
   c.innerHTML = '<div style="text-align:center;padding:60px"><i class="fas fa-spinner fa-spin" style="font-size:3rem;color:var(--primary)"></i></div>';
   const R = {
