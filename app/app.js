@@ -147,6 +147,13 @@ async function saveData(store, item, options) {
     if (KanawaCloud.ready) {
       try { await KanawaCloud.upsertRecord(store, record, options || {}); }
       catch (e) {
+        if (store === 'vendas' && item.status === 'finalizada' && e && e.saleFinalized) {
+          // The transactional RPC already committed the invoice. Queue only its history mirror;
+          // never delete the local invoice or call the stock/finalization RPC a second time.
+          await queueSync(store, existed ? 'update' : 'create', record, Object.assign({}, options || {}, { skipSaleFinalize: true }));
+          toast('Venda finalizada no servidor; histórico local em sincronização.', 'warning');
+          return id;
+        }
         // A database validation/quota error must not be reported as a completed invoice.
         if (store === 'vendas' && item.status === 'finalizada' && e && e.code) {
           await DB.del(store, id);
@@ -331,9 +338,13 @@ async function activateCloudSession(ctx, migrateLocal) {
     email: ctx.user.email,
     perfil: ctx.role,
     role: ctx.role,
+    permissions: (ctx.membership && ctx.membership.permissions) || {},
+    cloudUser: true,
     avatar: null
   };
   await DB.put('empresas', company);
+  // Remove legacy local user/password records; authentication is handled only by Supabase Auth.
+  await DB.clear('usuarios');
   await DB.put('usuarios', user);
   localStorage.setItem('kanawa_empresa', JSON.stringify(company));
   localStorage.setItem('kanawa_user', JSON.stringify(user));
@@ -389,11 +400,26 @@ const PERMISSOES = {
   admin: { modulos: '*', acoes: ['criar','editar','excluir','ver','configurar','aprovar','cancelar','exportar','importar'], verFinanceiro: true, excluir: true, configurar: true, descontoMax: 100 },
   gerente: { modulos: ['dashboard','pdv','vendas','produtos','categorias','ecommerce','estoque','compras','clientes','fornecedores','crm','financeiro','fiscal','rh','projetos','tarefas','ativos','frota','os','documentos','relatorios','notificacoes','orcamentos','transportadoras','contratos','tickets','perfil','dispositivos','producao','ordens-producao','mrp','bom','custos-producao','controle-qualidade','planos-producao','logistica-roteirizacao','logistica-etiquetas','logistica-picking','logistica-armazens','logistica-crossdocking','logistica-rastreio','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos','ecommerce-produtos','ecommerce-pagamento','ecommerce-rastreio','rh-recrutamento','rh-desempenho','rh-beneficios','rh-onboarding','rh-ponto','rh-rescisao','rh-plano-carreira','projetos-tarefas','projetos-kanban','projetos-gantt','projetos-recursos','projetos-timesheet','projetos-custos','projetos-riscos','ativos-depreciacao','ativos-manutencao','ativos-garantia','frota-manutencao','frota-rotas','frota-gps','frota-combustivel','frota-documentos','frota-multas','frota-desempenho','os-manutencao','os-checklist','os-calendario','os-tecnicos','produtos-avaliacoes','tabelas-precos','vendas-consignadas','vendas-promocoes','clientes-fidelidade','clientes-cupons','portal-cliente','clientes-segmentacao','crm-pipeline','crm-automacao','crm-score','crm-remarketing','marketing-campanhas','marketing-analise','elearning-cursos','elearning-certificacoes','elearning-quizzes','elearning-progresso','elearning-relatorios','servicos'], acoes: ['criar','editar','ver','aprovar','cancelar','exportar'], verFinanceiro: true, excluir: false, configurar: false, descontoMax: 30 },
   operador: { modulos: ['dashboard','pdv','vendas','produtos','clientes','estoque','notificacoes','perfil','producao','ordens-producao','controle-qualidade','os','os-manutencao','os-checklist','os-calendario','projetos-tarefas','projetos-kanban','tarefas'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 10 },
-  caixa: { modulos: ['pdv','vendas','clientes','notificacoes','perfil','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 5 }
+  caixa: { modulos: ['pdv','vendas','clientes','notificacoes','perfil','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 5 },
+  contabilista: { modulos: ['dashboard','vendas','compras','clientes','fornecedores','financeiro','fiscal','relatorios','perfil','notificacoes'], acoes: ['ver'], verFinanceiro: true, excluir: false, configurar: false, descontoMax: 0 },
+  visualizador: { modulos: ['dashboard','vendas','produtos','clientes','estoque','relatorios','perfil','notificacoes'], acoes: ['ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 0 }
 };
-function getPerms() { const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}'); return PERMISSOES[u.role || u.perfil || 'operador'] || PERMISSOES.operador; }
-function podeAcessar(m) { const p = getPerms(); return p.modulos === '*' || p.modulos.indexOf(m) !== -1; }
-function podeFazer(a) { return getPerms().acoes.indexOf(a) !== -1; }
+function getPerms() {
+  const u = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+  const role = u.role || u.perfil || 'visualizador';
+  if (u.cloudUser && window.KanawaPermissions) return window.KanawaPermissions.fromMembership(role, u.permissions || {});
+  return PERMISSOES[role] || PERMISSOES.visualizador;
+}
+function podeAcessar(m) {
+  const p = getPerms();
+  if (window.KanawaPermissions) return window.KanawaPermissions.canAccess(p, m);
+  return p.modulos === '*' || (Array.isArray(p.modulos) && p.modulos.indexOf(m) !== -1);
+}
+function podeFazer(a, modulo) {
+  const p = getPerms();
+  if (window.KanawaPermissions) return window.KanawaPermissions.canDo(p, a, modulo || currentModule);
+  return p.acoes.indexOf(a) !== -1;
+}
 
 /* ====== MENU ====== */
 const MENU = [
@@ -661,18 +687,19 @@ async function salvarPerfil() {
   openModule('perfil');
 }
 async function alterarSenhaPerfil() {
-  const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const atual = $('perfilSenhaAtual').value, nova = $('perfilNovaSenha').value, conf = $('perfilConfSenha').value;
   if (!atual || !nova || !conf) { toast('Preencha todos os campos', 'warning'); return; }
   if (nova !== conf) { toast('Senhas não coincidem', 'error'); return; }
-  if (nova.length < 6) { toast('Senha muito curta', 'warning'); return; }
-  const users = await DB.getAll('usuarios');
-  const match = users.find(u => u.email === user.email || u.id === 1);
-  if (match && match.senha && match.senha !== atual) { toast('Senha atual incorreta', 'error'); return; }
-  if (match) { match.senha = nova; await DB.put('usuarios', match); }
-  $('perfilSenhaAtual').value = ''; $('perfilNovaSenha').value = ''; $('perfilConfSenha').value = '';
-  await registrarAuditoria('editar', 'senha', {});
-  toast('✅ Senha alterada', 'success');
+  if (nova.length < 8) { toast('Use uma senha com pelo menos 8 caracteres.', 'warning'); return; }
+  if (!window.KanawaCloud || !KanawaCloud.ready) { toast('A alteração de senha exige uma sessão segura na nuvem.', 'error'); return; }
+  try {
+    await KanawaCloud.changePassword(atual, nova);
+    $('perfilSenhaAtual').value = ''; $('perfilNovaSenha').value = ''; $('perfilConfSenha').value = '';
+    await registrarAuditoria('editar', 'senha', {});
+    toast('Senha alterada com segurança.', 'success');
+  } catch (error) {
+    toast(error.message || 'Não foi possível alterar a senha.', 'error');
+  }
 }
 
 /* ====== DISPOSITIVOS ====== */
@@ -703,7 +730,7 @@ async function detectarImpressoras() {
   if (navigator.usb) { try { const dv = await navigator.usb.getDevices(); dv.forEach(d => det.push({ nome: d.productName || 'USB Device', tipo: 'USB', metodo: 'Web USB', disponivel: true })); } catch (e) { } }
   return det;
 }
-function detectarEDetalhes() { toast('🔍 Detectando dispositivos...', 'info'); setTimeout(() => { openModule('dispositivos'); toast('✅ Detecção concluída', 'success'); }, 1000); }
+function detectarEDetalhes() { toast('A deteção automática não foi concluída. Abra Dispositivos e use a consulta de hardware suportada pelo navegador.', 'warning'); openModule('dispositivos'); }
 function abrirModalDispositivo() {
   openModal('Adicionar Dispositivo',
     '<div class="form-group"><label>Nome / Identificação *</label><input id="dispNome" placeholder="Ex: Epson TM-T20"></div>' +
@@ -826,19 +853,89 @@ function gerarQRCodeFatura(texto) {
   } catch (e) { container.innerHTML = '<div style="width:130px;height:130px;display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#666;padding:8px;word-break:break-all;text-align:center">' + esc(texto.slice(0, 80)) + '</div>'; }
 }
 
+function htmlSeguroParaImpressao(conteudo, titulo, estilo) {
+  return '<!doctype html><html lang="pt-AO"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<base href="' + esc(window.location.href.split('#')[0]) + '">' +
+    '<title>' + esc(titulo) + '</title><style>' + estilo +
+    'html,body{background:#fff!important;color:#000!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}' +
+    '@media screen{body{padding:12px}}@media print{body{margin:0!important}}</style></head><body>' + conteudo + '</body></html>';
+}
+async function imprimirDocumento(html, opcoes = {}) {
+  const titulo = opcoes.titulo || 'Documento Kanawa Soft';
+  const nativo = window.kanawaNative;
+  if (nativo && nativo.isDesktop && typeof nativo.imprimirHTML === 'function') {
+    try {
+      const ok = await nativo.imprimirHTML({
+        html, printer: opcoes.printer || undefined, silent: false,
+        paperSize: opcoes.paperSize || 'A4',
+        margins: { marginType: opcoes.margins || 'default' }
+      });
+      if (ok === true) { toast('Documento enviado para a impressora.', 'success'); return true; }
+      toast('A impressão nativa não foi concluída. Verifique a impressora selecionada e tente novamente.', 'error');
+      return false;
+    } catch (erro) {
+      console.error('[Kanawa impressão nativa]', erro);
+      toast('Falha na impressão: ' + (erro.message || 'erro do sistema'), 'error');
+      return false;
+    }
+  }
+  const janela = window.open('', '_blank');
+  if (!janela) {
+    toast('O navegador bloqueou a janela de impressão. Autorize pop-ups para este site e tente novamente.', 'error');
+    return false;
+  }
+  try {
+    janela.document.open();
+    janela.document.write(html);
+    janela.document.close();
+    const imagens = Array.from(janela.document.images || []);
+    await Promise.all(imagens.map(img => img.decode ? img.decode().catch(() => {}) : new Promise(resolve => {
+      if (img.complete) resolve(); else { img.onload = resolve; img.onerror = resolve; }
+    })));
+    if (janela.document.fonts && janela.document.fonts.ready) await janela.document.fonts.ready;
+    janela.focus();
+    janela.addEventListener('afterprint', () => { try { janela.close(); } catch (_) {} }, { once: true });
+    setTimeout(() => { try { janela.print(); } catch (erro) { console.error('[Kanawa impressão]', erro); } }, 250);
+    return true;
+  } catch (erro) {
+    try { janela.close(); } catch (_) {}
+    console.error('[Kanawa impressão]', erro);
+    toast('Não foi possível preparar a fatura para impressão.', 'error');
+    return false;
+  }
+}
 function imprimirFatura() {
-  const el = $('faturaPreview'); if (!el) return;
-  const w = window.open('', '_blank');
-  w.document.write('<html><head><title>Fatura</title><style>body{font-family:Arial;padding:20px;margin:0}table{width:100%;border-collapse:collapse}th{background:#1a3a5c;color:#fff;padding:8px}td{padding:6px;border-bottom:1px solid #e2e8f0}@media print{@page{margin:5mm}}</style></head><body>' + el.innerHTML + '</body></html>');
-  w.document.close(); setTimeout(() => { w.print(); }, 500);
+  const el = $('faturaPreview');
+  if (!el) { toast('A pré-visualização da fatura não está disponível.', 'error'); return; }
+  const copia = el.cloneNode(true);
+  copia.querySelectorAll('canvas').forEach(canvas => {
+    try {
+      const img = document.createElement('img');
+      img.src = canvas.toDataURL('image/png');
+      img.width = canvas.width; img.height = canvas.height;
+      img.alt = 'Código QR da fatura';
+      canvas.replaceWith(img);
+    } catch (erro) { console.warn('[Kanawa QR impressão]', erro); }
+  });
+  const estilo = 'body{font-family:Arial,sans-serif;padding:5mm;margin:0;font-size:12px}' +
+    'table{width:100%;border-collapse:collapse}th{background:#1a3a5c!important;color:#fff!important;padding:8px}' +
+    'td{padding:6px;border-bottom:1px solid #e2e8f0}img{max-width:100%}#faturaPreview{max-width:none!important;width:100%!important;padding:0!important}' +
+    '@page{size:A4 portrait;margin:5mm}';
+  const html = htmlSeguroParaImpressao(copia.outerHTML, 'Fatura ' + (window._vendaAtual?.numeroFatura || ''), estilo);
+  return imprimirDocumento(html, { titulo: 'Fatura', paperSize: 'A4' });
 }
 function imprimirTermica() {
-  const v = window._vendaAtual; if (!v) return;
+  const v = window._vendaAtual; if (!v) { toast('Nenhuma venda selecionada para imprimir.', 'error'); return; }
   const emp = v.empresa || JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
-  const texto = ['=================================', '   ' + (emp.firma || emp.nome || 'KANAWA SOFT').toUpperCase(), '   NIF: ' + (emp.nif || '-'), '   ' + (emp.endereco || 'Luanda, Angola'), '   Tel: ' + (emp.telefone || '-'), '=================================', 'FATURA-RECIBO: ' + v.numeroFatura, 'Data: ' + fmtDT(v.data), 'Cliente: ' + v.clienteNome, (v.clienteNif ? 'NIF: ' + v.clienteNif : ''), '=================================', ...(v.itens || []).map(it => it.nome.substring(0, 20).padEnd(20) + '\n  ' + it.qty + ' x ' + fmt(it.preco).padEnd(12) + fmt(it.subtotal)), '=================================', 'Subtotal:    ' + fmt(v.subtotal), (v.desconto > 0 ? 'Desconto:    -' + fmt(v.descontoValor) : ''), 'Imposto:     ' + fmt(v.iva), 'TOTAL:       ' + fmt(v.total), v.valorRecebido > 0 ? 'Recebido:    ' + fmt(v.valorRecebido) : '', v.valorRecebido > 0 ? 'Troco:       ' + fmt(v.troco) : '', '=================================', 'Valor: ' + numeroPorExtenso(v.total), '---------------------------------', 'Hash: ' + v.hash, 'Assinatura: ' + (v.assinatura || ''), '---------------------------------', '    Obrigado pela preferência!', '   Processado por Kanawa Soft ERP', '       www.kanawasoft.com', '================================='].filter(Boolean).join('\n');
-  const w = window.open('', '_blank', 'width=300,height=600');
-  w.document.write('<html><head><title>Recibo</title><style>@media print{@page{margin:0;size:58mm auto}}body{font-family:"Courier New",monospace;font-size:11px;width:200px;margin:0 auto;padding:5px;white-space:pre;line-height:1.3}</style></head><body>' + texto + '</body></html>');
-  w.document.close(); setTimeout(() => { w.print(); }, 500); abrirGavetaAutomatico();
+  const texto = ['=================================', '   ' + (emp.firma || emp.nome || 'KANAWA SOFT').toUpperCase(), '   NIF: ' + (emp.nif || '-'), '   ' + (emp.endereco || 'Luanda, Angola'), '   Tel: ' + (emp.telefone || '-'), '=================================', 'FATURA-RECIBO: ' + v.numeroFatura, 'Data: ' + fmtDT(v.data), 'Cliente: ' + (v.clienteNome || 'Consumidor Final'), (v.clienteNif ? 'NIF: ' + v.clienteNif : ''), '=================================', ...(v.itens || []).map(it => String(it.nome || '').substring(0, 20).padEnd(20) + '\n  ' + it.qty + ' x ' + fmt(it.preco).padEnd(12) + fmt(it.subtotal)), '=================================', 'Subtotal:    ' + fmt(v.subtotal), (v.desconto > 0 ? 'Desconto:    -' + fmt(v.descontoValor) : ''), 'Imposto:     ' + fmt(v.iva), 'TOTAL:       ' + fmt(v.total), v.valorRecebido > 0 ? 'Recebido:    ' + fmt(v.valorRecebido) : '', v.valorRecebido > 0 ? 'Troco:       ' + fmt(v.troco) : '', '=================================', 'Valor: ' + numeroPorExtenso(v.total), '---------------------------------', 'Hash: ' + (v.hash || '-'), 'Assinatura: ' + (v.assinatura || '-'), '---------------------------------', '    Obrigado pela preferência!', '   Processado por Kanawa Soft ERP', '================================='].filter(Boolean).join('\n');
+  const html = htmlSeguroParaImpressao('<pre>' + esc(texto) + '</pre>', 'Recibo ' + (v.numeroFatura || ''),
+    'body{font-family:"Courier New",monospace;font-size:11px;width:48mm;margin:0 auto;padding:2mm;white-space:pre-wrap;line-height:1.3}' +
+    'pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}@page{size:58mm auto;margin:0}');
+  const tamanho = { width: 58000, height: 200000 };
+  return imprimirDocumento(html, { titulo: 'Recibo térmico', paperSize: tamanho, margins: 'none' }).then(ok => {
+    if (ok && typeof abrirGavetaAutomatico === 'function') abrirGavetaAutomatico();
+    return ok;
+  });
 }
 async function baixarFaturaPDF() {
   const el = $('faturaPreview'); if (!el) return;
@@ -971,19 +1068,32 @@ function pdvClienteAnonimo() { $('pdvClienteNome').value = 'Cliente Anônimo'; $
 function pdvSelecionarPagamento(t) { pdvState.pagamento = t; $$('.payment-method-card').forEach(el => el.classList.toggle('selected', el.dataset.payment === t)); const map = { dinheiro: 'Dinheiro', cartao: 'Cartão', transferencia: 'Transferência', multicaixa: 'Multicaixa', misto: 'Misto', credito: 'Crédito' }; const el = $('pdvPagamentoResumo'); if (el) el.textContent = map[t] || t; }
 function pdvAtualizarValores() {
   const dEl = $('pdvDescontoInput'), vEl = $('pdvValorRecebidoInput'), rEl = $('pdvRegimeInput'), iEl = $('pdvAplicarIVA');
-  if (!dEl) return { subtotal: 0, descontoValor: 0, base: 0, iva: 0, total: 0, troco: 0 };
+  if (!dEl) return { subtotal: 0, descontoValor: 0, base: 0, iva: 0, total: 0, troco: 0, faltam: 0 };
+  const money = window.KanawaSales.roundMoney;
   const maxD = getPerms().descontoMax; let desc = num(dEl.value, 0); if (desc > maxD) { desc = maxD; dEl.value = maxD; }
-  const vRec = num(vEl.value, 0), regime = rEl.value, aplicarIVA = iEl.checked;
-  pdvState.desconto = desc; pdvState.valorRecebido = vRec; pdvState.regime = regime; pdvState.aplicarIVA = aplicarIVA;
-  const subtotal = pdvState.carrinho.reduce((s, i) => s + i.subtotal, 0);
-  const descVal = subtotal * (desc / 100), base = subtotal - descVal;
+  const recebidoInput = num(vEl.value, 0), regime = rEl.value, aplicarIVA = iEl.checked;
+  pdvState.desconto = desc; pdvState.regime = regime; pdvState.aplicarIVA = aplicarIVA;
+  const subtotal = money(pdvState.carrinho.reduce((sum, item) => {
+    item.subtotal = money(Number(item.preco) * Number(item.qty));
+    return sum + item.subtotal;
+  }, 0));
+  const descVal = money(subtotal * (desc / 100)), base = money(subtotal - descVal);
   let taxa = 0; if (aplicarIVA) taxa = regime === 'geral' ? 0.14 : (regime === 'simplificado' ? 0.07 : 0);
-  const iva = base * taxa, total = base + iva, troco = vRec - total;
+  const iva = money(base * taxa), total = money(base + iva);
+  const isCredit = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
+  const vRec = recebidoInput === 0 && !isCredit ? total : money(recebidoInput);
+  const troco = money(Math.max(0, vRec - total)), faltam = money(Math.max(0, total - vRec));
+  pdvState.valorRecebido = vRec;
   const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
   set('pdvCalcSubtotal', fmt(subtotal)); set('pdvCalcDesconto', '-' + fmt(descVal)); set('pdvCalcBase', fmt(base)); set('pdvCalcIVA', fmt(iva)); set('pdvCalcTotal', fmt(total)); set('pdvTotalFinalTela5', fmt(total));
   const tb = $('pdvTrocoBox'), tv = $('pdvTrocoValue');
-  if (tb && tv) { if (vRec > 0) { tb.style.display = 'block'; tv.textContent = troco >= 0 ? fmt(troco) : 'Faltam ' + fmt(Math.abs(troco)); } else tb.style.display = 'none'; }
-  return { subtotal, descontoValor: descVal, base, iva, total, troco };
+  if (tb && tv) {
+    if (vRec > 0) {
+      tb.style.display = 'block';
+      tv.textContent = faltam > 0 ? 'Faltam ' + fmt(faltam) : fmt(troco);
+    } else tb.style.display = 'none';
+  }
+  return { subtotal, descontoValor: descVal, base, iva, total, troco, faltam };
 }
 function pdvRenderResumoFinal() {
   const c = pdvAtualizarValores();
@@ -1010,6 +1120,11 @@ async function pdvFinalizarVenda(modo) {
   modo = modo || 'finalizada';
   if (!pdvState.carrinho.length) { toast('Carrinho vazio', 'warning'); return; }
   const c = pdvAtualizarValores();
+  const isCreditPayment = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
+  if (!isCreditPayment && c.faltam > 0) {
+    toast('Pagamento insuficiente. Falta receber ' + fmt(c.faltam) + '.', 'warning');
+    return;
+  }
   const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const numeroFatura = 'FT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6);
@@ -1652,20 +1767,55 @@ async function exportarVendasCSV() {
 
 /* ====== USUÁRIOS ====== */
 async function renderUsuarios() {
-  if (!podeAcessar('usuarios')) return '<div class="card"><h3>Sem permissão</h3></div>';
-  const u = await getData('usuarios');
-  const rows = u.map(x => [x.id, '<strong>' + esc(x.nome) + '</strong>', esc(x.email), badge(x.perfil || 'operador', 'primary'), badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'usuarios\',' + x.id + ')"><i class="fas fa-trash"></i></button>']);
-  return header('Usuários', u.length + ' usuários', 'var(--danger)', '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-plus"></i> Novo</button>', 'fa-user-shield') + '<div class="card">' + table(['#', 'Nome', 'Email', 'Perfil', 'Status', 'Ações'], rows) + '</div>';
+  if (!podeAcessar('usuarios') || !window.KanawaCloud || !KanawaCloud.ready) {
+    return '<div class="card"><h3>Gestão de equipa indisponível</h3><p>Entre com uma conta proprietária ou administradora da empresa.</p></div>';
+  }
+  try {
+    const members = await KanawaCloud.listCompanyMembers();
+    const rows = members.map(function (member) {
+      const statusLabel = member.status === 'active' ? 'Ativo' : (member.status === 'invited' ? 'Convite pendente' : 'Suspenso');
+      const statusColor = member.status === 'active' ? 'success' : (member.status === 'invited' ? 'warning' : 'danger');
+      const roleLabels = { owner: 'Proprietário', admin: 'Administrador', manager: 'Gerente', operator: 'Operador', cashier: 'Caixa', accountant: 'Contabilista', viewer: 'Visualizador' };
+      return [
+        '<strong>' + esc(member.full_name || 'Utilizador') + '</strong>',
+        esc(member.email || '-'),
+        badge(roleLabels[member.role] || member.role, 'primary'),
+        badge(statusLabel, statusColor),
+        '<small>' + Object.keys(member.permissions || {}).length + ' módulos autorizados</small>'
+      ];
+    });
+    return header('Equipa e permissões', members.length + ' membros', 'var(--danger)',
+      '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-envelope"></i> Convidar utilizador</button>', 'fa-user-shield') +
+      '<div class="card"><p style="margin-bottom:12px;color:var(--text-muted)">As permissões são aplicadas no servidor por empresa e por módulo. Os utilizadores recebem um convite por email; não crie nem guarde senhas neste dispositivo.</p>' +
+      table(['Nome', 'Email', 'Perfil', 'Estado', 'Permissões'], rows) + '</div>';
+  } catch (error) {
+    return header('Equipa e permissões', 'Não foi possível carregar os membros', 'var(--danger)', '', 'fa-user-shield') +
+      '<div class="card"><p>' + esc(error.message || 'Erro ao consultar a equipa.') + '</p></div>';
+  }
 }
 function abrirModalUsuario() {
-  openModal('Novo Usuário',
-    '<div class="form-group"><label>Nome *</label><input id="uNome"></div>' +
-    '<div class="form-group"><label>Email *</label><input id="uEmail" type="email"></div>' +
-    '<div class="form-group"><label>Senha *</label><input id="uSenha" type="password" minlength="6"></div>' +
-    '<div class="form-group"><label>Perfil</label><select id="uPerfil"><option value="admin">Administrador</option><option value="gerente">Gerente</option><option value="operador">Operador</option><option value="caixa">Operador de Caixa</option></select></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarUsuario()">Salvar</button>');
+  openModal('Convidar utilizador',
+    '<div class="form-group"><label>Nome completo *</label><input id="uNome" autocomplete="name"></div>' +
+    '<div class="form-group"><label>Email *</label><input id="uEmail" type="email" autocomplete="email"></div>' +
+    '<div class="form-group"><label>Perfil de acesso</label><select id="uPerfil">' +
+    '<option value="manager">Gerente</option><option value="operator">Operador</option><option value="cashier">Caixa</option>' +
+    '<option value="accountant">Contabilista</option><option value="viewer">Visualizador</option></select></div>' +
+    '<p style="font-size:.8rem;color:var(--text-muted);margin:10px 0">O utilizador receberá um email para confirmar a conta. As permissões iniciais serão atribuídas pelo perfil e aplicadas no servidor.</p>' +
+    '<button class="btn btn-primary btn-block" onclick="salvarUsuario()"><i class="fas fa-paper-plane"></i> Enviar convite</button>');
 }
-async function salvarUsuario() { const n = $('uNome').value.trim(), e = $('uEmail').value.trim(), s = $('uSenha').value; if (!n || !e || s.length < 6) { toast('Preencha todos os campos', 'warning'); return; } await saveData('usuarios', { nome: n, email: e, senha: s, perfil: $('uPerfil').value, ativo: true, dataCriacao: now() }); toast('Usuário criado', 'success'); closeModal(); openModule('usuarios'); }
+async function salvarUsuario() {
+  const fullName = $('uNome').value.trim(), email = $('uEmail').value.trim(), role = $('uPerfil').value;
+  if (!fullName || !email) { toast('Preencha o nome e o email.', 'warning'); return; }
+  if (!window.KanawaCloud || !KanawaCloud.ready) { toast('É necessário iniciar sessão na nuvem.', 'error'); return; }
+  try {
+    await KanawaCloud.inviteMember({ full_name: fullName, email: email, role: role });
+    toast('Convite enviado para ' + email + '.', 'success');
+    closeModal();
+    openModule('usuarios');
+  } catch (error) {
+    toast(error.message || 'Não foi possível enviar o convite.', 'error');
+  }
+}
 
 /* ====== AUDITORIA ====== */
 async function renderAuditoria() {
@@ -1740,16 +1890,27 @@ async function renderConfig() {
     '<button class="btn btn-info" onclick="exportarBackupCompleto()"><i class="fas fa-download"></i> Backup</button>' +
     '<button class="btn btn-danger" onclick="resetTotal()"><i class="fas fa-bomb"></i> Reset Total</button></div></div>';
 }
-function salvarConfigEmpresa() {
+async function salvarConfigEmpresa() {
   const empAtual = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logoAtual = empAtual.logo || 'logo.png';
   const logoNovo = localStorage.getItem('kanawa_logo_temp') || logoAtual;
-  const e = { firma: $('cfgFirma').value, nome: $('cfgNome').value, nif: $('cfgNif').value, alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value, email: $('cfgEmail').value, endereco: $('cfgEnd').value, website: $('cfgSite').value, banco: $('cfgBanco').value, iban: $('cfgIban').value, logo: logoNovo };
+  const e = { firma: $('cfgFirma').value.trim(), nome: $('cfgNome').value.trim(), nif: $('cfgNif').value.trim(), alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value.trim(), email: $('cfgEmail').value.trim(), endereco: $('cfgEnd').value.trim(), website: $('cfgSite').value.trim(), banco: $('cfgBanco').value, iban: $('cfgIban').value.trim(), logo: logoNovo };
+  if (!e.firma && !e.nome) { toast('Informe a razão social ou o nome comercial.', 'warning'); return; }
+  if (window.KanawaCloud && KanawaCloud.ready) {
+    try {
+      await KanawaCloud.updateCompany(e);
+    } catch (error) {
+      toast(error.message || 'Não foi possível atualizar a empresa na nuvem.', 'error');
+      return;
+    }
+  }
   localStorage.setItem('kanawa_empresa', JSON.stringify(e));
+  const cachedCompany = await DB.get('empresas', 1) || { id: 1 };
+  await DB.put('empresas', Object.assign({}, cachedCompany, e, { id: 1 }));
   localStorage.removeItem('kanawa_logo_temp');
   aplicarLogo();
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = e.firma || e.nome || 'Kanawa Soft';
-  toast('✅ Empresa atualizada', 'success');
+  toast(window.KanawaCloud && KanawaCloud.ready ? 'Dados principais da empresa atualizados na nuvem. Os campos adicionais permanecem locais.' : 'Dados guardados apenas neste dispositivo; ainda não foram sincronizados.', 'warning');
 }
 function escolherLogoEmpresa(input) {
   const file = input.files[0]; if (!file) return;
@@ -2080,7 +2241,7 @@ function abrirModalRota() {
     '<button class="btn btn-primary btn-block" onclick="salvarRota()">Salvar</button>');
 }
 async function salvarRota() { const o = $('rotaOrigem').value.trim(); const d = $('rotaDestino').value.trim(); if (!o || !d) { toast('Preencha origem e destino', 'warning'); return; } await saveData('roteirizacao', { origem: o, destino: d, distancia: $('rotaDistancia').value, veiculo: $('rotaVeiculo').value, data: now() }); toast('Rota criada', 'success'); closeModal(); openModule('logistica-roteirizacao'); }
-function otimizarRotas() { toast('Rotas otimizadas', 'success'); }
+function otimizarRotas() { toast('Otimização bloqueada: ainda não existe um motor de rotas ativo nem coordenadas verificadas para as paragens.', 'warning'); }
 
 async function renderLogisticaEtiquetas() {
   const etiquetas = await getData('etiquetas') || [];
@@ -2096,7 +2257,7 @@ async function gerarEtiqueta() {
   await saveData('etiquetas', { codigo: 'ETQ' + Math.random().toString(36).substr(2, 6).toUpperCase(), produto, data: now() });
   toast('Etiqueta gerada', 'success'); openModule('logistica-etiquetas');
 }
-function visualizarEtiqueta(id) { toast('Visualizando etiqueta', 'info'); }
+function visualizarEtiqueta(id) { toast('Pré-visualização de etiquetas ainda não está ligada a um gerador/serviço de impressão.', 'warning'); }
 
 function renderLogisticaPicking() {
   return header('Picking', 'Separação de pedidos', 'var(--warning)', '', 'fa-boxes') +
@@ -2105,7 +2266,7 @@ function renderLogisticaPicking() {
     '<div class="form-group"><label>Itens para separar</label><div style="padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-height:60px;color:var(--text-muted)">Selecione um pedido</div></div>' +
     '<button class="btn btn-success" onclick="iniciarPicking()"><i class="fas fa-play"></i> Iniciar Picking</button></div>';
 }
-function iniciarPicking() { toast('Picking iniciado', 'success'); }
+function iniciarPicking() { toast('Picking não iniciado: falta ligar os pedidos reais, a localização dos artigos e a transação de stock.', 'warning'); }
 
 async function renderLogisticaArmazens() {
   const armazens = await getData('armazens') || [];
@@ -2126,7 +2287,7 @@ function renderLogisticaCrossdocking() {
     '<div class="form-group"><label>Quantidade</label><input id="crossQtd" type="number" value="1" min="1"></div></div>' +
     '<button class="btn btn-success" onclick="realizarCrossdocking()"><i class="fas fa-exchange-alt"></i> Transferir</button></div>';
 }
-function realizarCrossdocking() { toast('Cross-docking realizado', 'success'); }
+function realizarCrossdocking() { toast('Transferência não executada: este módulo ainda não grava movimentos de stock no servidor.', 'warning'); }
 
 async function renderLogisticaRastreio() {
   const rastreios = await getData('rastreios') || [];
@@ -2137,8 +2298,13 @@ async function renderLogisticaRastreio() {
 }
 async function buscarRastreio() {
   const codigo = prompt('Código de rastreio:'); if (!codigo) return;
-  await saveData('rastreios', { codigo, produto: 'Produto', status: 'em_transito', ultimaAtualizacao: now() });
-  toast('Rastreio adicionado', 'success'); openModule('logistica-rastreio');
+  const registos = await getData('rastreios') || [];
+  const registo = registos.find(function (item) { return String(item.codigo || '').toLowerCase() === codigo.trim().toLowerCase(); });
+  if (!registo) {
+    toast('Não existe registo interno para este código e não há transportadora ligada para consultar o estado externo.', 'warning');
+    return;
+  }
+  toast('Registo interno encontrado: ' + (registo.status || 'sem estado') + '. Não é uma confirmação da transportadora.', 'info');
 }
 
 /* E-COMMERCE AVANÇADO */
@@ -2184,7 +2350,7 @@ async function finalizarPedidoEcommerce() {
   const pedido = { cliente: prompt('Nome do cliente:', 'Cliente Anônimo') || 'Cliente Anônimo', itens: carrinho, total, status: 'pendente', data: now() };
   await saveData('ecommercePedidos', pedido);
   localStorage.removeItem('kanawa_ecommerce_carrinho');
-  toast('Pedido finalizado: ' + fmt(total), 'success'); openModule('ecommerce-pedidos');
+  toast('Pedido registado como pendente. Nenhum pagamento foi processado.', 'warning'); openModule('ecommerce-pedidos');
 }
 async function renderEcommercePedidos() {
   const pedidos = await getData('ecommercePedidos') || [];
@@ -2196,32 +2362,45 @@ async function renderEcommercePedidos() {
 }
 async function detalharPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; alert('Pedido #' + id + '\nCliente: ' + p.cliente + '\nTotal: ' + fmt(p.total) + '\nStatus: ' + p.status); }
 async function atualizarStatusPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; const s = prompt('Status (pendente, enviado, entregue, cancelado):', p.status); if (s) { p.status = s; await saveData('ecommercePedidos', p); toast('Status atualizado', 'success'); openModule('ecommerce-pedidos'); } }
-function exportarPedidosEcommerce() { toast('Exportando pedidos...', 'info'); }
-function renderEcommercePagamento() {
-  return header('Gateway de Pagamento', 'Configure os métodos de pagamento', 'var(--success)', '', 'fa-credit-card') +
-    '<div class="card"><div class="payment-methods">' +
-    '<div class="payment-method selected"><i class="fas fa-credit-card"></i> Cartão</div>' +
-    '<div class="payment-method"><i class="fas fa-money-bill-wave"></i> Dinheiro</div>' +
-    '<div class="payment-method"><i class="fas fa-mobile-alt"></i> Mobile Money</div>' +
-    '<div class="payment-method"><i class="fas fa-university"></i> Transferência</div></div>' +
-    '<div class="form-grid" style="margin-top:12px"><div class="form-group"><label>Banco</label><select><option>BPC</option><option>BIC</option><option>Banco Atlas</option></select></div><div class="form-group"><label>Chave API</label><input type="password" placeholder="Chave de API"></div></div>' +
-    '<div class="form-actions"><button class="btn btn-success" onclick="configurarPagamento()"><i class="fas fa-save"></i> Salvar</button><button class="btn btn-primary" onclick="testarPagamento()"><i class="fas fa-check"></i> Testar</button></div></div>';
+function exportarPedidosEcommerce() { toast('Exportação de pedidos ainda não está implementada; nenhum ficheiro foi criado.', 'warning'); }
+async function renderEcommercePagamento() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) {
+    return header('Gateway de Pagamento', 'Estado das integrações', 'var(--warning)', '', 'fa-credit-card') +
+      '<div class="card"><p>É necessário iniciar sessão na nuvem para consultar os provedores de pagamento.</p></div>';
+  }
+  try {
+    const providers = await KanawaCloud.listPaymentProviderStatus();
+    const active = providers.filter(function (provider) { return provider.enabled === true; }).length;
+    const rows = providers.map(function (provider) {
+      const enabled = provider.enabled === true;
+      return [
+        '<strong>' + esc(provider.display_name || provider.provider_code) + '</strong>',
+        esc(provider.mode || 'não configurado'),
+        badge(enabled ? 'Ativo' : 'Desativado', enabled ? 'success' : 'warning'),
+        esc((provider.supported_countries || []).join(', ') || '-')
+      ];
+    });
+    return header('Gateway de Pagamento', active + ' de ' + providers.length + ' provedores ativos', 'var(--success)', '', 'fa-credit-card') +
+      '<div class="card"><p style="margin-bottom:12px;color:var(--text-muted)">Estado consultado no servidor. Nenhuma chave secreta deve ser introduzida no navegador. Um provedor só pode ser apresentado como ativo depois da configuração e validação no backend.</p>' +
+      table(['Provedor', 'Modo', 'Estado', 'Países'], rows) +
+      (active === 0 ? '<div class="alert alert-warning" style="margin-top:12px">Não existe gateway de pagamento ativo. O checkout online não pode cobrar clientes neste momento.</div>' : '') +
+      '</div>';
+  } catch (error) {
+    return header('Gateway de Pagamento', 'Falha ao consultar provedores', 'var(--danger)', '', 'fa-credit-card') +
+      '<div class="card"><p>' + esc(error.message || 'Não foi possível consultar o estado dos provedores.') + '</p></div>';
+  }
 }
-function configurarPagamento() { toast('Gateway configurado', 'success'); }
-function testarPagamento() { toast('Teste concluído', 'success'); }
+function configurarPagamento() { toast('Configuração de gateways deve ser feita no backend seguro; não é permitido guardar chaves no navegador.', 'warning'); }
+function testarPagamento() { toast('Nenhum teste de cobrança foi executado. Configure primeiro um provedor real no backend.', 'warning'); }
 function renderEcommerceRastreio() {
-  return header('Rastreio de Encomendas', 'Acompanhe seus pedidos', 'var(--info)',
-    '<button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i> Rastrear</button>', 'fa-map-marker-alt') +
-    '<div class="card"><div class="form-group"><label>Código de Rastreio</label><div style="display:flex;gap:8px"><input type="text" id="rastreioCodigo" placeholder="Ex: BR123456789" style="flex:1"><button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i></button></div></div></div>' +
-    '<div id="rastreioResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Resultado</h3></div><div id="rastreioConteudo"></div></div>';
+  return header('Rastreio de Encomendas', 'Consulta externa indisponível', 'var(--warning)', '', 'fa-map-marker-alt') +
+    '<div class="card"><div class="alert alert-warning">Não existe integração ativa com transportadoras. O sistema não vai inventar estados de envio. Consulte apenas atualizações registadas pela equipa em Logística → Rastreio.</div></div>';
 }
 function rastrearEncomenda() {
-  const codigo = $('rastreioCodigo') ? $('rastreioCodigo').value : '';
+  const codigo = $('rastreioCodigo') ? $('rastreioCodigo').value.trim() : '';
   if (!codigo) { toast('Informe o código', 'warning'); return; }
-  const r = $('rastreioResultado'), c = $('rastreioConteudo');
-  if (r && c) { r.style.display = 'block'; c.innerHTML = '<div class="alert alert-info">📦 Rastreio: ' + esc(codigo) + '</div><div style="font-size:.8rem">Status: Em trânsito<br>Última atualização: ' + fmtDT(now()) + '</div>'; }
+  toast('Consulta externa não realizada: não há API de transportadora configurada. Nenhum estado fictício foi apresentado.', 'warning');
 }
-
 /* RH AVANÇADO */
 async function renderRHRecrutamento() {
   const vagas = await getData('vagas') || []; const candidatos = await getData('candidatos') || [];
@@ -2278,7 +2457,7 @@ async function registrarPonto() {
   await saveData('pontoDigital', { funcionario: f, data: a.toISOString().split('T')[0], entrada: a.toTimeString().slice(0, 5), saida: '', dataRegistro: now() });
   toast('Ponto registrado', 'success'); openModule('rh-ponto');
 }
-function relatorioPonto() { toast('Relatório gerado', 'success'); }
+function relatorioPonto() { toast('Relatório de ponto ainda não foi implementado; nenhum relatório foi gerado.', 'warning'); }
 async function renderRHRescisao() {
   const r = await getData('rescisoes') || [];
   return header('Cálculo de Rescisão', r.length + ' cálculos', 'var(--danger)',
@@ -2334,7 +2513,7 @@ function renderProjetosRecursos() {
     '<div class="form-group"><label>Horas</label><input type="number" id="recursoHoras" value="0" min="0"></div></div>' +
     '<button class="btn btn-success" onclick="alocarRecurso()"><i class="fas fa-save"></i> Alocar</button></div>';
 }
-function alocarRecurso() { toast('Recurso alocado', 'success'); }
+function alocarRecurso() { toast('Alocação não executada: falta persistência da equipa e validação de capacidade do projeto.', 'warning'); }
 async function renderProjetosTimesheet() {
   const t = await getData('timesheets') || [];
   return header('Timesheet', t.length + ' registros', 'var(--warning)',
@@ -2351,8 +2530,8 @@ function renderProjetosCustos() {
     '<div class="form-group"><label>Custo Real</label><input type="number" id="custoReal" value="0"></div></div>' +
     '<button class="btn btn-success" onclick="salvarCustoProjeto()"><i class="fas fa-save"></i> Salvar</button> <button class="btn btn-info" onclick="analisarCustos()"><i class="fas fa-chart-line"></i> Analisar</button></div>';
 }
-function salvarCustoProjeto() { toast('Custo salvo', 'success'); }
-function analisarCustos() { toast('Análise concluída', 'success'); }
+function salvarCustoProjeto() { toast('Custo não guardado: o registo de custos de projeto ainda não está ligado à base de dados.', 'warning'); }
+function analisarCustos() { toast('Análise não executada: ainda não existe cálculo real de custos planeados versus realizados.', 'warning'); }
 function renderProjetosRiscos() {
   return header('Matriz de Riscos', 'Identificação e gestão', 'var(--warning)', '', 'fa-exclamation-triangle') +
     '<div class="card"><div class="form-grid">' +
@@ -2362,7 +2541,7 @@ function renderProjetosRiscos() {
     '<div class="form-group"><label>Estratégia</label><input id="riscoEstrategia" placeholder="Estratégia de mitigação"></div></div>' +
     '<button class="btn btn-success" onclick="salvarRisco()"><i class="fas fa-save"></i> Salvar</button></div>';
 }
-function salvarRisco() { toast('Risco salvo', 'success'); }
+function salvarRisco() { toast('Risco não guardado: a matriz de riscos ainda não está ligada à base de dados.', 'warning'); }
 
 /* ATIVOS AVANÇADO */
 async function renderAtivosDepreciacao() {
@@ -2434,7 +2613,7 @@ function renderFrotaDocumentos() {
     '<div class="form-group"><label>Validade</label><input type="date" id="docValidade"></div></div>' +
     '<button class="btn btn-success" onclick="salvarDocumentoFrota()"><i class="fas fa-save"></i> Salvar</button></div>';
 }
-function salvarDocumentoFrota() { toast('Documento salvo', 'success'); }
+function salvarDocumentoFrota() { toast('Documento não guardado: falta persistência e validação documental da frota.', 'warning'); }
 async function renderFrotaMultas() {
   const m = await getData('multas') || [];
   return header('Multas', m.length + ' multas', 'var(--danger)',
@@ -2458,7 +2637,7 @@ async function renderFrotaDesempenho() {
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Detalhes</h3></div>' +
     (f.length > 0 ? f.map(x => '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><strong>' + esc(x.placa) + '</strong> - ' + esc(x.modelo || '-') + ' ' + badge(x.status || 'ativo', x.status === 'ativo' ? 'success' : 'warning') + '</div>').join('') : 'Nenhum veículo') + '</div>';
 }
-function gerarRelatorioFrota() { toast('Relatório gerado', 'success'); }
+function gerarRelatorioFrota() { toast('Relatório da frota ainda não foi implementado; nenhum ficheiro foi gerado.', 'warning'); }
 
 /* OS AVANÇADO */
 async function renderOSManutencao() {
@@ -2576,8 +2755,8 @@ async function renderPortalCliente() {
     '<div class="card">' + table(['Cliente', 'Email', 'Último Acesso', 'Status'],
       c.slice(0, 10).map(x => [esc(x.nome), esc(x.email || '-'), x.ultimoAcesso ? fmtDT(x.ultimoAcesso) : '-', badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger')])) + '</div>';
 }
-function convidarClientePortal() { toast('Convite enviado', 'success'); }
-function abrirPortalCliente() { toast('Abrindo portal...', 'info'); }
+function convidarClientePortal() { toast('Convite não enviado: o portal do cliente ainda não tem fluxo de autenticação e email implementado.', 'warning'); }
+function abrirPortalCliente() { toast('Portal do cliente ainda não está publicado nem ligado a contas de clientes.', 'warning'); }
 async function renderClientesSegmentacao() {
   const s = await getData('segmentacoes') || [];
   return header('Segmentação de Clientes', s.length + ' segmentos', 'var(--purple)',
@@ -2620,8 +2799,8 @@ function renderCRMRemarketing() {
     '<div class="form-group"><label>Mensagem</label><textarea rows="3" style="width:100%;padding:8px;border:2px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text)">Olá! Temos uma oferta especial para você!</textarea></div>' +
     '<div class="form-actions"><button class="btn btn-success" onclick="executarRemarketing()"><i class="fas fa-play"></i> Executar Campanha</button><button class="btn btn-info" onclick="agendarRemarketing()"><i class="fas fa-clock"></i> Agendar</button></div></div>';
 }
-function executarRemarketing() { toast('Campanha executada', 'success'); }
-function agendarRemarketing() { toast('Campanha agendada', 'success'); }
+function executarRemarketing() { toast('Campanha não enviada: falta configurar um provedor de email/WhatsApp e consentimento dos destinatários.', 'warning'); }
+function agendarRemarketing() { toast('Campanha não agendada: o agendador de campanhas ainda não está implementado.', 'warning'); }
 
 /* MARKETING */
 async function renderMarketingCampanhas() {
@@ -2671,7 +2850,7 @@ async function renderElearningQuizzes() {
     '<div class="card">' + (q.length > 0 ? q.map(x => '<div style="padding:8px 12px;background:var(--bg);border-radius:var(--radius-sm);margin-bottom:6px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:.8rem">' + esc(x.titulo) + '</strong><div style="font-size:.6rem;color:var(--text-muted)">' + (x.questoes || 0) + ' questões</div></div><div style="display:flex;gap:4px"><button class="btn btn-sm btn-primary" onclick="responderQuiz(' + x.id + ')"><i class="fas fa-play"></i></button><button class="btn btn-sm btn-danger" onclick="excluirItem(\'quizzes\',' + x.id + ')"><i class="fas fa-trash"></i></button></div></div>').join('') : emptyState('fa-question-circle', 'Nenhum quiz disponível')) + '</div>';
 }
 async function novoQuiz() { const t = prompt('Título do quiz:'); if (!t) return; await saveData('quizzes', { titulo: t, questoes: parseInt(prompt('Número de questões:', '5')) || 5, data: now() }); toast('Quiz criado', 'success'); openModule('elearning-quizzes'); }
-function responderQuiz(id) { toast('Iniciando quiz...', 'info'); }
+function responderQuiz(id) { toast('Quiz não iniciado: ainda falta implementar perguntas, respostas e gravação de resultados.', 'warning'); }
 function renderElearningProgresso() {
   return header('Progresso do Aluno', 'Acompanhamento de aprendizado', 'var(--primary)', '', 'fa-chart-line') +
     '<div class="card"><div class="form-grid">' +
@@ -2680,7 +2859,7 @@ function renderElearningProgresso() {
     '<button class="btn btn-primary" onclick="gerarRelatorioProgresso()"><i class="fas fa-chart-bar"></i> Gerar Relatório</button></div>' +
     '<div id="progressoResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Resultado</h3></div><div id="progressoConteudo"></div></div>';
 }
-function gerarRelatorioProgresso() { toast('Relatório gerado', 'success'); }
+function gerarRelatorioProgresso() { toast('Relatório não gerado: o cálculo de progresso por aluno e curso ainda não está implementado.', 'warning'); }
 async function renderElearningRelatorios() {
   const c = await getData('cursos') || []; const cert = await getData('certificacoes') || []; const q = await getData('quizzes') || []; const f = await getData('funcionarios') || [];
   return header('Relatórios E-learning', 'Análise de desempenho educacional', 'var(--purple)', '', 'fa-file-alt') +
@@ -2693,8 +2872,8 @@ async function renderElearningRelatorios() {
     '<button class="btn btn-success" onclick="exportarRelatorioElearning()"><i class="fas fa-file-export"></i> Exportar Relatório</button>' +
     '<button class="btn btn-info" onclick="gerarGraficoElearning()"><i class="fas fa-chart-pie"></i> Gerar Gráfico</button></div></div>';
 }
-function exportarRelatorioElearning() { toast('Relatório exportado', 'success'); }
-function gerarGraficoElearning() { toast('Gráfico gerado', 'success'); }
+function exportarRelatorioElearning() { toast('Exportação e-learning ainda não foi implementada; nenhum ficheiro foi criado.', 'warning'); }
+function gerarGraficoElearning() { toast('Gráfico e-learning ainda não foi implementado.', 'warning'); }
 
 /* E-COMMERCE PRODUTOS (catálogo) */
 async function renderEcommerceProdutos() {

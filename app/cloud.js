@@ -28,15 +28,18 @@
   function appRole(role) {
     if (role === 'owner' || role === 'admin') return 'admin';
     if (role === 'manager') return 'gerente';
+    if (role === 'operator') return 'operador';
     if (role === 'cashier') return 'caixa';
-    return 'operador';
+    if (role === 'accountant') return 'contabilista';
+    if (role === 'viewer') return 'visualizador';
+    return 'visualizador';
   }
 
   async function loadContext(user) {
     if (!client || !user) throw new Error('Sessão Kanawa não encontrada.');
     const membershipResult = await client
       .from('ks_company_memberships')
-      .select('company_id, role, status')
+      .select('company_id, role, status, permissions')
       .eq('user_id', user.id)
       .eq('status', 'active')
       .order('created_at', { ascending: true })
@@ -140,6 +143,18 @@
       };
     },
 
+    async changePassword(currentPassword, newPassword) {
+      if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
+      if (!currentPassword || !newPassword || String(newPassword).length < 8) {
+        throw new Error('Informe a senha atual e uma nova senha com pelo menos 8 caracteres.');
+      }
+      const reauth = await client.auth.signInWithPassword({ email: context.user.email, password: currentPassword });
+      if (reauth.error) throw new Error('A senha atual está incorreta.');
+      const update = await client.auth.updateUser({ password: newPassword });
+      if (update.error) throw update.error;
+      return true;
+    },
+
     async signOut() {
       if (!client) return;
       const result = await client.auth.signOut();
@@ -241,49 +256,20 @@
         }
       }
 
-      // Finalized POS sales go through the database transaction which checks licence limits,
-      // verifies stock, decrements inventory, and records invoice usage exactly once.
+      // Finalized POS sales use a shared cent-accurate contract before the atomic database transaction.
+      let saleFinalized = false;
       if (store === 'vendas' && item.status === 'finalizada' && !(options && options.skipSaleFinalize)) {
-        const saleItems = (item.itens || item.carrinho || []).map(function (line) {
-          const quantity = Number(line.qty !== undefined ? line.qty : line.quantidade) || 0;
-          const price = Number(line.preco !== undefined ? line.preco : line.unit_price) || 0;
-          return {
-            product_external_id: String(line.id !== undefined ? line.id : (line.product_external_id || line.product_id || '')),
-            product_name: line.nome || line.product_name || 'Artigo',
-            quantity: quantity,
-            unit_price: price,
-            line_total: Number(line.subtotal !== undefined ? line.subtotal : quantity * price) || 0,
-            stock_tracked: true
-          };
-        });
-        if (!saleItems.length || saleItems.some(function (line) { return !line.product_external_id || line.quantity <= 0; })) {
-          throw new Error('A venda não pode ser sincronizada: verifique os artigos e quantidades.');
+        if (!window.KanawaSales || typeof window.KanawaSales.normalizeSale !== 'function') {
+          throw new Error('Validador de vendas não carregado. Atualize a aplicação.');
         }
-        const sale = {
-          external_id: id,
-          invoice_number: item.numeroFatura || item.invoice_number || ('FT-' + id),
-          customer_name: item.clienteNome || item.customer_name || null,
-          customer_tax_id: item.clienteNif || item.customer_tax_id || null,
-          customer_phone: item.clienteTelefone || item.customer_phone || null,
-          subtotal: Number(item.subtotal) || 0,
-          discount_value: Number(item.descontoValor !== undefined ? item.descontoValor : item.discount_value) || 0,
-          tax_amount: Number(item.iva !== undefined ? item.iva : item.tax_amount) || 0,
-          total: Number(item.total) || 0,
-          amount_received: Number(item.valorRecebido !== undefined ? item.valorRecebido : item.amount_received) || 0,
-          change_amount: Number(item.troco !== undefined ? item.troco : item.change_amount) || 0,
-          payment_method: item.pagamento || item.payment_method || 'não indicado',
-          tax_regime: item.regime || item.tax_regime || null,
-          status: 'finalizada',
-          notes: item.observacoes || item.notes || null,
-          operator_name: item.operador || item.operator_name || null,
-          sold_at: item.data || item.sold_at || new Date().toISOString()
-        };
+        const normalized = window.KanawaSales.normalizeSale(Object.assign({}, item, { id: id }));
         const finalizeSale = await client.rpc('ks_finalize_sale', {
           p_company_id: context.company.id,
-          p_sale: sale,
-          p_items: saleItems
+          p_sale: normalized.sale,
+          p_items: normalized.items
         });
         if (finalizeSale.error) throw finalizeSale.error;
+        saleFinalized = true;
       }
 
       const result = await client
@@ -294,7 +280,15 @@
           record_id: id,
           payload: item
         }, { onConflict: 'company_id,store_key,record_id' });
-      if (result.error) throw result.error;
+      if (result.error) {
+        if (saleFinalized) {
+          const mirrorError = new Error('A venda foi confirmada, mas o histórico detalhado aguarda sincronização: ' + result.error.message);
+          mirrorError.code = result.error.code || 'SALE_HISTORY_SYNC_PENDING';
+          mirrorError.saleFinalized = true;
+          throw mirrorError;
+        }
+        throw result.error;
+      }
       return true;
     },
 
@@ -330,6 +324,70 @@
       const result = await client.from('ks_companies').update(update).eq('id', context.company.id);
       if (result.error) throw result.error;
       context.company = Object.assign({}, context.company, update);
+    },
+
+    async updateCompany(details) {
+      if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
+      if (!context.company || context.company.owner_user_id !== context.user.id) {
+        throw new Error('Apenas o proprietário da empresa pode alterar os dados principais.');
+      }
+      const patch = {
+        legal_name: details.nome || details.firma,
+        trade_name: details.firma || details.nome,
+        tax_id: details.nif || null,
+        tax_regime: details.regime || 'not_configured',
+        phone: details.telefone || null,
+        email: details.email || null,
+        address: details.endereco || null
+      };
+      const result = await client.from('ks_companies')
+        .update(patch)
+        .eq('id', context.company.id)
+        .select('*')
+        .maybeSingle();
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('A empresa não foi atualizada. Verifique a permissão do proprietário.');
+      context.company = Object.assign({}, context.company, result.data);
+      return result.data;
+    },
+
+    async listCompanyMembers() {
+      if (!this.ready) throw new Error('Sessão da empresa não está ativa.');
+      if (context.role !== 'admin') throw new Error('Apenas administradores podem consultar a equipa.');
+      const memberships = failIfError(await client
+        .from('ks_company_memberships')
+        .select('user_id, role, status, permissions, created_at')
+        .eq('company_id', context.company.id)
+        .order('created_at', { ascending: true })) || [];
+      const ids = memberships.map(function (member) { return member.user_id; });
+      let profiles = [];
+      if (ids.length) {
+        profiles = failIfError(await client
+          .from('ks_profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', ids)) || [];
+      }
+      const byId = new Map(profiles.map(function (profile) { return [profile.user_id, profile]; }));
+      return memberships.map(function (member) {
+        const profile = byId.get(member.user_id) || {};
+        return Object.assign({}, member, { full_name: profile.full_name || 'Utilizador', email: profile.email || '' });
+      });
+    },
+
+    async inviteMember(details) {
+      if (!this.ready) throw new Error('Sessão da empresa não está ativa.');
+      if (context.role !== 'admin') throw new Error('Apenas o proprietário ou administrador pode convidar utilizadores.');
+      const result = await client.functions.invoke('ks-invite-member', {
+        body: { company_id: context.company.id, full_name: details.full_name, email: details.email, role: details.role }
+      });
+      if (result.error) throw result.error;
+      if (result.data && result.data.error) throw new Error(result.data.error);
+      return result.data;
+    },
+
+    async listPaymentProviderStatus() {
+      if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
+      return failIfError(await client.rpc('ks_list_payment_provider_status')) || [];
     },
 
     async registerInstallation(appVersion) {
