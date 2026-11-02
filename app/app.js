@@ -709,7 +709,8 @@ async function renderDashboard() {
     '<button class="btn btn-success btn-lg" onclick="openModule(\'pdv\')"><i class="fas fa-cash-register"></i> Nova Venda</button>' +
     '<button class="btn btn-primary btn-lg" onclick="abrirModalProduto()"><i class="fas fa-plus"></i> Novo Produto</button>' +
     '<button class="btn btn-info btn-lg" onclick="abrirModalCliente()"><i class="fas fa-user-plus"></i> Novo Cliente</button>' +
-    '<button class="btn btn-warning btn-lg" onclick="openModule(\'estoque\')"><i class="fas fa-warehouse"></i> Estoque</button></div></div>';
+    '<button class="btn btn-warning btn-lg" onclick="openModule(\'estoque\')"><i class="fas fa-warehouse"></i> Estoque</button>' +
+    '<button class="btn btn-info btn-lg" onclick="openModule(\'servicos\')"><i class="fas fa-print"></i> Gráfica</button></div></div>';
   Promise.all([getData('produtos'), getData('clientes'), getData('vendas'), getData('contasReceber'), getData('contasPagar'), getData('notificacoes')]).then(([prod, cli, vend, cRec, cPag, notifs]) => {
     const totalV = vend.reduce((s, v) => s + (v.total || 0), 0);
     const baixo = prod.filter(p => (p.estoque || 0) < (p.estoqueMin || 10)).length;
