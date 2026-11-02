@@ -21,7 +21,7 @@ O browser utiliza apenas a publishable key. Nunca colocar `service_role`, secret
 2. Selecionar **Criar conta e configurar empresa**.
 3. Preencher os dados da empresa e do administrador.
 4. Confirmar o endereço de email, se o projeto exigir confirmação.
-5. Entrar com o email e a senha criados.
+5. No login, introduzir o email e validar o código OTP de 6 dígitos enviado pelo Supabase.
 6. Verificar o indicador de ligação e criar um produto de teste.
 7. Abrir o mesmo domínio noutro dispositivo, entrar com a mesma conta e confirmar que o produto aparece.
 
@@ -36,7 +36,7 @@ A publicação atual do projeto Netlify foi criada por API/manual; a ligação d
 1. No Netlify, abrir User settings → Applications → Personal access tokens e criar um token.
 2. No GitHub, abrir Settings → Secrets and variables → Actions do repositório `dpedroservice-code/Kanawasoftv15.2`.
 3. Criar o secret `NETLIFY_AUTH_TOKEN` e guardar o token diretamente no GitHub. Não o enviar por chat nem o colocar no código.
-4. Reexecutar o workflow **Netlify deploy** na branch `feat/cloud-postgres-auth-sync` para criar um preview; o URL aparece nos logs da execução.
+4. Reexecutar o workflow **Netlify deploy** na branch `feat/kanawa-email-otp-login` para criar um preview; o URL aparece nos logs da execução.
 5. Testar o preview antes de integrar a branch na `main`. Só um push na `main` faz o workflow publicar em produção.
 
 Em alternativa, pode-se ligar o repositório diretamente ao projeto Netlify e ativar Deploy Previews. O domínio `kanawasoft.shop` deve permanecer associado ao projeto Netlify existente. Não criar um segundo site nem alterar os registos DNS.
