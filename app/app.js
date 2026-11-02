@@ -557,7 +557,7 @@ function renderSidebar() {
   });
   sb.innerHTML = Array.from(groups.entries()).map(([label, modules]) => {
     const expanded = modules.some(module => module.id === currentModule);
-    const buttons = modules.map(module => '<button class="sidebar-item" data-id="' + module.id + '" onclick="openModule(\\'' + module.id + '\\')"><i class="fas ' + module.icon + '"></i><span>' + module.label + '</span></button>').join('');
+    const buttons = modules.map(module => '<button class="sidebar-item" data-id="' + module.id + '" onclick="openModule(\'' + module.id + '\')"><i class="fas ' + module.icon + '"></i><span>' + module.label + '</span></button>').join('');
     return '<details class="sidebar-group" ' + (expanded ? 'open' : '') + '><summary>' + label + '</summary>' + buttons + '</details>';
   }).join('');
 }
