@@ -633,6 +633,7 @@ async function openModule(id) {
   };
   try {
     c.innerHTML = R[id] ? await R[id]() : '<div class="card"><h3>Módulo ' + id + '</h3></div>';
+    if (id === 'config') aplicarPreferenciasConfigNaTela();
     c.insertAdjacentHTML('afterbegin', barraRelatorioModulo(id));
     c.scrollTop = 0;
   } catch (e) { console.error(e); c.innerHTML = '<div class="card"><h3>Erro</h3><p>' + esc(e.message) + '</p></div>'; }
