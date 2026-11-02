@@ -147,6 +147,13 @@ async function saveData(store, item, options) {
     if (KanawaCloud.ready) {
       try { await KanawaCloud.upsertRecord(store, record, options || {}); }
       catch (e) {
+        if (store === 'vendas' && item.status === 'finalizada' && e && e.saleFinalized) {
+          // The transactional RPC already committed the invoice. Queue only its history mirror;
+          // never delete the local invoice or call the stock/finalization RPC a second time.
+          await queueSync(store, existed ? 'update' : 'create', record, Object.assign({}, options || {}, { skipSaleFinalize: true }));
+          toast('Venda finalizada no servidor; histórico local em sincronização.', 'warning');
+          return id;
+        }
         // A database validation/quota error must not be reported as a completed invoice.
         if (store === 'vendas' && item.status === 'finalizada' && e && e.code) {
           await DB.del(store, id);
@@ -971,19 +978,32 @@ function pdvClienteAnonimo() { $('pdvClienteNome').value = 'Cliente Anônimo'; $
 function pdvSelecionarPagamento(t) { pdvState.pagamento = t; $$('.payment-method-card').forEach(el => el.classList.toggle('selected', el.dataset.payment === t)); const map = { dinheiro: 'Dinheiro', cartao: 'Cartão', transferencia: 'Transferência', multicaixa: 'Multicaixa', misto: 'Misto', credito: 'Crédito' }; const el = $('pdvPagamentoResumo'); if (el) el.textContent = map[t] || t; }
 function pdvAtualizarValores() {
   const dEl = $('pdvDescontoInput'), vEl = $('pdvValorRecebidoInput'), rEl = $('pdvRegimeInput'), iEl = $('pdvAplicarIVA');
-  if (!dEl) return { subtotal: 0, descontoValor: 0, base: 0, iva: 0, total: 0, troco: 0 };
+  if (!dEl) return { subtotal: 0, descontoValor: 0, base: 0, iva: 0, total: 0, troco: 0, faltam: 0 };
+  const money = window.KanawaSales.roundMoney;
   const maxD = getPerms().descontoMax; let desc = num(dEl.value, 0); if (desc > maxD) { desc = maxD; dEl.value = maxD; }
-  const vRec = num(vEl.value, 0), regime = rEl.value, aplicarIVA = iEl.checked;
-  pdvState.desconto = desc; pdvState.valorRecebido = vRec; pdvState.regime = regime; pdvState.aplicarIVA = aplicarIVA;
-  const subtotal = pdvState.carrinho.reduce((s, i) => s + i.subtotal, 0);
-  const descVal = subtotal * (desc / 100), base = subtotal - descVal;
+  const recebidoInput = num(vEl.value, 0), regime = rEl.value, aplicarIVA = iEl.checked;
+  pdvState.desconto = desc; pdvState.regime = regime; pdvState.aplicarIVA = aplicarIVA;
+  const subtotal = money(pdvState.carrinho.reduce((sum, item) => {
+    item.subtotal = money(Number(item.preco) * Number(item.qty));
+    return sum + item.subtotal;
+  }, 0));
+  const descVal = money(subtotal * (desc / 100)), base = money(subtotal - descVal);
   let taxa = 0; if (aplicarIVA) taxa = regime === 'geral' ? 0.14 : (regime === 'simplificado' ? 0.07 : 0);
-  const iva = base * taxa, total = base + iva, troco = vRec - total;
+  const iva = money(base * taxa), total = money(base + iva);
+  const isCredit = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
+  const vRec = recebidoInput <= 0 && !isCredit ? total : money(recebidoInput);
+  const troco = money(Math.max(0, vRec - total)), faltam = money(Math.max(0, total - vRec));
+  pdvState.valorRecebido = vRec;
   const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
   set('pdvCalcSubtotal', fmt(subtotal)); set('pdvCalcDesconto', '-' + fmt(descVal)); set('pdvCalcBase', fmt(base)); set('pdvCalcIVA', fmt(iva)); set('pdvCalcTotal', fmt(total)); set('pdvTotalFinalTela5', fmt(total));
   const tb = $('pdvTrocoBox'), tv = $('pdvTrocoValue');
-  if (tb && tv) { if (vRec > 0) { tb.style.display = 'block'; tv.textContent = troco >= 0 ? fmt(troco) : 'Faltam ' + fmt(Math.abs(troco)); } else tb.style.display = 'none'; }
-  return { subtotal, descontoValor: descVal, base, iva, total, troco };
+  if (tb && tv) {
+    if (vRec > 0) {
+      tb.style.display = 'block';
+      tv.textContent = faltam > 0 ? 'Faltam ' + fmt(faltam) : fmt(troco);
+    } else tb.style.display = 'none';
+  }
+  return { subtotal, descontoValor: descVal, base, iva, total, troco, faltam };
 }
 function pdvRenderResumoFinal() {
   const c = pdvAtualizarValores();
@@ -1010,6 +1030,11 @@ async function pdvFinalizarVenda(modo) {
   modo = modo || 'finalizada';
   if (!pdvState.carrinho.length) { toast('Carrinho vazio', 'warning'); return; }
   const c = pdvAtualizarValores();
+  const isCreditPayment = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
+  if (!isCreditPayment && c.faltam > 0) {
+    toast('Pagamento insuficiente. Falta receber ' + fmt(c.faltam) + '.', 'warning');
+    return;
+  }
   const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const numeroFatura = 'FT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6);
