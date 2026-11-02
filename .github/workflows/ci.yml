@@ -23,6 +23,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check app/sales-money.js
+          node --check app/permissions.js
           node --check app/cloud.js
           node --check app/app.js
       - name: Run unit tests
