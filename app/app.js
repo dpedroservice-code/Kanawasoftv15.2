@@ -633,8 +633,37 @@ async function openModule(id) {
   };
   try {
     c.innerHTML = R[id] ? await R[id]() : '<div class="card"><h3>Módulo ' + id + '</h3></div>';
+    c.insertAdjacentHTML('afterbegin', barraRelatorioModulo(id));
     c.scrollTop = 0;
   } catch (e) { console.error(e); c.innerHTML = '<div class="card"><h3>Erro</h3><p>' + esc(e.message) + '</p></div>'; }
+}
+
+/* ====== RELATÓRIOS POR MÓDULO ====== */
+function barraRelatorioModulo(id) {
+  const modulo = (MENU || []).find(item => item.id === id);
+  const titulo = modulo ? modulo.label : id;
+  return '<div class="module-report-toolbar no-print" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:12px 16px;background:var(--surface,#fff);border:1px solid var(--border,#e2e8f0);border-radius:12px">' +
+    '<div><strong><i class="fas fa-file-alt"></i> Relatório do módulo: ' + esc(titulo) + '</strong><div style="font-size:.82rem;color:var(--text-muted,#64748b)">Emita um relatório dos dados e tabelas atualmente apresentados neste módulo.</div></div>' +
+    '<button class="btn btn-primary" type="button" onclick="imprimirRelatorioModulo()"><i class="fas fa-print"></i> Imprimir / Guardar PDF</button></div>';
+}
+function imprimirRelatorioModulo() {
+  const content = $('content');
+  if (!content) { toast('Não foi possível localizar o conteúdo do módulo.', 'warning'); return; }
+  const modulo = (MENU || []).find(item => item.id === currentModule);
+  const titulo = modulo ? modulo.label : (currentModule || 'Módulo');
+  const empresa = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
+  const popup = window.open('', '_blank');
+  if (!popup) { toast('Permita janelas pop-up para emitir o relatório.', 'warning'); return; }
+  const copia = content.cloneNode(true);
+  copia.querySelectorAll('.module-report-toolbar,.no-print,button,input,select,textarea,script').forEach(el => el.remove());
+  copia.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
+  const conteudo = copia.innerHTML;
+  const emitido = new Date().toLocaleString('pt-AO');
+  popup.document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relatório - ' + esc(titulo) + '</title><style>' +
+    'body{font:12px Arial,sans-serif;color:#172033;margin:24px}h1,h2,h3{color:#172033}header{margin-bottom:16px}.report-head{border-bottom:2px solid #334155;padding-bottom:12px;margin-bottom:18px}.report-head h1{margin:0 0 5px;font-size:20px}.report-head p{margin:3px 0;color:#475569}.card{background:#fff!important;color:#172033!important;border:1px solid #cbd5e1!important;border-radius:6px;padding:12px;margin:10px 0;break-inside:avoid}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.metric-card{border:1px solid #cbd5e1;padding:10px;border-radius:5px;break-inside:avoid}.label{font-size:10px;color:#475569}.value{font-size:16px;font-weight:bold}.table-wrap{width:100%;overflow:visible}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #cbd5e1;padding:6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}th{background:#e2e8f0!important;color:#172033!important}.badge{border:1px solid #cbd5e1;padding:2px 5px;border-radius:4px;color:#172033!important;background:#f8fafc!important}.empty{padding:16px;color:#475569}.report-foot{margin-top:22px;border-top:1px solid #cbd5e1;padding-top:8px;color:#64748b;font-size:10px}@page{size:auto;margin:12mm}@media print{body{margin:0}.card,.metric-card{break-inside:avoid}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body>' +
+    '<div class="report-head"><h1>' + esc(empresa.firma || empresa.nome || 'KanawaSoft') + '</h1><h2>Relatório do módulo: ' + esc(titulo) + '</h2><p>Emitido em: ' + esc(emitido) + '</p></div>' +
+    conteudo + '<div class="report-foot">Documento emitido pelo KanawaSoft ERP • ' + esc(titulo) + '</div><script>window.onload=function(){window.print()}<\\/script></body></html>');
+  popup.document.close();
 }
 
 /* ====== UI HELPERS ====== */
