@@ -551,6 +551,22 @@ function moduleGroupLabel(module) {
   if (id === 'relatorios') return 'Relatórios e Análise';
   return 'Administração';
 }
+function moduleGroupIcon(label) {
+  const icons = {
+    'Início': 'fa-home', 'Vendas': 'fa-cash-register',
+    'Catálogo e Serviços': 'fa-box-open', 'E-commerce': 'fa-store',
+    'Stock e Compras': 'fa-warehouse', 'Produção': 'fa-industry',
+    'Clientes e Comercial': 'fa-user-friends', 'CRM': 'fa-handshake',
+    'Marketing': 'fa-bullhorn', 'Financeiro e Fiscal': 'fa-coins',
+    'Recursos Humanos': 'fa-users', 'Projetos': 'fa-project-diagram',
+    'Gestão de Activos': 'fa-building', 'Frota': 'fa-truck',
+    'Assistência e Manutenção': 'fa-tools', 'Logística': 'fa-route',
+    'Plano Técnica': 'fa-hard-hat', 'Integrações e APIs': 'fa-plug',
+    'Documentos e Suporte': 'fa-folder-open', 'Formação': 'fa-graduation-cap',
+    'Relatórios e Análise': 'fa-chart-line', 'Administração': 'fa-sliders-h'
+  };
+  return icons[label] || 'fa-layer-group';
+}
 function renderSidebar() {
   const sb = $('sidebar'); if (!sb) return;
   const perm = MENU.filter(m => podeAcessar(m.id));
@@ -562,8 +578,8 @@ function renderSidebar() {
   });
   sb.innerHTML = Array.from(groups.entries()).map(([label, modules]) => {
     const expanded = modules.some(module => module.id === currentModule);
-    const buttons = modules.map(module => '<button class="sidebar-item" data-id="' + module.id + '" onclick="openModule(\'' + module.id + '\')"><i class="fas ' + module.icon + '"></i><span>' + module.label + '</span></button>').join('');
-    return '<details class="sidebar-group" ' + (expanded ? 'open' : '') + '><summary>' + label + '</summary>' + buttons + '</details>';
+    const buttons = modules.map(module => '<button type="button" class="sidebar-item" data-id="' + module.id + '" title="' + module.label + '" aria-label="' + module.label + '" aria-current="' + (module.id === currentModule ? 'page' : 'false') + '" onclick="openModule(\\'' + module.id + '\\')"><i class="fas ' + module.icon + '" aria-hidden="true"></i><span>' + module.label + '</span></button>').join('');
+    return '<details class="sidebar-group" ' + (expanded ? 'open' : '') + '><summary aria-label="' + label + '"><i class="fas ' + moduleGroupIcon(label) + '" aria-hidden="true"></i><span>' + label + '</span><i class="fas fa-chevron-down sidebar-group-chevron" aria-hidden="true"></i></summary>' + buttons + '</details>';
   }).join('');
 }
 
