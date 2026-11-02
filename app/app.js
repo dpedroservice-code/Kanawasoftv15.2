@@ -521,10 +521,45 @@ const MENU = [
   { id: 'modulos', icon: 'fa-code', label: 'Módulos' }
 ];
 
+function moduleGroupLabel(module) {
+  const id = module.id;
+  if (['dashboard'].includes(id)) return 'Início';
+  if (['pdv','vendas','orcamentos','vendas-consignadas','vendas-promocoes'].includes(id)) return 'Vendas';
+  if (['produtos','produtos-avaliacoes','categorias','servicos','tabelas-precos'].includes(id)) return 'Catálogo e Serviços';
+  if (id.startsWith('ecommerce')) return 'E-commerce';
+  if (['estoque','compras','fornecedores'].includes(id)) return 'Stock e Compras';
+  if (['producao','ordens-producao','mrp','bom','custos-producao','controle-qualidade','planos-producao'].includes(id)) return 'Produção';
+  if (['clientes','portal-cliente','clientes-fidelidade','clientes-cupons','clientes-segmentacao','transportadoras'].includes(id)) return 'Clientes e Comercial';
+  if (id.startsWith('crm')) return 'CRM';
+  if (id.startsWith('marketing')) return 'Marketing';
+  if (['financeiro','fiscal'].includes(id)) return 'Financeiro e Fiscal';
+  if (id.startsWith('rh')) return 'Recursos Humanos';
+  if (id.startsWith('projetos')) return 'Projetos';
+  if (id.startsWith('ativos')) return 'Gestão de Activos';
+  if (id.startsWith('frota')) return 'Frota';
+  if (id === 'os' || id.startsWith('os-')) return 'Assistência e Manutenção';
+  if (id.startsWith('logistica')) return 'Logística';
+  if (id === 'tecnica') return 'Plano Técnica';
+  if (id === 'integracoes') return 'Integrações e APIs';
+  if (['contratos','documentos','tickets'].includes(id)) return 'Documentos e Suporte';
+  if (id.startsWith('elearning')) return 'Formação';
+  if (id === 'relatorios') return 'Relatórios e Análise';
+  return 'Administração';
+}
 function renderSidebar() {
   const sb = $('sidebar'); if (!sb) return;
   const perm = MENU.filter(m => podeAcessar(m.id));
-  sb.innerHTML = perm.map(m => '<button class="sidebar-item" data-id="' + m.id + '" onclick="openModule(\'' + m.id + '\')"><i class="fas ' + m.icon + '"></i><span>' + m.label + '</span></button>').join('');
+  const groups = new Map();
+  perm.forEach(module => {
+    const label = moduleGroupLabel(module);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(module);
+  });
+  sb.innerHTML = Array.from(groups.entries()).map(([label, modules]) => {
+    const expanded = modules.some(module => module.id === currentModule);
+    const buttons = modules.map(module => '<button class="sidebar-item" data-id="' + module.id + '" onclick="openModule(\\'' + module.id + '\\')"><i class="fas ' + module.icon + '"></i><span>' + module.label + '</span></button>').join('');
+    return '<details class="sidebar-group" ' + (expanded ? 'open' : '') + '><summary>' + label + '</summary>' + buttons + '</details>';
+  }).join('');
 }
 
 async function openModule(id) {
