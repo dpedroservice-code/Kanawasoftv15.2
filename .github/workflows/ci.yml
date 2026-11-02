@@ -2,7 +2,7 @@ name: Kanawa CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, audit/fix-sales-validation]
   push:
     branches: [main]
   workflow_dispatch:
