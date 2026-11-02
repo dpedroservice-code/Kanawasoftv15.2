@@ -11,7 +11,7 @@
   const money = (v) => new Intl.NumberFormat('pt-AO',{style:'currency',currency:'AOA',maximumFractionDigits:2}).format(num(v));
   const uid = () => 'KT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,7).toUpperCase();
   function parseQuoteStockLines(raw) {
-    const rows = String(raw || '').split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+    const rows = String(raw || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const totals = new Map();
     for (const line of rows) {
       const parts = line.split(/[|,;=]/).map(value => value.trim());
@@ -25,7 +25,7 @@
     return Array.from(totals.values());
   }
   function parsePaymentMilestones(raw) {
-    const rows = String(raw || '').split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+    const rows = String(raw || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     const terms = rows.map(line => {
       const parts = line.split('|').map(value => value.trim());
       if (parts.length < 2) throw new Error('Cada tranche deve seguir: Marco | percentagem | condição opcional.');
@@ -98,7 +98,7 @@
       field('Estado inicial','status','select','',[['Rascunho','Rascunho'],['Em negociação','Em negociação']],false),
       field('Escopo / memória descritiva','escopo','textarea','Incluído, excluído, método, materiais, premissas e riscos...',null,true),
       field('Plano de pagamento','pagamento','textarea','50% adjudicação + 50% entrega; ou marcos...',null,true),
-      field('Itens para pré-reserva (SKU ou ID | quantidade, uma linha por item)','itensStock','textarea','CAM-001 | 2\\nCABO-10M | 3',null,true),
+      field('Itens para pré-reserva (SKU ou ID | quantidade, uma linha por item)','itensStock','textarea','CAM-001 | 2\nCABO-10M | 3',null,true),
       field('Escopo excluído / exclusões','escopoExcluido','textarea','Obras civis, alimentação eléctrica, licenças...',null,true),
       field('Referências de anexos / fichas técnicas privadas','anexosReferencia','textarea','Caminhos privados de ficheiros, nunca links públicos...',null,true),
       field('Tranches (Marco | % | condição, uma linha por tranche)','pagamento','textarea','Adjudicação | 50 | Na aprovação\\nEntrega | 50 | Na conclusão',null,true),
