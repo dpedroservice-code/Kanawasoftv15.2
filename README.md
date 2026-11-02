@@ -1,4 +1,6 @@
-# Kanawa Soft ERP
+# Kanawa Soft ERP v15.4
+
+A interface cloud é servida a partir de `app/`. O centro de operações técnicas e o motor de orçamentação analítica estão descritos em [`docs/v15.4-technical-plan.md`](docs/v15.4-technical-plan.md). A versão 15.4 mantém as limitações de integração documentadas: não declara certificação AGT nem activa gateways sem credenciais e validação no backend.
 
 Aplicação web Kanawa Soft. A interface publicada é servida a partir da pasta `app/`.
 
