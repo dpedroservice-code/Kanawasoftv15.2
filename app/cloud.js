@@ -241,49 +241,20 @@
         }
       }
 
-      // Finalized POS sales go through the database transaction which checks licence limits,
-      // verifies stock, decrements inventory, and records invoice usage exactly once.
+      // Finalized POS sales use a shared cent-accurate contract before the atomic database transaction.
+      let saleFinalized = false;
       if (store === 'vendas' && item.status === 'finalizada' && !(options && options.skipSaleFinalize)) {
-        const saleItems = (item.itens || item.carrinho || []).map(function (line) {
-          const quantity = Number(line.qty !== undefined ? line.qty : line.quantidade) || 0;
-          const price = Number(line.preco !== undefined ? line.preco : line.unit_price) || 0;
-          return {
-            product_external_id: String(line.id !== undefined ? line.id : (line.product_external_id || line.product_id || '')),
-            product_name: line.nome || line.product_name || 'Artigo',
-            quantity: quantity,
-            unit_price: price,
-            line_total: Number(line.subtotal !== undefined ? line.subtotal : quantity * price) || 0,
-            stock_tracked: true
-          };
-        });
-        if (!saleItems.length || saleItems.some(function (line) { return !line.product_external_id || line.quantity <= 0; })) {
-          throw new Error('A venda não pode ser sincronizada: verifique os artigos e quantidades.');
+        if (!window.KanawaSales || typeof window.KanawaSales.normalizeSale !== 'function') {
+          throw new Error('Validador de vendas não carregado. Atualize a aplicação.');
         }
-        const sale = {
-          external_id: id,
-          invoice_number: item.numeroFatura || item.invoice_number || ('FT-' + id),
-          customer_name: item.clienteNome || item.customer_name || null,
-          customer_tax_id: item.clienteNif || item.customer_tax_id || null,
-          customer_phone: item.clienteTelefone || item.customer_phone || null,
-          subtotal: Number(item.subtotal) || 0,
-          discount_value: Number(item.descontoValor !== undefined ? item.descontoValor : item.discount_value) || 0,
-          tax_amount: Number(item.iva !== undefined ? item.iva : item.tax_amount) || 0,
-          total: Number(item.total) || 0,
-          amount_received: Number(item.valorRecebido !== undefined ? item.valorRecebido : item.amount_received) || 0,
-          change_amount: Number(item.troco !== undefined ? item.troco : item.change_amount) || 0,
-          payment_method: item.pagamento || item.payment_method || 'não indicado',
-          tax_regime: item.regime || item.tax_regime || null,
-          status: 'finalizada',
-          notes: item.observacoes || item.notes || null,
-          operator_name: item.operador || item.operator_name || null,
-          sold_at: item.data || item.sold_at || new Date().toISOString()
-        };
+        const normalized = window.KanawaSales.normalizeSale(Object.assign({}, item, { id: id }));
         const finalizeSale = await client.rpc('ks_finalize_sale', {
           p_company_id: context.company.id,
-          p_sale: sale,
-          p_items: saleItems
+          p_sale: normalized.sale,
+          p_items: normalized.items
         });
         if (finalizeSale.error) throw finalizeSale.error;
+        saleFinalized = true;
       }
 
       const result = await client
@@ -294,7 +265,15 @@
           record_id: id,
           payload: item
         }, { onConflict: 'company_id,store_key,record_id' });
-      if (result.error) throw result.error;
+      if (result.error) {
+        if (saleFinalized) {
+          const mirrorError = new Error('A venda foi confirmada, mas o histórico detalhado aguarda sincronização: ' + result.error.message);
+          mirrorError.code = result.error.code || 'SALE_HISTORY_SYNC_PENDING';
+          mirrorError.saleFinalized = true;
+          throw mirrorError;
+        }
+        throw result.error;
+      }
       return true;
     },
 
