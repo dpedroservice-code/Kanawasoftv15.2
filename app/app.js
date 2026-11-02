@@ -1816,7 +1816,7 @@ function montarLinhasRelatorio(data, tipo, inicio, fim) {
   const add = (categoria, dataItem, referencia, descricao, responsavel, valor, estado) => {
     if (!dentroPeriodoRelatorio(dataItem, inicio, fim)) return;
     const d = dataRelatorio(dataItem);
-    rows.push({ categoria, data: d ? fmtDT(d.toISOString()) : '-', referencia: referencia || '-', descricao: descricao || '-', responsavel: responsavel || '-', valor: Number(valor) || 0, estado: estado || '-' });
+    rows.push({ categoria, data: d ? fmtDT(d.toISOString()) : '-', ordem: d ? d.getTime() : 0, referencia: referencia || '-', descricao: descricao || '-', responsavel: responsavel || '-', valor: Number(valor) || 0, estado: estado || '-' });
   };
   if (tipo === 'todos' || tipo === 'movimentos') {
     (data.vendas || []).forEach(x => add('Venda', x, x.numeroFatura || '#' + x.id, 'Venda • ' + (x.clienteNome || 'Cliente não identificado'), x.usuario || x.vendedor || '-', x.total, x.status));
@@ -1834,10 +1834,7 @@ function montarLinhasRelatorio(data, tipo, inicio, fim) {
     (data.logsSeguranca || []).forEach(x => add('Segurança', x, '#' + x.id, x.acao || x.evento || x.descricao || 'Evento de segurança', x.usuario || x.email || '-', 0, x.status || 'Registado'));
     (data.notificacoes || []).forEach(x => add('Notificação', x, '#' + x.id, x.titulo || x.mensagem || 'Notificação do sistema', x.usuario || '-', 0, x.status || 'Registado'));
   }
-  return rows.sort((a,b) => {
-    const da = new Date(a.data).getTime() || 0, db = new Date(b.data).getTime() || 0;
-    return db - da;
-  });
+  return rows.sort((a,b) => b.ordem - a.ordem);
 }
 function htmlTabelaRelatorio(rows) {
   return table(['Data','Tipo','Referência','Descrição','Responsável','Valor / Qtd.','Estado'], rows.map(x => [
@@ -1859,6 +1856,8 @@ async function atualizarRelatorio() {
   target.innerHTML = htmlTabelaRelatorio(rows);
 }
 async function imprimirRelatorio(tipo) {
+  const popup = window.open('', '_blank');
+  if (!popup) { toast('Permita janelas pop-up para imprimir o relatório.', 'warning'); return; }
   const data = await carregarDadosRelatorios();
   const inicio = $('relatorioInicio') ? $('relatorioInicio').value : '';
   const fim = $('relatorioFim') ? $('relatorioFim').value : '';
@@ -1866,8 +1865,6 @@ async function imprimirRelatorio(tipo) {
   const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const titulo = tipo === 'movimentos' ? 'Relatório de Movimentos' : tipo === 'atividades' ? 'Relatório de Atividades' : 'Relatório Geral';
   const body = rows.length ? rows.map(x => '<tr><td>' + esc(x.data) + '</td><td>' + esc(x.categoria) + '</td><td>' + esc(x.referencia) + '</td><td>' + esc(x.descricao) + '</td><td>' + esc(x.responsavel) + '</td><td>' + (x.valor ? moedaRelatorio(x.valor) : '-') + '</td><td>' + esc(x.estado) + '</td></tr>').join('') : '<tr><td colspan="7">Sem registos no período selecionado.</td></tr>';
-  const popup = window.open('', '_blank');
-  if (!popup) { toast('Permita janelas pop-up para imprimir o relatório.', 'warning'); return; }
   popup.document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>' + titulo + '</title><style>body{font:12px Arial,sans-serif;color:#172033;padding:24px}h1{margin:0 0 6px}p{margin:4px 0 18px;color:#475569}.meta{margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left;vertical-align:top}th{background:#e2e8f0}tfoot{font-weight:bold}@media print{body{padding:0}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body><h1>' + esc(emp.firma || emp.nome || 'KanawaSoft') + '</h1><h2>' + titulo + '</h2><div class="meta">Período: ' + esc(inicio || 'Sem início') + ' a ' + esc(fim || 'Sem fim') + ' • Emitido em: ' + esc(new Date().toLocaleString('pt-AO')) + '</div><table><thead><tr><th>Data</th><th>Tipo</th><th>Referência</th><th>Descrição</th><th>Responsável</th><th>Valor / Qtd.</th><th>Estado</th></tr></thead><tbody>' + body + '</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>');
   popup.document.close();
 }
