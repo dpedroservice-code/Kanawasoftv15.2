@@ -20,6 +20,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate JavaScript and PWA manifest
+        run: |
+          node --check app/cloud.js
+          node --check app/app.js
+          node --check app/service-worker.js
+          node -e "JSON.parse(require('fs').readFileSync('app/manifest.json', 'utf8'))"
+
       - name: Explain missing Netlify token
         if: ${{ env.NETLIFY_AUTH_TOKEN == '' }}
         run: echo "Deployment skipped. Add NETLIFY_AUTH_TOKEN as a GitHub Actions repository secret, then re-run this workflow."
