@@ -853,19 +853,89 @@ function gerarQRCodeFatura(texto) {
   } catch (e) { container.innerHTML = '<div style="width:130px;height:130px;display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#666;padding:8px;word-break:break-all;text-align:center">' + esc(texto.slice(0, 80)) + '</div>'; }
 }
 
+function htmlSeguroParaImpressao(conteudo, titulo, estilo) {
+  return '<!doctype html><html lang="pt-AO"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<base href="' + esc(window.location.href.split('#')[0]) + '">' +
+    '<title>' + esc(titulo) + '</title><style>' + estilo +
+    'html,body{background:#fff!important;color:#000!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}' +
+    '@media screen{body{padding:12px}}@media print{body{margin:0!important}}</style></head><body>' + conteudo + '</body></html>';
+}
+async function imprimirDocumento(html, opcoes = {}) {
+  const titulo = opcoes.titulo || 'Documento Kanawa Soft';
+  const nativo = window.kanawaNative;
+  if (nativo && nativo.isDesktop && typeof nativo.imprimirHTML === 'function') {
+    try {
+      const ok = await nativo.imprimirHTML({
+        html, printer: opcoes.printer || undefined, silent: false,
+        paperSize: opcoes.paperSize || 'A4',
+        margins: { marginType: opcoes.margins || 'default' }
+      });
+      if (ok === true) { toast('Documento enviado para a impressora.', 'success'); return true; }
+      toast('A impressão nativa não foi concluída. Verifique a impressora selecionada e tente novamente.', 'error');
+      return false;
+    } catch (erro) {
+      console.error('[Kanawa impressão nativa]', erro);
+      toast('Falha na impressão: ' + (erro.message || 'erro do sistema'), 'error');
+      return false;
+    }
+  }
+  const janela = window.open('', '_blank');
+  if (!janela) {
+    toast('O navegador bloqueou a janela de impressão. Autorize pop-ups para este site e tente novamente.', 'error');
+    return false;
+  }
+  try {
+    janela.document.open();
+    janela.document.write(html);
+    janela.document.close();
+    const imagens = Array.from(janela.document.images || []);
+    await Promise.all(imagens.map(img => img.decode ? img.decode().catch(() => {}) : new Promise(resolve => {
+      if (img.complete) resolve(); else { img.onload = resolve; img.onerror = resolve; }
+    })));
+    if (janela.document.fonts && janela.document.fonts.ready) await janela.document.fonts.ready;
+    janela.focus();
+    janela.addEventListener('afterprint', () => { try { janela.close(); } catch (_) {} }, { once: true });
+    setTimeout(() => { try { janela.print(); } catch (erro) { console.error('[Kanawa impressão]', erro); } }, 250);
+    return true;
+  } catch (erro) {
+    try { janela.close(); } catch (_) {}
+    console.error('[Kanawa impressão]', erro);
+    toast('Não foi possível preparar a fatura para impressão.', 'error');
+    return false;
+  }
+}
 function imprimirFatura() {
-  const el = $('faturaPreview'); if (!el) return;
-  const w = window.open('', '_blank');
-  w.document.write('<html><head><title>Fatura</title><style>body{font-family:Arial;padding:20px;margin:0}table{width:100%;border-collapse:collapse}th{background:#1a3a5c;color:#fff;padding:8px}td{padding:6px;border-bottom:1px solid #e2e8f0}@media print{@page{margin:5mm}}</style></head><body>' + el.innerHTML + '</body></html>');
-  w.document.close(); setTimeout(() => { w.print(); }, 500);
+  const el = $('faturaPreview');
+  if (!el) { toast('A pré-visualização da fatura não está disponível.', 'error'); return; }
+  const copia = el.cloneNode(true);
+  copia.querySelectorAll('canvas').forEach(canvas => {
+    try {
+      const img = document.createElement('img');
+      img.src = canvas.toDataURL('image/png');
+      img.width = canvas.width; img.height = canvas.height;
+      img.alt = 'Código QR da fatura';
+      canvas.replaceWith(img);
+    } catch (erro) { console.warn('[Kanawa QR impressão]', erro); }
+  });
+  const estilo = 'body{font-family:Arial,sans-serif;padding:5mm;margin:0;font-size:12px}' +
+    'table{width:100%;border-collapse:collapse}th{background:#1a3a5c!important;color:#fff!important;padding:8px}' +
+    'td{padding:6px;border-bottom:1px solid #e2e8f0}img{max-width:100%}#faturaPreview{max-width:none!important;width:100%!important;padding:0!important}' +
+    '@page{size:A4 portrait;margin:5mm}';
+  const html = htmlSeguroParaImpressao(copia.outerHTML, 'Fatura ' + (window._vendaAtual?.numeroFatura || ''), estilo);
+  return imprimirDocumento(html, { titulo: 'Fatura', paperSize: 'A4' });
 }
 function imprimirTermica() {
-  const v = window._vendaAtual; if (!v) return;
+  const v = window._vendaAtual; if (!v) { toast('Nenhuma venda selecionada para imprimir.', 'error'); return; }
   const emp = v.empresa || JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
-  const texto = ['=================================', '   ' + (emp.firma || emp.nome || 'KANAWA SOFT').toUpperCase(), '   NIF: ' + (emp.nif || '-'), '   ' + (emp.endereco || 'Luanda, Angola'), '   Tel: ' + (emp.telefone || '-'), '=================================', 'FATURA-RECIBO: ' + v.numeroFatura, 'Data: ' + fmtDT(v.data), 'Cliente: ' + v.clienteNome, (v.clienteNif ? 'NIF: ' + v.clienteNif : ''), '=================================', ...(v.itens || []).map(it => it.nome.substring(0, 20).padEnd(20) + '\n  ' + it.qty + ' x ' + fmt(it.preco).padEnd(12) + fmt(it.subtotal)), '=================================', 'Subtotal:    ' + fmt(v.subtotal), (v.desconto > 0 ? 'Desconto:    -' + fmt(v.descontoValor) : ''), 'Imposto:     ' + fmt(v.iva), 'TOTAL:       ' + fmt(v.total), v.valorRecebido > 0 ? 'Recebido:    ' + fmt(v.valorRecebido) : '', v.valorRecebido > 0 ? 'Troco:       ' + fmt(v.troco) : '', '=================================', 'Valor: ' + numeroPorExtenso(v.total), '---------------------------------', 'Hash: ' + v.hash, 'Assinatura: ' + (v.assinatura || ''), '---------------------------------', '    Obrigado pela preferência!', '   Processado por Kanawa Soft ERP', '       www.kanawasoft.com', '================================='].filter(Boolean).join('\n');
-  const w = window.open('', '_blank', 'width=300,height=600');
-  w.document.write('<html><head><title>Recibo</title><style>@media print{@page{margin:0;size:58mm auto}}body{font-family:"Courier New",monospace;font-size:11px;width:200px;margin:0 auto;padding:5px;white-space:pre;line-height:1.3}</style></head><body>' + texto + '</body></html>');
-  w.document.close(); setTimeout(() => { w.print(); }, 500); abrirGavetaAutomatico();
+  const texto = ['=================================', '   ' + (emp.firma || emp.nome || 'KANAWA SOFT').toUpperCase(), '   NIF: ' + (emp.nif || '-'), '   ' + (emp.endereco || 'Luanda, Angola'), '   Tel: ' + (emp.telefone || '-'), '=================================', 'FATURA-RECIBO: ' + v.numeroFatura, 'Data: ' + fmtDT(v.data), 'Cliente: ' + (v.clienteNome || 'Consumidor Final'), (v.clienteNif ? 'NIF: ' + v.clienteNif : ''), '=================================', ...(v.itens || []).map(it => String(it.nome || '').substring(0, 20).padEnd(20) + '\n  ' + it.qty + ' x ' + fmt(it.preco).padEnd(12) + fmt(it.subtotal)), '=================================', 'Subtotal:    ' + fmt(v.subtotal), (v.desconto > 0 ? 'Desconto:    -' + fmt(v.descontoValor) : ''), 'Imposto:     ' + fmt(v.iva), 'TOTAL:       ' + fmt(v.total), v.valorRecebido > 0 ? 'Recebido:    ' + fmt(v.valorRecebido) : '', v.valorRecebido > 0 ? 'Troco:       ' + fmt(v.troco) : '', '=================================', 'Valor: ' + numeroPorExtenso(v.total), '---------------------------------', 'Hash: ' + (v.hash || '-'), 'Assinatura: ' + (v.assinatura || '-'), '---------------------------------', '    Obrigado pela preferência!', '   Processado por Kanawa Soft ERP', '================================='].filter(Boolean).join('\n');
+  const html = htmlSeguroParaImpressao('<pre>' + esc(texto) + '</pre>', 'Recibo ' + (v.numeroFatura || ''),
+    'body{font-family:"Courier New",monospace;font-size:11px;width:48mm;margin:0 auto;padding:2mm;white-space:pre-wrap;line-height:1.3}' +
+    'pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}@page{size:58mm auto;margin:0}');
+  const tamanho = { width: 58000, height: 200000 };
+  return imprimirDocumento(html, { titulo: 'Recibo térmico', paperSize: tamanho, margins: 'none' }).then(ok => {
+    if (ok && typeof abrirGavetaAutomatico === 'function') abrirGavetaAutomatico();
+    return ok;
+  });
 }
 async function baixarFaturaPDF() {
   const el = $('faturaPreview'); if (!el) return;
