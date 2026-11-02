@@ -29,6 +29,8 @@ DECLARE
   v_fx numeric(24,10);
   v_usd numeric(18,2);
   v_is_credit boolean := lower(v_method) IN ('credito','crédito','credit');
+  v_role text;
+  v_discount_max numeric(5,2) := 0;
 BEGIN
   IF auth.uid() IS NULL OR NOT (
     private.ks_has_company_permission(p_company_id,'pdv','criar')
@@ -36,6 +38,14 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Sem permissão para finalizar vendas.' USING ERRCODE='42501';
   END IF;
+  SELECT m.role INTO v_role
+  FROM public.ks_company_memberships m
+  WHERE m.company_id=p_company_id AND m.user_id=auth.uid() AND m.status='active';
+  v_discount_max := CASE v_role
+    WHEN 'owner' THEN 100 WHEN 'admin' THEN 100
+    WHEN 'manager' THEN 30 WHEN 'operator' THEN 10 WHEN 'cashier' THEN 5
+    ELSE 0
+  END;
 
   IF p_sale IS NULL OR jsonb_typeof(p_sale)<>'object' OR v_external_id IS NULL OR v_invoice IS NULL THEN
     RAISE EXCEPTION 'Dados e número da factura obrigatórios.' USING ERRCODE='22023';
@@ -57,8 +67,9 @@ BEGIN
   v_change := greatest(v_received - v_total, 0);
 
   IF v_total<=0 OR v_subtotal<=0 OR v_discount<0 OR v_discount>v_subtotal OR v_tax<0 OR
+     v_discount>round(v_subtotal*v_discount_max/100,2) OR
      round(v_subtotal-v_discount+v_tax,2)<>v_total THEN
-    RAISE EXCEPTION 'Valores da venda inválidos.' USING ERRCODE='23514';
+    RAISE EXCEPTION 'Valores da venda inválidos ou desconto acima do limite do perfil.' USING ERRCODE='23514';
   END IF;
   IF p_items IS NULL OR jsonb_typeof(p_items)<>'array' OR jsonb_array_length(p_items)=0 THEN
     RAISE EXCEPTION 'A venda precisa de pelo menos um artigo.' USING ERRCODE='22023';
