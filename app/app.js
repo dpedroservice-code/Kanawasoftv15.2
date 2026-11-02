@@ -343,6 +343,8 @@ async function activateCloudSession(ctx, migrateLocal) {
     avatar: null
   };
   await DB.put('empresas', company);
+  // Remove legacy local user/password records; authentication is handled only by Supabase Auth.
+  await DB.clear('usuarios');
   await DB.put('usuarios', user);
   localStorage.setItem('kanawa_empresa', JSON.stringify(company));
   localStorage.setItem('kanawa_user', JSON.stringify(user));
@@ -685,18 +687,19 @@ async function salvarPerfil() {
   openModule('perfil');
 }
 async function alterarSenhaPerfil() {
-  const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const atual = $('perfilSenhaAtual').value, nova = $('perfilNovaSenha').value, conf = $('perfilConfSenha').value;
   if (!atual || !nova || !conf) { toast('Preencha todos os campos', 'warning'); return; }
   if (nova !== conf) { toast('Senhas não coincidem', 'error'); return; }
-  if (nova.length < 6) { toast('Senha muito curta', 'warning'); return; }
-  const users = await DB.getAll('usuarios');
-  const match = users.find(u => u.email === user.email || u.id === 1);
-  if (match && match.senha && match.senha !== atual) { toast('Senha atual incorreta', 'error'); return; }
-  if (match) { match.senha = nova; await DB.put('usuarios', match); }
-  $('perfilSenhaAtual').value = ''; $('perfilNovaSenha').value = ''; $('perfilConfSenha').value = '';
-  await registrarAuditoria('editar', 'senha', {});
-  toast('✅ Senha alterada', 'success');
+  if (nova.length < 8) { toast('Use uma senha com pelo menos 8 caracteres.', 'warning'); return; }
+  if (!window.KanawaCloud || !KanawaCloud.ready) { toast('A alteração de senha exige uma sessão segura na nuvem.', 'error'); return; }
+  try {
+    await KanawaCloud.changePassword(atual, nova);
+    $('perfilSenhaAtual').value = ''; $('perfilNovaSenha').value = ''; $('perfilConfSenha').value = '';
+    await registrarAuditoria('editar', 'senha', {});
+    toast('Senha alterada com segurança.', 'success');
+  } catch (error) {
+    toast(error.message || 'Não foi possível alterar a senha.', 'error');
+  }
 }
 
 /* ====== DISPOSITIVOS ====== */
