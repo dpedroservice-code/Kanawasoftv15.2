@@ -2160,7 +2160,7 @@ function abrirModalRota() {
     '<button class="btn btn-primary btn-block" onclick="salvarRota()">Salvar</button>');
 }
 async function salvarRota() { const o = $('rotaOrigem').value.trim(); const d = $('rotaDestino').value.trim(); if (!o || !d) { toast('Preencha origem e destino', 'warning'); return; } await saveData('roteirizacao', { origem: o, destino: d, distancia: $('rotaDistancia').value, veiculo: $('rotaVeiculo').value, data: now() }); toast('Rota criada', 'success'); closeModal(); openModule('logistica-roteirizacao'); }
-function otimizarRotas() { toast('Rotas otimizadas', 'success'); }
+function otimizarRotas() { toast('Otimização bloqueada: ainda não existe um motor de rotas ativo nem coordenadas verificadas para as paragens.', 'warning'); }
 
 async function renderLogisticaEtiquetas() {
   const etiquetas = await getData('etiquetas') || [];
@@ -2176,7 +2176,7 @@ async function gerarEtiqueta() {
   await saveData('etiquetas', { codigo: 'ETQ' + Math.random().toString(36).substr(2, 6).toUpperCase(), produto, data: now() });
   toast('Etiqueta gerada', 'success'); openModule('logistica-etiquetas');
 }
-function visualizarEtiqueta(id) { toast('Visualizando etiqueta', 'info'); }
+function visualizarEtiqueta(id) { toast('Pré-visualização de etiquetas ainda não está ligada a um gerador/serviço de impressão.', 'warning'); }
 
 function renderLogisticaPicking() {
   return header('Picking', 'Separação de pedidos', 'var(--warning)', '', 'fa-boxes') +
@@ -2185,7 +2185,7 @@ function renderLogisticaPicking() {
     '<div class="form-group"><label>Itens para separar</label><div style="padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);min-height:60px;color:var(--text-muted)">Selecione um pedido</div></div>' +
     '<button class="btn btn-success" onclick="iniciarPicking()"><i class="fas fa-play"></i> Iniciar Picking</button></div>';
 }
-function iniciarPicking() { toast('Picking iniciado', 'success'); }
+function iniciarPicking() { toast('Picking não iniciado: falta ligar os pedidos reais, a localização dos artigos e a transação de stock.', 'warning'); }
 
 async function renderLogisticaArmazens() {
   const armazens = await getData('armazens') || [];
@@ -2206,7 +2206,7 @@ function renderLogisticaCrossdocking() {
     '<div class="form-group"><label>Quantidade</label><input id="crossQtd" type="number" value="1" min="1"></div></div>' +
     '<button class="btn btn-success" onclick="realizarCrossdocking()"><i class="fas fa-exchange-alt"></i> Transferir</button></div>';
 }
-function realizarCrossdocking() { toast('Cross-docking realizado', 'success'); }
+function realizarCrossdocking() { toast('Transferência não executada: este módulo ainda não grava movimentos de stock no servidor.', 'warning'); }
 
 async function renderLogisticaRastreio() {
   const rastreios = await getData('rastreios') || [];
@@ -2217,8 +2217,13 @@ async function renderLogisticaRastreio() {
 }
 async function buscarRastreio() {
   const codigo = prompt('Código de rastreio:'); if (!codigo) return;
-  await saveData('rastreios', { codigo, produto: 'Produto', status: 'em_transito', ultimaAtualizacao: now() });
-  toast('Rastreio adicionado', 'success'); openModule('logistica-rastreio');
+  const registos = await getData('rastreios') || [];
+  const registo = registos.find(function (item) { return String(item.codigo || '').toLowerCase() === codigo.trim().toLowerCase(); });
+  if (!registo) {
+    toast('Não existe registo interno para este código e não há transportadora ligada para consultar o estado externo.', 'warning');
+    return;
+  }
+  toast('Registo interno encontrado: ' + (registo.status || 'sem estado') + '. Não é uma confirmação da transportadora.', 'info');
 }
 
 /* E-COMMERCE AVANÇADO */
@@ -2264,7 +2269,7 @@ async function finalizarPedidoEcommerce() {
   const pedido = { cliente: prompt('Nome do cliente:', 'Cliente Anônimo') || 'Cliente Anônimo', itens: carrinho, total, status: 'pendente', data: now() };
   await saveData('ecommercePedidos', pedido);
   localStorage.removeItem('kanawa_ecommerce_carrinho');
-  toast('Pedido finalizado: ' + fmt(total), 'success'); openModule('ecommerce-pedidos');
+  toast('Pedido registado como pendente. Nenhum pagamento foi processado.', 'warning'); openModule('ecommerce-pedidos');
 }
 async function renderEcommercePedidos() {
   const pedidos = await getData('ecommercePedidos') || [];
@@ -2277,31 +2282,44 @@ async function renderEcommercePedidos() {
 async function detalharPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; alert('Pedido #' + id + '\nCliente: ' + p.cliente + '\nTotal: ' + fmt(p.total) + '\nStatus: ' + p.status); }
 async function atualizarStatusPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; const s = prompt('Status (pendente, enviado, entregue, cancelado):', p.status); if (s) { p.status = s; await saveData('ecommercePedidos', p); toast('Status atualizado', 'success'); openModule('ecommerce-pedidos'); } }
 function exportarPedidosEcommerce() { toast('Exportando pedidos...', 'info'); }
-function renderEcommercePagamento() {
-  return header('Gateway de Pagamento', 'Configure os métodos de pagamento', 'var(--success)', '', 'fa-credit-card') +
-    '<div class="card"><div class="payment-methods">' +
-    '<div class="payment-method selected"><i class="fas fa-credit-card"></i> Cartão</div>' +
-    '<div class="payment-method"><i class="fas fa-money-bill-wave"></i> Dinheiro</div>' +
-    '<div class="payment-method"><i class="fas fa-mobile-alt"></i> Mobile Money</div>' +
-    '<div class="payment-method"><i class="fas fa-university"></i> Transferência</div></div>' +
-    '<div class="form-grid" style="margin-top:12px"><div class="form-group"><label>Banco</label><select><option>BPC</option><option>BIC</option><option>Banco Atlas</option></select></div><div class="form-group"><label>Chave API</label><input type="password" placeholder="Chave de API"></div></div>' +
-    '<div class="form-actions"><button class="btn btn-success" onclick="configurarPagamento()"><i class="fas fa-save"></i> Salvar</button><button class="btn btn-primary" onclick="testarPagamento()"><i class="fas fa-check"></i> Testar</button></div></div>';
+async function renderEcommercePagamento() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) {
+    return header('Gateway de Pagamento', 'Estado das integrações', 'var(--warning)', '', 'fa-credit-card') +
+      '<div class="card"><p>É necessário iniciar sessão na nuvem para consultar os provedores de pagamento.</p></div>';
+  }
+  try {
+    const providers = await KanawaCloud.listPaymentProviderStatus();
+    const active = providers.filter(function (provider) { return provider.enabled === true; }).length;
+    const rows = providers.map(function (provider) {
+      const enabled = provider.enabled === true;
+      return [
+        '<strong>' + esc(provider.display_name || provider.provider_code) + '</strong>',
+        esc(provider.mode || 'não configurado'),
+        badge(enabled ? 'Ativo' : 'Desativado', enabled ? 'success' : 'warning'),
+        esc((provider.supported_countries || []).join(', ') || '-')
+      ];
+    });
+    return header('Gateway de Pagamento', active + ' de ' + providers.length + ' provedores ativos', 'var(--success)', '', 'fa-credit-card') +
+      '<div class="card"><p style="margin-bottom:12px;color:var(--text-muted)">Estado consultado no servidor. Nenhuma chave secreta deve ser introduzida no navegador. Um provedor só pode ser apresentado como ativo depois da configuração e validação no backend.</p>' +
+      table(['Provedor', 'Modo', 'Estado', 'Países'], rows) +
+      (active === 0 ? '<div class="alert alert-warning" style="margin-top:12px">Não existe gateway de pagamento ativo. O checkout online não pode cobrar clientes neste momento.</div>' : '') +
+      '</div>';
+  } catch (error) {
+    return header('Gateway de Pagamento', 'Falha ao consultar provedores', 'var(--danger)', '', 'fa-credit-card') +
+      '<div class="card"><p>' + esc(error.message || 'Não foi possível consultar o estado dos provedores.') + '</p></div>';
+  }
 }
-function configurarPagamento() { toast('Gateway configurado', 'success'); }
-function testarPagamento() { toast('Teste concluído', 'success'); }
+function configurarPagamento() { toast('Configuração de gateways deve ser feita no backend seguro; não é permitido guardar chaves no navegador.', 'warning'); }
+function testarPagamento() { toast('Nenhum teste de cobrança foi executado. Configure primeiro um provedor real no backend.', 'warning'); }
 function renderEcommerceRastreio() {
-  return header('Rastreio de Encomendas', 'Acompanhe seus pedidos', 'var(--info)',
-    '<button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i> Rastrear</button>', 'fa-map-marker-alt') +
-    '<div class="card"><div class="form-group"><label>Código de Rastreio</label><div style="display:flex;gap:8px"><input type="text" id="rastreioCodigo" placeholder="Ex: BR123456789" style="flex:1"><button class="btn btn-primary" onclick="rastrearEncomenda()"><i class="fas fa-search"></i></button></div></div></div>' +
-    '<div id="rastreioResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Resultado</h3></div><div id="rastreioConteudo"></div></div>';
+  return header('Rastreio de Encomendas', 'Consulta externa indisponível', 'var(--warning)', '', 'fa-map-marker-alt') +
+    '<div class="card"><div class="alert alert-warning">Não existe integração ativa com transportadoras. O sistema não vai inventar estados de envio. Consulte apenas atualizações registadas pela equipa em Logística → Rastreio.</div></div>';
 }
 function rastrearEncomenda() {
-  const codigo = $('rastreioCodigo') ? $('rastreioCodigo').value : '';
+  const codigo = $('rastreioCodigo') ? $('rastreioCodigo').value.trim() : '';
   if (!codigo) { toast('Informe o código', 'warning'); return; }
-  const r = $('rastreioResultado'), c = $('rastreioConteudo');
-  if (r && c) { r.style.display = 'block'; c.innerHTML = '<div class="alert alert-info">📦 Rastreio: ' + esc(codigo) + '</div><div style="font-size:.8rem">Status: Em trânsito<br>Última atualização: ' + fmtDT(now()) + '</div>'; }
+  toast('Consulta externa não realizada: não há API de transportadora configurada. Nenhum estado fictício foi apresentado.', 'warning');
 }
-
 /* RH AVANÇADO */
 async function renderRHRecrutamento() {
   const vagas = await getData('vagas') || []; const candidatos = await getData('candidatos') || [];
