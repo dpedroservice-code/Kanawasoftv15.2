@@ -427,6 +427,7 @@ const MENU = [
   { id: 'pdv', icon: 'fa-cash-register', label: 'PDV' },
   { id: 'vendas', icon: 'fa-receipt', label: 'Vendas' },
   { id: 'orcamentos', icon: 'fa-file-invoice', label: 'Orçamentos' },
+  { id: 'tecnica', icon: 'fa-tools', label: 'Plano Técnica' },
   { id: 'produtos', icon: 'fa-boxes', label: 'Produtos' },
   { id: 'produtos-avaliacoes', icon: 'fa-star', label: 'Avaliações' },
   { id: 'categorias', icon: 'fa-tags', label: 'Categorias' },
@@ -533,6 +534,7 @@ async function openModule(id) {
   c.innerHTML = '<div style="text-align:center;padding:60px"><i class="fas fa-spinner fa-spin" style="font-size:3rem;color:var(--primary)"></i></div>';
   const R = {
     dashboard: renderDashboard, pdv: renderPDV, vendas: renderVendas, orcamentos: renderOrcamentos,
+    tecnica: () => { if (!window.KanawaTechnical) throw new Error('Módulo Plano Técnica não carregou.'); return window.KanawaTechnical.render(); },
     produtos: renderProdutos, categorias: renderCategorias, ecommerce: renderEcommerce,
     estoque: renderEstoque, compras: renderCompras, clientes: renderClientes,
     fornecedores: renderFornecedores, transportadoras: renderTransportadoras, crm: renderCRM,
