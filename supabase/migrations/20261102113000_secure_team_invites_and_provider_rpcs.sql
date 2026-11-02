@@ -130,3 +130,78 @@ AS $function$
   FROM public.ks_payment_provider_settings AS p
   ORDER BY p.display_name;
 $function$;
+
+-- Keep the invitation RPC caller-scoped. Auth user existence is checked by the
+-- service-role Edge Function when it sends the email, not by querying auth.users
+-- from an invoker function.
+CREATE OR REPLACE FUNCTION public.ks_create_team_invitation(
+  p_email text,
+  p_full_name text,
+  p_role text,
+  p_permissions jsonb,
+  p_expires_hours integer DEFAULT 72
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_company_id uuid;
+  v_token text;
+  v_id uuid;
+  v_expires timestamptz;
+BEGIN
+  SELECT m.company_id INTO v_company_id
+  FROM public.ks_company_memberships m
+  WHERE m.user_id = (SELECT auth.uid())
+    AND m.status = 'active'
+    AND m.role IN ('owner','admin')
+  ORDER BY m.created_at
+  LIMIT 1;
+
+  IF v_company_id IS NULL
+     OR NOT private.ks_has_company_role(v_company_id, ARRAY['owner','admin']::text[]) THEN
+    RAISE EXCEPTION 'Apenas o administrador da empresa pode convidar funcionários.' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_email IS NULL OR position('@' in p_email) < 2
+     OR p_full_name IS NULL OR length(trim(p_full_name)) < 2 THEN
+    RAISE EXCEPTION 'Nome e email válidos são obrigatórios.' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_role NOT IN ('manager','operator','cashier','accountant','viewer') THEN
+    RAISE EXCEPTION 'O administrador não pode criar outra conta de administrador por convite.' USING ERRCODE = '42501';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.ks_team_invitations i
+    WHERE lower(i.email) = lower(trim(p_email))
+      AND i.company_id = v_company_id
+      AND i.accepted_at IS NULL
+      AND i.expires_at > now()
+  ) THEN
+    RAISE EXCEPTION 'Já existe um convite pendente para este email.' USING ERRCODE = '23505';
+  END IF;
+
+  PERFORM private.ks_validate_team_permissions(p_permissions);
+  v_token := encode(extensions.gen_random_bytes(24), 'hex');
+  v_expires := now() + make_interval(hours => greatest(1, least(coalesce(p_expires_hours,72),168)));
+
+  INSERT INTO public.ks_team_invitations(company_id,email,full_name,role,permissions,token_hash,created_by,expires_at)
+  VALUES (
+    v_company_id, lower(trim(p_email)), trim(p_full_name), p_role, p_permissions,
+    encode(extensions.digest(convert_to(v_token,'UTF8'),'sha256'),'hex'),
+    (SELECT auth.uid()), v_expires
+  )
+  RETURNING id INTO v_id;
+
+  RETURN jsonb_build_object(
+    'id', v_id,
+    'email', lower(trim(p_email)),
+    'full_name', trim(p_full_name),
+    'role', p_role,
+    'invitation_code', v_token,
+    'expires_at', v_expires
+  );
+END;
+$function$;
