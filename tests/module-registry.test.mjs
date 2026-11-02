@@ -30,14 +30,14 @@ test('every menu module has a route renderer', () => {
 test('Plano Técnica is loaded once and registered in the core menu', () => {
   assert.match(app, /id:\s*'tecnica'[^\n]*Plano Técnica/);
   assert.match(app, /tecnica:\s*\(\)\s*=>\s*\{[\s\S]*KanawaTechnical\.render\(\)/);
-  assert.match(html, /technical-suite\.js/);
-  assert.doesNotMatch(html, /technical-suite\.js[^\n]*technical-suite\.js/);
+  assert.ok(html.includes('technical-suite.js'));
+  assert.equal((html.match(/technical-suite\.js/g) || []).length, 1);
 });
 
 test('integration diagnostics are registered in the core module system', () => {
-  assert.match(app, /id:\\s*'integracoes'[^\\n]*Integrações e APIs/);
-  assert.match(app, /integracoes:\\s*\\(\\)\\s*=>\\s*\\{[\\s\\S]*KanawaIntegrations\\.render\\(\\)/);
-  assert.match(html, /integration-center\\.js/);
+  assert.ok(app.includes("id: 'integracoes', icon: 'fa-plug', label: 'Integrações e APIs'"));
+  assert.ok(app.includes('integracoes: () => { if (!window.KanawaIntegrations)'));
+  assert.ok(html.includes('integration-center.js'));
 });
 
 test('manager roles receive technical module access', () => {
