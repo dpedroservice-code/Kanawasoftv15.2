@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 const { normalizeCoordinates, normalizeRouteDistance, normalizeOrderStatus } = require('../app/operations-validation.js');
 
 test('accepts valid coordinates and marks them as manually recorded', () => {
-  assert.deepEqual(normalizeCoordinates('-8,8391', '13,2894'), { lat: -8.8391, lng: 13.2894, location_source: 'manual', location_verified: true });
+  assert.deepEqual(normalizeCoordinates('-8,8391', '13,2894'), { lat: -8.8391, lng: 13.2894, location_source: 'manual', coordinates_valid: true });
 });
 test('rejects out-of-range or missing coordinates', () => {
   assert.throws(() => normalizeCoordinates('91', '13'), /Coordenadas inválidas/);

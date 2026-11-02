@@ -10,7 +10,7 @@
   function normalizeCoordinates(latitude, longitude) {
     const lat = toNumber(latitude), lng = toNumber(longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) throw new Error('Coordenadas inválidas. Latitude deve estar entre -90 e 90 e longitude entre -180 e 180.');
-    return { lat, lng, location_source: 'manual', location_verified: true };
+    return { lat, lng, location_source: 'manual', coordinates_valid: true };
   }
   function normalizeRouteDistance(value) {
     const raw = String(value === undefined || value === null ? '' : value).trim();

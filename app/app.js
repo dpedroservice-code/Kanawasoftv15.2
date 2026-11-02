@@ -2226,11 +2226,11 @@ async function editarPlanoProducao(id) { const p = await DB.get('planosProducao'
 /* LOGÍSTICA */
 async function renderLogisticaRoteirizacao() {
   const rotas = await getData('roteirizacao') || [];
-  return header('Roteirização', rotas.length + ' rotas', 'var(--primary)',
+  return header('Roteirização', rotas.length + ' rotas — distâncias manuais ou não calculadas', 'var(--primary)',
     '<button class="btn btn-success" onclick="abrirModalRota()"><i class="fas fa-plus"></i> Nova Rota</button>' +
     '<button class="btn btn-info" onclick="otimizarRotas()"><i class="fas fa-robot"></i> Otimizar</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || '-'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
+    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Fonte', 'Veículo', 'Ações'],
+      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || 'Não calculada'), esc(r.distance_source === 'manual' ? 'Manual' : 'Não calculada'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
 function abrirModalRota() {
   openModal('Nova Rota',
@@ -2604,8 +2604,8 @@ async function renderFrotaRotas() {
   const r = await getData('roteirizacao') || [];
   return header('Rotas', r.length + ' rotas', 'var(--info)',
     '<button class="btn btn-success" onclick="novaRotaFrota()"><i class="fas fa-plus"></i> Nova Rota</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      r.map(x => [esc(x.origem || '-'), esc(x.destino || '-'), esc(x.distancia || '-'), esc(x.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
+    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Fonte', 'Veículo', 'Ações'],
+      r.map(x => [esc(x.origem || '-'), esc(x.destino || '-'), esc(x.distancia || 'Não calculada'), esc(x.distance_source === 'manual' ? 'Manual' : 'Não calculada'), esc(x.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
 async function novaRotaFrota() {
   const origem = prompt('Origem:'); if (!origem || !origem.trim()) return;
@@ -2625,7 +2625,7 @@ async function renderFrotaGPS() {
     '<button class="btn btn-success" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Adicionar</button>', 'fa-satellite') +
     '<div class="card"><div class="alert alert-warning">Este ecrã apresenta apenas coordenadas registadas manualmente. Não existe ligação a rastreadores GPS nem atualização em tempo real.</div></div>' +
     '<div class="card">' + table(['Veículo', 'Latitude', 'Longitude', 'Origem', 'Última Atualização'],
-      g.map(x => ['<strong>' + esc(x.veiculo) + '</strong>', esc(x.lat || '-'), esc(x.lng || '-'), esc(x.location_source === 'manual' && x.location_verified === true ? 'Manual (registada)' : 'Não verificada'), fmtDT(x.ultimaAtualizacao)])) + '</div>';
+      g.map(x => ['<strong>' + esc(x.veiculo) + '</strong>', esc(x.lat || '-'), esc(x.lng || '-'), esc(x.location_source === 'manual' && x.coordinates_valid === true ? 'Manual (registada)' : 'Não verificada'), fmtDT(x.ultimaAtualizacao)])) + '</div>';
 }
 async function adicionarGPS() {
   const veiculo = prompt('Placa/identificação do veículo:'); if (!veiculo || !veiculo.trim()) return;

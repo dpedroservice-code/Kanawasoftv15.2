@@ -1,53 +1,43 @@
-# Auditoria de prontidão para produção — KanawaSoft v15.2
+# Auditoria de prontidão para produção — KanawaSoft v15.3.0
 
-**Data da verificação:** 2026-11-02  
-**Repositório auditado:** `dpedroservice-code/Kanawasoftv15.2`  
-**Base de dados:** projeto Supabase ligado ao KanawaSoft  
-**Objetivo:** distinguir funcionalidades implementadas, integrações reais, simulações e bloqueios de produção.
+**Data:** 2026-11-02  
+**Repositório:** `dpedroservice-code/Kanawasoftv15.2`  
+**Supabase:** projeto `jiehrswweoyesbabrpjf` (ativo e saudável)  
+**Netlify:** `kanawa-soft` — `https://kanawasoft.shop`
 
-## Resumo executivo
+## Correções anteriores confirmadas
 
-A aplicação contém 94 módulos no menu e funções de renderização para os módulos verificados. Isso não significa que todas as operações tenham uma API real ou estejam prontas para produção. A auditoria encontrou módulos que apresentavam mensagens de sucesso sem executar a operação, permissões de equipa não ligadas ao contrato do servidor e uma falha na validação de pagamentos do PDV.
+- As alterações das PR #7 e #8 foram integradas na branch `main` no commit `c7fde71af78d1cde0396a7c471bfda0b77eb07c2`.
+- Migrações de vendas e convites presentes na base de dados.
+- Edge Function `ks-invite-member` ativa, versão 3, com JWT obrigatório.
+- CI anterior aprovou verificações de sintaxe, Deno check e testes unitários.
+- A proteção de palavras-passe comprometidas continua desativada no Supabase Auth.
+- O advisor de performance reporta políticas RLS permissivas sobrepostas em algumas tabelas e índices não utilizados; rever sem eliminar índices de forma automática.
 
-As correções foram preparadas em branches e pull requests. **Não foi alterada a branch `main`, não foi aplicada nenhuma migração à base de dados e não foi publicado nenhum deploy de produção.**
+## Alterações propostas na PR #9
 
-## Achados confirmados
+- Alinhamento da versão do pacote, lockfile, interface, servidor e Electron para 15.3.0.
+- Remoção das coordenadas fixas de Luanda do registo GPS.
+- Validação de latitude/longitude e identificação dos registos como introduzidos manualmente; coordenadas antigas sem origem comprovada são mostradas como não verificadas.
+- Distâncias de rotas opcionais e identificadas como manuais; sem valor, são explicitamente não calculadas.
+- Validação dos estados internos de encomendas; a alteração manual não é apresentada como confirmação de pagamento ou transportadora.
+- Testes unitários para coordenadas, distâncias e estados de encomenda.
 
-| Área | Estado observado | Risco | Tratamento preparado |
-|---|---|---|---|
-| PDV / vendas | O PDV podia enviar troco negativo quando o valor recebido estava vazio; o RPC validava antes de normalizar o pagamento | Venda rejeitada ou estado inconsistente | PR #7: arredondamento monetário, validação de pagamento, cálculo de troco, reconciliação de artigos e limites de desconto no servidor |
-| Permissões | O contexto cloud não carregava `permissions`; papéis desconhecidos eram apresentados como operador | Interface podia mostrar ações que o servidor recusaria | PR #8: permissões por módulo/ação e falha segura |
-| Gestão de utilizadores | O ecrã criava registos locais e guardava senhas no IndexedDB, sem criar uma conta de equipa real | Credenciais locais e falsa gestão de utilizadores | PR #8: convites por email através de Supabase Auth e RPC de convite |
-| Alteração de senha | A rotina anterior atualizava o registo local e apresentava sucesso, sem alterar a senha de Auth | Utilizador acreditava que a senha tinha sido alterada | PR #8: reautenticação e alteração através de Supabase Auth |
-| RLS | A consulta ao catálogo de tabelas públicas não encontrou tabelas sem RLS | Positivo, mas não prova que todas as políticas estejam corretas | Continuar a rever políticas e testes por papel |
-| Funções privilegiadas | Foram encontrados dois RPCs públicos `SECURITY DEFINER` sinalizados pelo Advisor | Possível leitura fora do âmbito de empresa | PR #8: funções invoker e políticas RLS por empresa/administrador |
-| Proteção de senhas | O Advisor indica proteção contra senhas comprometidas desativada | Menor proteção contra senhas expostas | Requer ativação em Auth → Password Security no painel Supabase |
-| Pagamentos online | Os sete provedores consultados estavam desativados ou não configurados: Multicaixa Express, Unitel Money, Stripe, PayPal, Paddle e transferências | Checkout não pode cobrar clientes | PR #8: mostrar o estado real do servidor e deixar de apresentar testes/configurações fictícios |
-| Mapas e rotas | A tabela de configuração de mapas não tinha registos; a roteirização guardava origem/destino/distância manualmente | Não há cálculo de rota real configurado | Pendente: configurar fornecedor, geocodificação, rotas e mapa |
-| Rastreio | A rotina anterior criava um estado “em trânsito” sem consultar transportadora | Estado de encomenda falso | PR #8: não inventar estado; informar que não há integração externa |
-| Picking / cross-docking | Os botões apresentavam sucesso sem executar transação de stock | Inventário poderia ser interpretado como movimentado sem o ser | PR #8: bloquear mensagens de sucesso até existir integração transacional |
-| E-commerce | O checkout criava apenas um pedido pendente; não processava pagamento | Não é checkout online completo | PR #8: indicar explicitamente que o pedido fica pendente e não há cobrança |
+## Bloqueios para produção integral
 
-## Estado dos pull requests
+1. **Mapas/rotas:** não há motor real de geocodificação e roteirização configurado. Falta fornecedor, credenciais/endpoint seguro, mapa, distância, duração e testes reais.
+2. **GPS em tempo real:** exige rastreador ou app de campo, ingestão autenticada, atualização e retenção de posições.
+3. **Transportadoras:** falta selecionar operador e configurar API/webhooks para estados reais.
+4. **Pagamentos:** provedores permanecem desativados/não configurados. Falta gateway compatível com Angola, segredos no backend, callbacks assinados e reconciliação idempotente.
+5. **Picking/cross-docking:** faltam transações PostgreSQL para stock, armazéns, lotes, concorrência e auditoria.
+6. **E-commerce:** pedidos são registados como pendentes; não há cobrança online nem ciclo completo de cancelamento/devolução/reconciliação.
+7. **Auth:** ativar leaked-password protection nas definições do Supabase.
+8. **RLS:** rever avisos de políticas permissivas e testar isolamento multiempresa com contas reais por perfil.
+9. **Impressão:** testar impressora física A4/térmica e gerar/instalar pacote Electron 15.3.0.
+10. **Fiscalidade:** validar regras fiscais e eventual certificação AGT separadamente; não declarar certificação sem confirmação oficial.
 
-- **PR #7 — PDV:** correção do contrato de venda, precisão monetária, troco, pagamento insuficiente, reconciliação de artigos e limites de desconto no PostgreSQL. CI executada com sucesso.
-- **PR #8 — RBAC e integrações:** permissões por módulo, gestão real de equipa, alteração de senha por Supabase Auth, convite com permissões, proteção dos RPCs e remoção de falsas mensagens de sucesso. CI executada com sucesso na revisão verificada; os últimos commits devem concluir a respetiva execução antes de merge.
+## Publicação
 
+A PR #9 passou a CI automatizada. O workflow Netlify terminou com sucesso, mas a etapa de preview foi ignorada porque `NETLIFY_AUTH_TOKEN` não está configurado nos GitHub Actions. Por isso, esta branch ainda não foi publicada no domínio de produção.
 
-### Outros módulos com operações ainda não implementadas
-A revisão estática também encontrou ações sem persistência ou processamento real em projetos (alocação de recursos, custos e riscos), documentos/relatórios de frota, ponto, portal do cliente, remarketing e e-learning. No PR #8, essas ações deixam de apresentar sucesso fictício e passam a informar que a operação está indisponível. Ainda não são consideradas funcionalidades concluídas.
-
-## Integrações ainda não prontas
-
-1. **Mapas:** escolher/configurar fornecedor e endpoints reais; adicionar geocodificação, cálculo de distância/duração e visualização cartográfica.
-2. **Transportadoras:** escolher API e credenciais para obter estados reais de expedição.
-3. **Pagamentos:** contratar/configurar o provedor adequado a Angola, manter segredos no backend e implementar callbacks/webhooks idempotentes.
-4. **Stock/logística:** implementar picking, cross-docking, transferências e expedição através de transações atómicas no servidor.
-5. **E-commerce:** ligar checkout, pagamento, confirmação, cancelamento, devolução e reconciliação de pedidos.
-6. **RBAC:** testar contas reais de administrador, gerente, operador, caixa, contabilista e visualizador; verificar também chamadas diretas aos RPCs, não apenas a visibilidade dos menus.
-
-## Critério para declarar produção
-
-Não declarar o sistema pronto enquanto as migrações não forem aplicadas e verificadas, a Edge Function não estiver implantada, os provedores necessários não estiverem configurados e os fluxos críticos não passarem testes de ponta a ponta. A existência de um módulo no menu, de um botão ou de uma mensagem de sucesso não é prova de integração funcional.
-
-**Nota:** esta auditoria não atribui nem afirma certificação AGT. Qualquer integração fiscal ou certificação deve ser validada separadamente.
+A CI verde não comprova integrações externas, impressão física, telemetria, pagamentos reais ou conformidade fiscal.
