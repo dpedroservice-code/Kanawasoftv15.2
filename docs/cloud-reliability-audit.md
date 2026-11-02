@@ -32,3 +32,7 @@ Data: 2026-11-02
 ## Segurança e dados
 
 Nenhuma chave service-role foi adicionada ao browser. Nenhuma tabela, política RLS ou função de produção foi modificada nesta branch. Nenhuma publicação de produção foi iniciada.
+
+## Aplicação desktop Windows
+
+A versão desktop já usa Electron e `electron-builder` (configurado no `package.json`), portanto não precisa de ser migrada para Pkg. O arranque do Electron já chama o servidor com `port: 0`, permitindo que o sistema operativo escolha uma porta livre de forma atómica. O Express liga apenas a `127.0.0.1`; se for iniciado manualmente numa porta fixa e ela estiver ocupada, o servidor tenta uma porta aleatória. Esta configuração evita colisões com a porta 3000 e não expõe o servidor local à rede.
