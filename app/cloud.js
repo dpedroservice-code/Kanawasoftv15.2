@@ -143,6 +143,18 @@
       };
     },
 
+    async changePassword(currentPassword, newPassword) {
+      if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
+      if (!currentPassword || !newPassword || String(newPassword).length < 8) {
+        throw new Error('Informe a senha atual e uma nova senha com pelo menos 8 caracteres.');
+      }
+      const reauth = await client.auth.signInWithPassword({ email: context.user.email, password: currentPassword });
+      if (reauth.error) throw new Error('A senha atual está incorreta.');
+      const update = await client.auth.updateUser({ password: newPassword });
+      if (update.error) throw update.error;
+      return true;
+    },
+
     async signOut() {
       if (!client) return;
       const result = await client.auth.signOut();
