@@ -33,6 +33,10 @@ As correções foram preparadas em branches e pull requests. **Não foi alterada
 - **PR #7 — PDV:** correção do contrato de venda, precisão monetária, troco, pagamento insuficiente, reconciliação de artigos e limites de desconto no PostgreSQL. CI executada com sucesso.
 - **PR #8 — RBAC e integrações:** permissões por módulo, gestão real de equipa, alteração de senha por Supabase Auth, convite com permissões, proteção dos RPCs e remoção de falsas mensagens de sucesso. CI executada com sucesso na revisão verificada; os últimos commits devem concluir a respetiva execução antes de merge.
 
+
+### Outros módulos com operações ainda não implementadas
+A revisão estática também encontrou ações sem persistência ou processamento real em projetos (alocação de recursos, custos e riscos), documentos/relatórios de frota, ponto, portal do cliente, remarketing e e-learning. No PR #8, essas ações deixam de apresentar sucesso fictício e passam a informar que a operação está indisponível. Ainda não são consideradas funcionalidades concluídas.
+
 ## Integrações ainda não prontas
 
 1. **Mapas:** escolher/configurar fornecedor e endpoints reais; adicionar geocodificação, cálculo de distância/duração e visualização cartográfica.
