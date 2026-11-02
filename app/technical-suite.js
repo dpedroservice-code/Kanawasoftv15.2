@@ -20,7 +20,7 @@
   const state = { tab:'overview', quotes:[], products:[], services:[], evaluations:[], reservations:[], workOrders:[], kits:[], tracking:[], staff:[], skills:[], categories:[], priceTables:[], production:[] };
   const tabs = [
     ['overview','Visão geral','fa-chart-pie'],['quotes','Orçamentos técnicos','fa-file-invoice-dollar'],
-    ['products','Produtos técnicos','fa-boxes'],['services','Serviços e equipas','fa-tools'],
+    ['products','Produtos técnicos','fa-boxes'],['categories','Categorias técnicas','fa-sitemap'],['services','Serviços e equipas','fa-tools'],
     ['evaluations','Diagnósticos e avaliações','fa-clipboard-check'],['stock','Stock e reservas','fa-warehouse'],
     ['production','Kits e produção','fa-industry'],['tracking','Rastreio e entregas','fa-route'],
     ['commercial','Preços e pagamentos','fa-coins'],['people','Técnicos e competências','fa-user-cog']
@@ -40,6 +40,7 @@
     if(state.tab==='overview') return '<div class="kt-grid">'+stat('Orçamentos técnicos',q.length,'Registados')+stat('Em negociação',q.filter(x=>x.status==='Em negociação').length,'Com reserva lógica')+stat('Ordens de serviço',state.workOrders.length,'Criadas a partir de propostas')+stat('Produtos técnicos',p.length,'Peças, consumíveis e equipamentos')+stat('Avaliações',e.length,'Diagnósticos e feedback')+stat('Serviços',s.length,'Catálogo técnico')+'</div><section class="kt-panel" style="margin-top:16px"><h3>Fluxo recomendado</h3><div class="kt-grid">'+['Diagnóstico / vistoria','Orçamento analítico','Aprovação e adjudicação','Reserva de peças','Ordem de Serviço','Execução e check-in/out','Avaliação do cliente','Fecho e garantia'].map((x,i)=>'<div class="kt-stat"><span class="kt-pill">'+(i+1)+'</span><strong style="font-size:1rem">'+x+'</strong></div>').join('')+'</div><div class="kt-note">A reserva registada nesta interface é uma pré-reserva operacional. A baixa definitiva, o bloqueio concorrente de stock e pagamentos reais exigem validação transacional no servidor. Não se altera o stock físico ao criar uma proposta.</div></section>';
     if(state.tab==='quotes') return quoteForm()+table(['Referência','Cliente','Descrição','Total','Validade','Estado','Ações'],q.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo)+'</td><td>'+escT(x.cliente)+'</td><td>'+escT(x.titulo)+'</td><td>'+money(x.total)+'</td><td>'+escT(x.validadeDias)+' dias</td><td><span class="kt-pill">'+escT(x.status)+'</span></td><td><button class="btn btn-sm btn-primary" onclick="KanawaTechnical.convert('+Number(x.id)+')">Criar OS</button></td></tr>'),'Crie o primeiro orçamento técnico.');
     if(state.tab==='products') return productForm()+table(['Código','Produto','Tipo','Moeda base','Custo base','Garantia','Stock','Compatibilidade'],p.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo||'—')+'</td><td>'+escT(x.nome)+'</td><td>'+escT(x.tipoTecnico||'Produto')+'</td><td>'+escT(x.moedaBase||'AOA')+'</td><td>'+money(x.custoBase||x.custo||0)+'</td><td>'+escT(x.garantiaMeses||0)+' meses</td><td>'+num(x.estoque)+'</td><td>'+escT(x.compatibilidade||'—')+'</td></tr>'),'Cadastre peças e equipamentos.');
+    if(state.tab==='categories') return categoryForm()+table(['Eixo','Categoria','Categoria superior','Descrição'],state.categories.slice().reverse().map(x=>'<tr><td>'+escT(x.eixo||'—')+'</td><td>'+escT(x.nome)+'</td><td>'+escT(x.parentName||'—')+'</td><td>'+escT(x.descricao||'—')+'</td></tr>'),'Organize as categorias técnicas.');
     if(state.tab==='services') return serviceForm()+table(['Serviço','Especialidade','Unidade','Custo/h','Preço/h','Duração','SLA','Equipa mínima'],s.slice().reverse().map(x=>'<tr><td>'+escT(x.nome)+'</td><td>'+escT(x.especialidade||'—')+'</td><td>'+escT(x.unidadeCobranca||'Hora')+'</td><td>'+money(x.custoHora||0)+'</td><td>'+money(x.precoHora||x.preco||0)+'</td><td>'+escT(x.duracaoHoras||x.duracao||0)+' h</td><td>'+escT(x.slaHoras||'—')+' h</td><td>'+num(x.equipaMinima||1)+'</td></tr>'),'Cadastre os serviços e requisitos.');
     if(state.tab==='evaluations') return evaluationForm()+table(['Tipo','Cliente','Equipamento','Parecer / Nota','Data','OS'],e.slice().reverse().map(x=>'<tr><td>'+escT(x.tipoAvaliacao||'Diagnóstico')+'</td><td>'+escT(x.cliente||'—')+'</td><td>'+escT(x.equipamento||'—')+'</td><td>'+escT(x.parecer||x.comentario||'—')+'</td><td>'+escT(x.data||x.criado_em||'—')+'</td><td>'+escT(x.ordemServicoId||'—')+'</td></tr>'),'Registe uma vistoria ou avaliação.');
     if(state.tab==='stock') return stockPanel()+table(['Produto','Quantidade reservada','Referência','Estado'],r.slice().reverse().map(x=>'<tr><td>'+escT(x.produtoNome||x.produto_id)+'</td><td>'+num(x.quantidade)+'</td><td>'+escT(x.referencia||'—')+'</td><td>'+escT(x.status||'reservado')+'</td></tr>'),'Sem reservas registadas.');
@@ -85,6 +86,12 @@
     field('Rastreio série / lote','rastreioTipo','select','',[['Nenhum','Não obrigatório'],['Série','Número de série'],['Lote','Lote']],false),
     field('Fornecedor / referência / lead time','fornecedorTecnico','textarea','Fornecedor A — código — dias de entrega...',null,true)
   ],'product','O custo convertido só é calculado quando a taxa é fornecida e fica guardada como fotografia cambial no registo.');}
+  function categoryForm(){return form('Nova categoria técnica',[
+    field('Eixo','eixo','select','',[['Produtos','Produtos'],['Serviços','Serviços'],['Clientes / contratos','Clientes / contratos'],['Diagnósticos / ocorrências','Diagnósticos / ocorrências'],['Orçamentos','Orçamentos']],false),
+    field('Nome da categoria *','nome','text','Eléctrica, mecânica, CCTV...',null,false),
+    field('Categoria superior','parentId','select','',[['','Sem categoria superior'],...state.categories.map(x=>[String(x.id),x.nome])],false),
+    field('Descrição','descricao','textarea','Descrição e regras de classificação...',null,true)
+  ],'category','As categorias ficam separadas por eixo e podem formar hierarquias pai/filho.');}
   function serviceForm(){return form('Novo serviço técnico',[
     field('Nome *','nome','text','Manutenção preventiva...',null,false),field('Especialidade','especialidade','text','Electricidade, CCTV, redes...',null,false),
     field('Unidade de cobrança','unidadeCobranca','select','',[['Hora','Hora'],['Homem-hora','Homem-hora'],['Preço fixo','Preço fixo'],['Deslocação / diagnóstico','Deslocação / diagnóstico']],false),
@@ -158,6 +165,12 @@
         const cost=num(d.custoBase), rate=num(d.taxaCambio);
         const row={...d,custoBase:cost,taxaCambio:rate,custoAOA:d.moedaBase==='AOA'?cost:(rate?cost*rate:null),preco:num(d.preco),precoTecnico:num(d.precoTecnico),estoque:0,estoqueMin:num(d.estoqueMin),garantiaMeses:num(d.garantiaMeses),fatorConversao:Math.max(.000001,num(d.fatorConversao)||1),criadoEm:new Date().toISOString()};
         const id=await write(stores.products,row);row.id=id;state.products.push(row);
+      } else if(kind==='category') {
+        if(!d.nome.trim()) throw new Error('O nome da categoria é obrigatório.');
+        const parent=state.categories.find(x=>String(x.id)===String(d.parentId));
+        if(parent&&parent.eixo!==d.eixo) throw new Error('A categoria superior deve pertencer ao mesmo eixo.');
+        const row={...d,parentId:d.parentId||null,parentName:parent?parent.nome:null,criadoEm:new Date().toISOString()};
+        const id=await write(stores.categories,row);row.id=id;state.categories.push(row);
       } else if(kind==='service') {
         if(!d.nome.trim()) throw new Error('O nome do serviço é obrigatório.');
         const row={...d,custoHora:num(d.custoHora),precoHora:num(d.precoHora),preco:num(d.precoHora),duracaoHoras:num(d.duracaoHoras),slaHoras:num(d.slaHoras),equipaMinima:Math.max(1,Math.floor(num(d.equipaMinima)||1)),criadoEm:new Date().toISOString()};
@@ -216,7 +229,7 @@
     await load(); const root=$('kt-content'); if(root) root.innerHTML=bodyForTab();
   }
   async function render() { await load(); return shell(); }
-  function tab(name) { state.tab=name; const root=$('kt-content'); if(root) root.innerHTML=bodyForTab(); document.querySelectorAll('.kt-tab').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().includes(({overview:'visão geral',quotes:'orçamentos',products:'produtos',services:'serviços',evaluations:'diagnósticos',stock:'stock',production:'kits',tracking:'rastreio',commercial:'preços',people:'técnicos'})[name]))); }
+  function tab(name) { state.tab=name; const root=$('kt-content'); if(root) root.innerHTML=bodyForTab(); document.querySelectorAll('.kt-tab').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().includes(({overview:'visão geral',quotes:'orçamentos',products:'produtos',categories:'categorias',services:'serviços',evaluations:'diagnósticos',stock:'stock',production:'kits',tracking:'rastreio',commercial:'preços',people:'técnicos'})[name]))); }
   window.KanawaTechnical={render,tab,submit,convert,refresh};
   // The add-on is loaded after the core application; preserve all existing routes.
   const oldOpen=window.openModule;
