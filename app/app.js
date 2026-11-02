@@ -991,7 +991,7 @@ function pdvAtualizarValores() {
   let taxa = 0; if (aplicarIVA) taxa = regime === 'geral' ? 0.14 : (regime === 'simplificado' ? 0.07 : 0);
   const iva = money(base * taxa), total = money(base + iva);
   const isCredit = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
-  const vRec = recebidoInput <= 0 && !isCredit ? total : money(recebidoInput);
+  const vRec = recebidoInput === 0 && !isCredit ? total : money(recebidoInput);
   const troco = money(Math.max(0, vRec - total)), faltam = money(Math.max(0, total - vRec));
   pdvState.valorRecebido = vRec;
   const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
