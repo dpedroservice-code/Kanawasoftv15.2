@@ -1793,18 +1793,109 @@ function abrirModalPromocao() { openModal('Nova Promoção', '<div class="form-g
 async function salvarPromocao() { const n = $('prNome').value.trim(); if (!n) { toast('Informe nome', 'warning'); return; } await saveData('promocoes', { nome: n, desconto: num($('prDesc').value, 0), data: now() }); toast('Criada', 'success'); closeModal(); openModule('ecommerce'); }
 
 /* ====== RELATÓRIOS ====== */
+async function carregarDadosRelatorios() {
+  const stores = ['vendas','compras','movimentacoesEstoque','pagamentos','transacoesBancarias','contasReceber','contasPagar','auditoria','atividadesProjetos','historicoOS','logsSeguranca','notificacoes','produtos','clientes'];
+  const values = await Promise.all(stores.map(s => getData(s)));
+  return Object.fromEntries(stores.map((s,i) => [s, values[i]]));
+}
+function dataRelatorio(item) {
+  const raw = item.data || item.created_at || item.updated_at || item.createdAt || item.timestamp || item.date || item.dataHora || item.created_on || '';
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function dentroPeriodoRelatorio(item, inicio, fim) {
+  const d = dataRelatorio(item);
+  if (!d) return false;
+  const day = d.toISOString().slice(0,10);
+  return (!inicio || day >= inicio) && (!fim || day <= fim);
+}
+function moedaRelatorio(value) { return fmt(Number(value) || 0); }
+function montarLinhasRelatorio(data, tipo, inicio, fim) {
+  const rows = [];
+  const add = (categoria, dataItem, referencia, descricao, responsavel, valor, estado) => {
+    if (!dentroPeriodoRelatorio(dataItem, inicio, fim)) return;
+    const d = dataRelatorio(dataItem);
+    rows.push({ categoria, data: d ? fmtDT(d.toISOString()) : '-', referencia: referencia || '-', descricao: descricao || '-', responsavel: responsavel || '-', valor: Number(valor) || 0, estado: estado || '-' });
+  };
+  if (tipo === 'todos' || tipo === 'movimentos') {
+    (data.vendas || []).forEach(x => add('Venda', x, x.numeroFatura || '#' + x.id, 'Venda • ' + (x.clienteNome || 'Cliente não identificado'), x.usuario || x.vendedor || '-', x.total, x.status));
+    (data.compras || []).forEach(x => add('Compra', x, '#' + x.id, (x.produto || 'Compra') + ' • ' + (x.fornecedor || 'Fornecedor não indicado'), x.usuario || '-', x.valor, x.status));
+    (data.movimentacoesEstoque || []).forEach(x => add('Stock', x, '#' + x.id, x.descricao || x.produto || 'Movimentação de stock (' + (x.tipo || 'movimento') + ')', x.usuario || '-', x.valor || x.quantidade, x.tipo));
+    (data.pagamentos || []).forEach(x => add('Pagamento', x, x.referencia || '#' + x.id, x.descricao || x.metodo || 'Pagamento', x.usuario || '-', x.valor || x.total, x.status));
+    (data.transacoesBancarias || []).forEach(x => add('Movimento bancário', x, x.referencia || '#' + x.id, x.descricao || x.tipo || 'Transação bancária', x.usuario || '-', x.valor || x.montante, x.status));
+    (data.contasReceber || []).forEach(x => add('A receber', x, '#' + x.id, x.cliente || 'Conta a receber', x.usuario || '-', x.valor, x.status));
+    (data.contasPagar || []).forEach(x => add('A pagar', x, '#' + x.id, x.fornecedor || 'Conta a pagar', x.usuario || '-', x.valor, x.status));
+  }
+  if (tipo === 'todos' || tipo === 'atividades') {
+    (data.auditoria || []).forEach(x => add('Auditoria', x, '#' + x.id, (x.acao || 'Atividade') + ' • ' + (x.modulo || 'Sistema') + ' • ' + (typeof x.detalhes === 'string' ? x.detalhes : JSON.stringify(x.detalhes || {})), x.usuario || '-', 0, 'Registado'));
+    (data.atividadesProjetos || []).forEach(x => add('Projeto', x, '#' + x.id, x.descricao || x.atividade || x.titulo || 'Atividade de projeto', x.usuario || x.responsavel || '-', 0, x.status));
+    (data.historicoOS || []).forEach(x => add('Assistência', x, '#' + x.id, x.descricao || x.atividade || x.acao || 'Atividade de assistência', x.tecnico || x.usuario || '-', 0, x.status));
+    (data.logsSeguranca || []).forEach(x => add('Segurança', x, '#' + x.id, x.acao || x.evento || x.descricao || 'Evento de segurança', x.usuario || x.email || '-', 0, x.status || 'Registado'));
+    (data.notificacoes || []).forEach(x => add('Notificação', x, '#' + x.id, x.titulo || x.mensagem || 'Notificação do sistema', x.usuario || '-', 0, x.status || 'Registado'));
+  }
+  return rows.sort((a,b) => {
+    const da = new Date(a.data).getTime() || 0, db = new Date(b.data).getTime() || 0;
+    return db - da;
+  });
+}
+function htmlTabelaRelatorio(rows) {
+  return table(['Data','Tipo','Referência','Descrição','Responsável','Valor / Qtd.','Estado'], rows.map(x => [
+    esc(x.data), badge(x.categoria, 'info'), esc(x.referencia), esc(x.descricao), esc(x.responsavel),
+    x.valor ? '<strong>' + moedaRelatorio(x.valor) + '</strong>' : '-', esc(x.estado)
+  ]));
+}
+async function atualizarRelatorio() {
+  const target = $('relatorioResultado');
+  if (!target) return;
+  const data = await carregarDadosRelatorios();
+  const tipo = $('relatorioTipo') ? $('relatorioTipo').value : 'todos';
+  const inicio = $('relatorioInicio') ? $('relatorioInicio').value : '';
+  const fim = $('relatorioFim') ? $('relatorioFim').value : '';
+  const rows = montarLinhasRelatorio(data, tipo, inicio, fim);
+  const total = rows.reduce((s,x) => s + (x.categoria === 'Venda' ? x.valor : 0), 0);
+  const metric = $('relatorioResumo');
+  if (metric) metric.innerHTML = '<div class="metric-grid"><div class="metric-card"><div class="label">Registos encontrados</div><div class="value">' + rows.length + '</div></div><div class="metric-card"><div class="label">Total de vendas no período</div><div class="value">' + moedaRelatorio(total) + '</div></div><div class="metric-card"><div class="label">Movimentos</div><div class="value">' + rows.filter(x => ['Venda','Compra','Stock','Pagamento','Movimento bancário','A receber','A pagar'].includes(x.categoria)).length + '</div></div><div class="metric-card"><div class="label">Atividades</div><div class="value">' + rows.filter(x => ['Auditoria','Projeto','Assistência','Segurança','Notificação'].includes(x.categoria)).length + '</div></div></div>';
+  target.innerHTML = htmlTabelaRelatorio(rows);
+}
+async function imprimirRelatorio(tipo) {
+  const data = await carregarDadosRelatorios();
+  const inicio = $('relatorioInicio') ? $('relatorioInicio').value : '';
+  const fim = $('relatorioFim') ? $('relatorioFim').value : '';
+  const rows = montarLinhasRelatorio(data, tipo || ($('relatorioTipo') ? $('relatorioTipo').value : 'todos'), inicio, fim);
+  const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
+  const titulo = tipo === 'movimentos' ? 'Relatório de Movimentos' : tipo === 'atividades' ? 'Relatório de Atividades' : 'Relatório Geral';
+  const body = rows.length ? rows.map(x => '<tr><td>' + esc(x.data) + '</td><td>' + esc(x.categoria) + '</td><td>' + esc(x.referencia) + '</td><td>' + esc(x.descricao) + '</td><td>' + esc(x.responsavel) + '</td><td>' + (x.valor ? moedaRelatorio(x.valor) : '-') + '</td><td>' + esc(x.estado) + '</td></tr>').join('') : '<tr><td colspan="7">Sem registos no período selecionado.</td></tr>';
+  const popup = window.open('', '_blank');
+  if (!popup) { toast('Permita janelas pop-up para imprimir o relatório.', 'warning'); return; }
+  popup.document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><title>' + titulo + '</title><style>body{font:12px Arial,sans-serif;color:#172033;padding:24px}h1{margin:0 0 6px}p{margin:4px 0 18px;color:#475569}.meta{margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left;vertical-align:top}th{background:#e2e8f0}tfoot{font-weight:bold}@media print{body{padding:0}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body><h1>' + esc(emp.firma || emp.nome || 'KanawaSoft') + '</h1><h2>' + titulo + '</h2><div class="meta">Período: ' + esc(inicio || 'Sem início') + ' a ' + esc(fim || 'Sem fim') + ' • Emitido em: ' + esc(new Date().toLocaleString('pt-AO')) + '</div><table><thead><tr><th>Data</th><th>Tipo</th><th>Referência</th><th>Descrição</th><th>Responsável</th><th>Valor / Qtd.</th><th>Estado</th></tr></thead><tbody>' + body + '</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>');
+  popup.document.close();
+}
 async function renderRelatorios() {
   const [vendas, produtos, clientes] = await Promise.all([getData('vendas'), getData('produtos'), getData('clientes')]);
-  const tV = vendas.reduce((s, v) => s + (v.total || 0), 0);
-  return header('Relatórios', 'Análise e exportação', 'var(--primary)', '', 'fa-chart-bar') +
+  const tV = vendas.reduce((s, v) => s + (Number(v.total) || 0), 0);
+  const hoje = new Date().toISOString().slice(0,10);
+  const inicioMes = hoje.slice(0,8) + '01';
+  const data = await carregarDadosRelatorios();
+  const rows = montarLinhasRelatorio(data, 'todos', inicioMes, hoje);
+  return header('Relatórios', 'Indicadores, movimentos, atividades e impressão por período', 'var(--primary)',
+    '<button class="btn btn-light" onclick="imprimirRelatorio(\'todos\')"><i class="fas fa-print"></i> Imprimir relatório</button>', 'fa-chart-bar') +
     '<div class="metric-grid">' +
     '<div class="metric-card"><div class="label">Total Vendas</div><div class="value">' + vendas.length + '</div></div>' +
     '<div class="metric-card" style="border-left-color:var(--success)"><div class="label">Faturamento</div><div class="value">' + fmt(tV) + '</div></div>' +
     '<div class="metric-card" style="border-left-color:var(--info)"><div class="label">Ticket Médio</div><div class="value">' + (vendas.length ? fmt(tV / vendas.length) : fmt(0)) + '</div></div>' +
     '<div class="metric-card" style="border-left-color:var(--warning)"><div class="label">Produtos</div><div class="value">' + produtos.length + '</div></div>' +
     '<div class="metric-card" style="border-left-color:var(--purple)"><div class="label">Clientes</div><div class="value">' + clientes.length + '</div></div></div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-download"></i> Exportar</h3></div>' +
-    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-filter"></i> Filtros do relatório</h3></div>' +
+    '<div class="form-grid"><div class="form-group"><label>Tipo de relatório</label><select id="relatorioTipo"><option value="todos">Todos os relatórios</option><option value="movimentos">Movimentos</option><option value="atividades">Atividades e auditoria</option></select></div>' +
+    '<div class="form-group"><label>Data inicial</label><input type="date" id="relatorioInicio" value="' + inicioMes + '"></div>' +
+    '<div class="form-group"><label>Data final</label><input type="date" id="relatorioFim" value="' + hoje + '"></div></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" onclick="atualizarRelatorio()"><i class="fas fa-search"></i> Aplicar filtros</button>' +
+    '<button class="btn btn-success" onclick="imprimirRelatorio(\'movimentos\')"><i class="fas fa-print"></i> Imprimir movimentos</button>' +
+    '<button class="btn btn-info" onclick="imprimirRelatorio(\'atividades\')"><i class="fas fa-print"></i> Imprimir atividades</button></div></div>' +
+    '<div id="relatorioResumo"><div class="metric-grid"><div class="metric-card"><div class="label">Registos no mês</div><div class="value">' + rows.length + '</div></div><div class="metric-card"><div class="label">Total de vendas</div><div class="value">' + fmt(tV) + '</div></div></div></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list-alt"></i> Movimentos e atividades</h3></div><div id="relatorioResultado">' + htmlTabelaRelatorio(rows) + '</div></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-download"></i> Exportar dados</h3></div><div style="display:flex;gap:10px;flex-wrap:wrap">' +
     '<button class="btn btn-success" onclick="exportarBackupCompleto()"><i class="fas fa-database"></i> Backup JSON</button>' +
     '<button class="btn btn-info" onclick="exportarVendasCSV()"><i class="fas fa-file-csv"></i> Vendas CSV</button>' +
     '<button class="btn btn-primary" onclick="exportarProdutos()"><i class="fas fa-file-excel"></i> Produtos Excel</button></div></div>';
