@@ -387,7 +387,15 @@ tr:hover td{background:var(--bg-hover)}
 
 <!-- App principal -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0"></script>
-<script src="cloud.js?v=15.3.20261101.2"></script>
-<script src="app.js?v=15.3.20261101.2"></script>
+<script src="cloud.js?v=15.3.20261102.1"></script>
+<script src="app.js?v=15.3.20261102.1"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./service-worker.js')
+        .catch(function (error) { console.warn('Kanawa PWA: não foi possível registar o modo offline.', error); });
+    });
+  }
+</script>
 </body>
 </html>
