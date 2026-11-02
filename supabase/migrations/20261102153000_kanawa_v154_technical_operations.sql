@@ -514,5 +514,89 @@ BEGIN
 END;
 $function$;
 
+
+
+-- Explicit approval step; creation and approval are separate actions.
+CREATE OR REPLACE FUNCTION public.ks_technical_approve_quote(p_quote_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_company_id uuid;
+  v_quote public.ks_technical_quotes%ROWTYPE;
+BEGIN
+  SELECT m.company_id INTO v_company_id
+  FROM public.ks_company_memberships m
+  WHERE m.user_id=(SELECT auth.uid()) AND m.status='active'
+  ORDER BY m.created_at LIMIT 1;
+  IF v_company_id IS NULL OR NOT private.ks_has_company_role(v_company_id,ARRAY['owner','admin','manager']::text[]) THEN
+    RAISE EXCEPTION 'Sem permissão para aprovar orçamentos técnicos.' USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_quote FROM public.ks_technical_quotes
+  WHERE id=p_quote_id AND company_id=v_company_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Orçamento não encontrado.' USING ERRCODE='P0002'; END IF;
+  IF v_quote.status<>'negotiation' THEN
+    RAISE EXCEPTION 'Apenas orçamentos em negociação podem ser aprovados.' USING ERRCODE='23514';
+  END IF;
+  IF v_quote.valid_until IS NOT NULL AND v_quote.valid_until<current_date THEN
+    RAISE EXCEPTION 'A validade da proposta expirou.' USING ERRCODE='23514';
+  END IF;
+  UPDATE public.ks_technical_quotes
+  SET status='approved',approved_by=(SELECT auth.uid()),approved_at=now(),updated_at=now()
+  WHERE id=v_quote.id AND company_id=v_company_id;
+  INSERT INTO public.ks_technical_audit_events(company_id,entity_type,entity_id,action,before_data,after_data,actor_id)
+  VALUES(v_company_id,'technical_quote',v_quote.id,'approved',to_jsonb(v_quote),
+    jsonb_build_object('status','approved','approved_at',now()),(SELECT auth.uid()));
+  RETURN jsonb_build_object('ok',true,'quote_id',v_quote.id,'status','approved');
+END;
+$function$;
+
+-- Releasing a reservation updates both the reservation ledger and the locked balance atomically.
+CREATE OR REPLACE FUNCTION public.ks_technical_release_stock_reservation(p_reservation_id uuid,p_reason text DEFAULT 'Reserva libertada')
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_company_id uuid;
+  v_res public.ks_technical_stock_reservations%ROWTYPE;
+BEGIN
+  SELECT m.company_id INTO v_company_id
+  FROM public.ks_company_memberships m
+  WHERE m.user_id=(SELECT auth.uid()) AND m.status='active'
+  ORDER BY m.created_at LIMIT 1;
+  IF v_company_id IS NULL OR NOT private.ks_has_company_role(v_company_id,ARRAY['owner','admin','manager']::text[]) THEN
+    RAISE EXCEPTION 'Sem permissão para libertar reservas de stock.' USING ERRCODE='42501';
+  END IF;
+  SELECT * INTO v_res FROM public.ks_technical_stock_reservations
+  WHERE id=p_reservation_id AND company_id=v_company_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Reserva não encontrada.' USING ERRCODE='P0002'; END IF;
+  IF v_res.status<>'reserved' THEN
+    RETURN jsonb_build_object('ok',true,'duplicate',true,'status',v_res.status);
+  END IF;
+  PERFORM 1 FROM public.ks_technical_stock_balances
+  WHERE company_id=v_company_id AND warehouse_id=v_res.warehouse_id AND product_id=v_res.product_id
+  FOR UPDATE;
+  UPDATE public.ks_technical_stock_balances
+  SET reserved_qty=greatest(0,reserved_qty-v_res.quantity),updated_at=now()
+  WHERE company_id=v_company_id AND warehouse_id=v_res.warehouse_id AND product_id=v_res.product_id;
+  UPDATE public.ks_technical_stock_reservations SET status='released' WHERE id=v_res.id;
+  INSERT INTO public.ks_technical_stock_movements(
+    company_id,warehouse_id,product_id,movement_type,quantity,reference_type,reference_id,reason,created_by
+  ) VALUES(v_company_id,v_res.warehouse_id,v_res.product_id,'release',v_res.quantity,v_res.reference_type,v_res.reference_id,
+    coalesce(nullif(trim(p_reason),''),'Reserva libertada'),(SELECT auth.uid()));
+  RETURN jsonb_build_object('ok',true,'duplicate',false,'status','released');
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.ks_technical_reserve_stock(text,uuid,uuid,jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ks_technical_convert_quote_to_work_order(uuid,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ks_technical_approve_quote(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ks_technical_release_stock_reservation(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.ks_technical_reserve_stock(text,uuid,uuid,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ks_technical_convert_quote_to_work_order(uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ks_technical_approve_quote(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ks_technical_release_stock_reservation(uuid,text) TO authenticated;
