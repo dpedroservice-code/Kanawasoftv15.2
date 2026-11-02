@@ -2501,8 +2501,8 @@ function mapaRastreioHtml(registo) {
   const lat = Number(registo.lat), lng = Number(registo.lng);
   const valido = registo.coordinates_valid === true && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
   const mapa = valido ? iframeMapaRastreio(lat, lng) : '<div class="alert alert-warning">Ainda não há coordenadas confirmadas para esta encomenda. Obtenha a posição pelo GPS ou introduza as coordenadas manualmente para carregar o mapa.</div>';
-  return '<div class="form-grid"><div class="form-group"><label>Latitude</label><input id="rastreioMapaLat" type="number" step="any" min="-90" max="90" value="' + (valido ? lat : '') + '" placeholder="-8.8383"></div>' +
-    '<div class="form-group"><label>Longitude</label><input id="rastreioMapaLng" type="number" step="any" min="-180" max="180" value="' + (valido ? lng : '') + '" placeholder="13.2344"></div></div>' +
+  return '<div class="form-grid"><div class="form-group"><label>Latitude</label><input id="rastreioMapaLat" oninput="marcarLocalizacaoManual()" type="number" step="any" min="-90" max="90" value="' + (valido ? lat : '') + '" placeholder="-8.8383"></div>' +
+    '<div class="form-group"><label>Longitude</label><input id="rastreioMapaLng" oninput="marcarLocalizacaoManual()" type="number" step="any" min="-180" max="180" value="' + (valido ? lng : '') + '" placeholder="13.2344"></div></div>' +
     '<input id="rastreioLocationSource" type="hidden" value="' + (registo.location_source === 'gps' ? 'gps' : 'manual') + '">' +
     '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">' +
     '<button class="btn btn-primary" onclick="obterGPSRastreio(' + Number(registo.id) + ')"><i class="fas fa-crosshairs"></i> Usar GPS atual</button>' +
@@ -2519,6 +2519,7 @@ async function abrirMapaRastreio(id) {
   if (!registo) { toast('Encomenda não encontrada.', 'warning'); return; }
   openModal('🗺️ Calibrar localização — ' + (registo.codigo || 'Rastreio'), mapaRastreioHtml(registo), true);
 }
+function marcarLocalizacaoManual() { const source = $('rastreioLocationSource'); if (source) source.value = 'manual'; }
 function atualizarMapaRastreio(id) {
   try {
     const coords = coordenadasRastreio($('rastreioMapaLat').value, $('rastreioMapaLng').value);
