@@ -10,6 +10,7 @@
   function fromMembership(role, permissions) {
     if (role === 'admin') return { modulos: '*', acoes: Array.from(allowed), verFinanceiro: true, excluir: true, configurar: true, descontoMax: 100 };
     const grants = {};
+    if (role === 'manager') grants.tecnica = ['ver','criar','editar','aprovar'];
     if (permissions && typeof permissions === 'object' && !Array.isArray(permissions)) {
       Object.keys(permissions).forEach(function (name) {
         const value = permissions[name];
