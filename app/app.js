@@ -1820,16 +1820,25 @@ async function renderConfig() {
     '<button class="btn btn-info" onclick="exportarBackupCompleto()"><i class="fas fa-download"></i> Backup</button>' +
     '<button class="btn btn-danger" onclick="resetTotal()"><i class="fas fa-bomb"></i> Reset Total</button></div></div>';
 }
-function salvarConfigEmpresa() {
+async function salvarConfigEmpresa() {
   const empAtual = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logoAtual = empAtual.logo || 'logo.png';
   const logoNovo = localStorage.getItem('kanawa_logo_temp') || logoAtual;
-  const e = { firma: $('cfgFirma').value, nome: $('cfgNome').value, nif: $('cfgNif').value, alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value, email: $('cfgEmail').value, endereco: $('cfgEnd').value, website: $('cfgSite').value, banco: $('cfgBanco').value, iban: $('cfgIban').value, logo: logoNovo };
+  const e = { firma: $('cfgFirma').value.trim(), nome: $('cfgNome').value.trim(), nif: $('cfgNif').value.trim(), alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value.trim(), email: $('cfgEmail').value.trim(), endereco: $('cfgEnd').value.trim(), website: $('cfgSite').value.trim(), banco: $('cfgBanco').value, iban: $('cfgIban').value.trim(), logo: logoNovo };
+  if (!e.firma && !e.nome) { toast('Informe a razão social ou o nome comercial.', 'warning'); return; }
+  if (window.KanawaCloud && KanawaCloud.ready) {
+    try {
+      await KanawaCloud.updateCompany(e);
+    } catch (error) {
+      toast(error.message || 'Não foi possível atualizar a empresa na nuvem.', 'error');
+      return;
+    }
+  }
   localStorage.setItem('kanawa_empresa', JSON.stringify(e));
   localStorage.removeItem('kanawa_logo_temp');
   aplicarLogo();
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = e.firma || e.nome || 'Kanawa Soft';
-  toast('✅ Empresa atualizada', 'success');
+  toast(window.KanawaCloud && KanawaCloud.ready ? 'Dados principais da empresa atualizados na nuvem. Os campos adicionais permanecem locais.' : 'Dados guardados apenas neste dispositivo; ainda não foram sincronizados.', 'warning');
 }
 function escolherLogoEmpresa(input) {
   const file = input.files[0]; if (!file) return;
