@@ -1,7 +1,7 @@
 'use strict';
-/* KANAWA SOFT ERP v15.3 CLOUD — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
+/* KANAWA SOFT ERP v15.3.0 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
-const APP_VERSION = '15.3-cloud';
+const APP_VERSION = '15.3.0';
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 let API_ONLINE = false;
 let setupStep = 1;
@@ -2226,21 +2226,30 @@ async function editarPlanoProducao(id) { const p = await DB.get('planosProducao'
 /* LOGÍSTICA */
 async function renderLogisticaRoteirizacao() {
   const rotas = await getData('roteirizacao') || [];
-  return header('Roteirização', rotas.length + ' rotas', 'var(--primary)',
+  return header('Roteirização', rotas.length + ' rotas — distâncias manuais ou não calculadas', 'var(--primary)',
     '<button class="btn btn-success" onclick="abrirModalRota()"><i class="fas fa-plus"></i> Nova Rota</button>' +
     '<button class="btn btn-info" onclick="otimizarRotas()"><i class="fas fa-robot"></i> Otimizar</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || '-'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
+    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Fonte', 'Veículo', 'Ações'],
+      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || 'Não calculada'), esc(r.distance_source === 'manual' ? 'Manual' : 'Não calculada'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
 function abrirModalRota() {
   openModal('Nova Rota',
     '<div class="form-group"><label>Origem *</label><input id="rotaOrigem"></div>' +
     '<div class="form-group"><label>Destino *</label><input id="rotaDestino"></div>' +
-    '<div class="form-group"><label>Distância</label><input id="rotaDistancia" placeholder="Ex: 15 km"></div>' +
+    '<div class="form-group"><label>Distância (km, opcional e manual)</label><input id="rotaDistancia" inputmode="decimal" placeholder="Ex: 15,5 — não calcula automaticamente"></div>' +
     '<div class="form-group"><label>Veículo</label><input id="rotaVeiculo"></div>' +
     '<button class="btn btn-primary btn-block" onclick="salvarRota()">Salvar</button>');
 }
-async function salvarRota() { const o = $('rotaOrigem').value.trim(); const d = $('rotaDestino').value.trim(); if (!o || !d) { toast('Preencha origem e destino', 'warning'); return; } await saveData('roteirizacao', { origem: o, destino: d, distancia: $('rotaDistancia').value, veiculo: $('rotaVeiculo').value, data: now() }); toast('Rota criada', 'success'); closeModal(); openModule('logistica-roteirizacao'); }
+async function salvarRota() {
+  const origem = $('rotaOrigem').value.trim(), destino = $('rotaDestino').value.trim();
+  if (!origem || !destino) { toast('Preencha origem e destino', 'warning'); return; }
+  try {
+    const distance = KanawaOperations.normalizeRouteDistance($('rotaDistancia').value);
+    await saveData('roteirizacao', Object.assign({ origem, destino, veiculo: $('rotaVeiculo').value.trim(), data: now(), route_status: 'pending_calculation' }, distance));
+    toast(distance.distance_source === 'manual' ? 'Rota guardada. A distância foi indicada manualmente e não foi calculada por mapa.' : 'Rota guardada sem distância calculada. Configure um fornecedor de mapas para obter o percurso real.', 'warning');
+    closeModal(); openModule('logistica-roteirizacao');
+  } catch (error) { toast(error.message, 'warning'); }
+}
 function otimizarRotas() { toast('Otimização bloqueada: ainda não existe um motor de rotas ativo nem coordenadas verificadas para as paragens.', 'warning'); }
 
 async function renderLogisticaEtiquetas() {
@@ -2361,7 +2370,18 @@ async function renderEcommercePedidos() {
       '<button class="btn btn-sm btn-primary" onclick="detalharPedidoEcommerce(' + p.id + ')"><i class="fas fa-eye"></i></button> <button class="btn btn-sm btn-success" onclick="atualizarStatusPedidoEcommerce(' + p.id + ')"><i class="fas fa-sync"></i></button>'])) + '</div>';
 }
 async function detalharPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; alert('Pedido #' + id + '\nCliente: ' + p.cliente + '\nTotal: ' + fmt(p.total) + '\nStatus: ' + p.status); }
-async function atualizarStatusPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; const s = prompt('Status (pendente, enviado, entregue, cancelado):', p.status); if (s) { p.status = s; await saveData('ecommercePedidos', p); toast('Status atualizado', 'success'); openModule('ecommerce-pedidos'); } }
+async function atualizarStatusPedidoEcommerce(id) {
+  const pedido = await DB.get('ecommercePedidos', id); if (!pedido) return;
+  const input = prompt('Estado interno (pendente, confirmado, em preparação, enviado, entregue, cancelado):', pedido.status);
+  if (input === null || !input.trim()) return;
+  try {
+    pedido.status = KanawaOperations.normalizeOrderStatus(input);
+    pedido.status_source = 'manual_internal';
+    await saveData('ecommercePedidos', pedido);
+    toast('Estado interno atualizado. Isto não confirma pagamento nem estado da transportadora.', 'warning');
+    openModule('ecommerce-pedidos');
+  } catch (error) { toast(error.message, 'warning'); }
+}
 function exportarPedidosEcommerce() { toast('Exportação de pedidos ainda não está implementada; nenhum ficheiro foi criado.', 'warning'); }
 async function renderEcommercePagamento() {
   if (!window.KanawaCloud || !KanawaCloud.ready) {
@@ -2584,19 +2604,40 @@ async function renderFrotaRotas() {
   const r = await getData('roteirizacao') || [];
   return header('Rotas', r.length + ' rotas', 'var(--info)',
     '<button class="btn btn-success" onclick="novaRotaFrota()"><i class="fas fa-plus"></i> Nova Rota</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Veículo', 'Ações'],
-      r.map(x => [esc(x.origem || '-'), esc(x.destino || '-'), esc(x.distancia || '-'), esc(x.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
+    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Fonte', 'Veículo', 'Ações'],
+      r.map(x => [esc(x.origem || '-'), esc(x.destino || '-'), esc(x.distancia || 'Não calculada'), esc(x.distance_source === 'manual' ? 'Manual' : 'Não calculada'), esc(x.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
-async function novaRotaFrota() { const o = prompt('Origem:'); if (!o) return; await saveData('roteirizacao', { origem: o, destino: prompt('Destino:') || 'Não especificado', distancia: prompt('Distância:', '0 km') || '0 km', veiculo: prompt('Veículo:') || 'Não alocado', data: now() }); toast('Rota criada', 'success'); openModule('frota-rotas'); }
+async function novaRotaFrota() {
+  const origem = prompt('Origem:'); if (!origem || !origem.trim()) return;
+  const destino = prompt('Destino:'); if (!destino || !destino.trim()) return;
+  const distanceInput = prompt('Distância em km (opcional; deixe vazio se ainda não foi calculada):', '');
+  const veiculo = prompt('Veículo (opcional):', '') || '';
+  try {
+    const distance = KanawaOperations.normalizeRouteDistance(distanceInput);
+    await saveData('roteirizacao', Object.assign({ origem: origem.trim(), destino: destino.trim(), veiculo: veiculo.trim(), data: now(), route_status: 'pending_calculation' }, distance));
+    toast(distance.distance_source === 'manual' ? 'Rota guardada. A distância foi introduzida manualmente.' : 'Rota guardada sem distância calculada; não foi consultado nenhum mapa.', 'warning');
+    openModule('frota-rotas');
+  } catch (error) { toast(error.message, 'warning'); }
+}
 async function renderFrotaGPS() {
   const g = await getData('gpsTracking') || [];
-  return header('GPS Tracking', g.length + ' veículos', 'var(--success)',
+  return header('Localizações de Frota', g.length + ' registos — telemetria em tempo real não configurada', 'var(--warning)',
     '<button class="btn btn-success" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Adicionar</button>', 'fa-satellite') +
-    '<div class="card"><div class="gps-map" style="height:300px;background:var(--bg);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;color:var(--text-muted);border:1px solid var(--border)"><div style="text-align:center"><i class="fas fa-map" style="font-size:3rem;opacity:0.3"></i><p style="font-size:.8rem">Mapa de rastreamento GPS</p></div></div></div>' +
-    '<div class="card">' + table(['Veículo', 'Latitude', 'Longitude', 'Última Atualização'],
-      g.map(x => ['<strong>' + esc(x.veiculo) + '</strong>', esc(x.lat || '-'), esc(x.lng || '-'), fmtDT(x.ultimaAtualizacao)])) + '</div>';
+    '<div class="card"><div class="alert alert-warning">Este ecrã apresenta apenas coordenadas registadas manualmente. Não existe ligação a rastreadores GPS nem atualização em tempo real.</div></div>' +
+    '<div class="card">' + table(['Veículo', 'Latitude', 'Longitude', 'Origem', 'Última Atualização'],
+      g.map(x => ['<strong>' + esc(x.veiculo) + '</strong>', esc(x.lat || '-'), esc(x.lng || '-'), esc(x.location_source === 'manual' && x.coordinates_valid === true ? 'Manual (registada)' : 'Não verificada'), fmtDT(x.ultimaAtualizacao)])) + '</div>';
 }
-async function adicionarGPS() { const v = prompt('Placa do veículo:'); if (!v) return; await saveData('gpsTracking', { veiculo: v, lat: '-8.8391', lng: '13.2894', ultimaAtualizacao: now() }); toast('Veículo adicionado ao GPS', 'success'); openModule('frota-gps'); }
+async function adicionarGPS() {
+  const veiculo = prompt('Placa/identificação do veículo:'); if (!veiculo || !veiculo.trim()) return;
+  const latitude = prompt('Latitude real do equipamento/dispositivo:'); if (latitude === null || latitude.trim() === '') return;
+  const longitude = prompt('Longitude real do equipamento/dispositivo:'); if (longitude === null || longitude.trim() === '') return;
+  try {
+    const location = KanawaOperations.normalizeCoordinates(latitude, longitude);
+    await saveData('gpsTracking', Object.assign({ veiculo: veiculo.trim(), ultimaAtualizacao: now(), location_source: 'manual', tracking_mode: 'manual' }, location));
+    toast('Localização registada manualmente. Isto não é rastreamento GPS em tempo real.', 'warning');
+    openModule('frota-gps');
+  } catch (error) { toast(error.message, 'warning'); }
+}
 async function renderFrotaCombustivel() {
   const a = await getData('abastecimentos') || [];
   return header('Consumo de Combustível', a.length + ' abastecimentos', 'var(--warning)',
