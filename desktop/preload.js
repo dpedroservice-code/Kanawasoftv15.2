@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld('kanawaNative', {
   electronVersion: process.versions.electron,
   chromeVersion: process.versions.chrome,
   nodeVersion: process.versions.node,
-  appVersion: '15.2.0',
+  appVersion: '15.3.0',
   isWindows: process.platform === 'win32',
   isMac: process.platform === 'darwin',
   isLinux: process.platform === 'linux',
