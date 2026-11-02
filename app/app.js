@@ -1835,6 +1835,8 @@ async function salvarConfigEmpresa() {
     }
   }
   localStorage.setItem('kanawa_empresa', JSON.stringify(e));
+  const cachedCompany = await DB.get('empresas', 1) || { id: 1 };
+  await DB.put('empresas', Object.assign({}, cachedCompany, e, { id: 1 }));
   localStorage.removeItem('kanawa_logo_temp');
   aplicarLogo();
   if ($('topbarEmpresa')) $('topbarEmpresa').textContent = e.firma || e.nome || 'Kanawa Soft';
