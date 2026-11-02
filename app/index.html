@@ -2,7 +2,7 @@
 <html lang="pt-AO" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1a3a5c">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -218,6 +218,103 @@ tr:hover td{background:var(--bg-hover)}
 @media(max-width:900px){.form-grid{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.pdv-products-grid{grid-template-columns:repeat(2,1fr)}.topbar-title h1{font-size:.95rem}.topbar-title p{display:none}}
 @media(max-width:600px){:root{--sidebar-w:80px}.sidebar-item i{font-size:1.3rem}.sidebar-item span{font-size:.6rem}.topbar-user .info{display:none}.metric-grid{grid-template-columns:1fr}.pdv-products-grid{grid-template-columns:repeat(2,1fr)}.pdv-prod-card .img{height:110px}}
 @media print{body{overflow:visible;height:auto}.sidebar,.topbar,.pdv-breadcrumb,.btn,.no-print{display:none!important}}
+
+/* ===== RESPONSIVIDADE GLOBAL — DESKTOP, TABLET E TELEMÓVEL ===== */
+html{min-height:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{height:100vh;height:100dvh;min-height:100svh;overflow:hidden}
+#app{height:100vh;height:100dvh;min-height:0}
+.main-wrap{min-width:0;min-height:0}
+.content{min-width:0;min-height:0;width:100%;overscroll-behavior:contain}
+.card,.metric-card,.modal,.setup-box{min-width:0;max-width:100%}
+img,video,canvas,iframe{max-width:100%}
+.table-wrap{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+table{min-width:600px}
+.form-grid>*{min-width:0}
+.form-group input,.form-group select,.form-group textarea,button,select{max-width:100%}
+button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
+@media(min-width:1200px){
+  :root{--sidebar-w:132px}
+  .content{padding:24px clamp(20px,2.2vw,36px)}
+  .metric-grid{grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr))}
+}
+@media(min-width:601px) and (max-width:1024px){
+  :root{--sidebar-w:88px}
+  .sidebar{padding:10px 5px}
+  .content{padding:16px}
+  .card{padding:16px}
+  .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .topbar{padding:0 14px}
+}
+@media(max-width:600px){
+  :root{--sidebar-w:0px;--radius:12px}
+  .topbar{height:auto;min-height:58px;padding:7px 10px;gap:8px}
+  .topbar-left{gap:8px;min-width:0}
+  .topbar-logo{width:38px;height:38px;font-size:1.1rem}
+  .topbar-title{min-width:0}
+  .topbar-title h1{font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+  .topbar-right{gap:5px}
+  .topbar-btn{width:40px;height:40px;flex:0 0 40px}
+  .topbar-user{padding:3px;background:transparent}
+  .topbar-user img{width:32px;height:32px}
+  .main-wrap{flex-direction:column;min-height:0}
+  .sidebar{order:2;width:100%;height:68px;min-height:68px;flex:0 0 68px;flex-direction:row;align-items:stretch;justify-content:flex-start;gap:5px;padding:5px 8px calc(5px + env(safe-area-inset-bottom));border-right:0;border-top:1px solid var(--border);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+  .sidebar>.sidebar-item{width:64px;min-width:64px;max-width:64px;height:54px;flex:0 0 64px;padding:5px 3px;gap:3px}
+  .sidebar-item i{font-size:1.15rem}
+  .sidebar-item span{font-size:.58rem;line-height:1.05;max-width:60px;overflow-wrap:anywhere}
+  .sidebar-group{position:relative;width:64px;min-width:64px;max-width:64px;flex:0 0 64px;margin:0}
+  .sidebar-group summary{height:54px;padding:5px 2px;gap:3px;border:0}
+  .sidebar-group summary>i:first-child{font-size:1.15rem}
+  .sidebar-group summary span{font-size:.55rem;line-height:1.05}
+  .sidebar-group-chevron{display:none}
+  .sidebar-group[open]{z-index:500}
+  .sidebar-group[open]>.sidebar-item{position:absolute;left:0;bottom:calc(100% + 8px);width:190px;max-width: min(190px,80vw);height:auto;min-height:46px;display:flex;flex-direction:row;justify-content:flex-start;padding:10px 12px;background:var(--bg-card);box-shadow:var(--shadow-hover);border:1px solid var(--border);border-radius:9px;text-align:left}
+  .sidebar-group[open]>.sidebar-item span{font-size:.78rem;max-width:none;text-align:left}
+  .sidebar-group[open]>.sidebar-item i{font-size:1rem}
+  .content{order:1;flex:1 1 auto;padding:12px 10px calc(16px + env(safe-area-inset-bottom));overflow-x:hidden}
+  .card{padding:14px;margin-bottom:12px;border-radius:12px}
+  .card-header{align-items:flex-start}
+  .card-title{font-size:.98rem}
+  .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:12px}
+  .metric-card{padding:12px;border-left-width:4px}
+  .metric-card .value{font-size:clamp(1.1rem,5vw,1.5rem);overflow-wrap:anywhere}
+  .metric-card .icon{font-size:2rem;right:10px}
+  .form-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+  .form-grid .full{grid-column:1}
+  .form-group input,.form-group select,.form-group textarea{width:100%;min-height:44px;font-size:16px}
+  .btn{min-height:42px;padding:10px 13px;font-size:.84rem;white-space:normal}
+  .btn-lg{padding:11px 14px;font-size:.9rem}
+  .table-wrap{margin-left:-2px;margin-right:-2px}
+  table{font-size:.8rem}
+  th,td{padding:9px 8px}
+  .modal-overlay{padding:8px;align-items:flex-end}
+  .modal{width:100%;max-width:100%;max-height:92dvh;overflow-y:auto;border-radius:16px 16px 8px 8px}
+  .pdv-products-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .pdv-prod-card .img{height:clamp(82px,25vw,120px)}
+  .setup-box{width:calc(100% - 20px);max-width:480px;padding:18px}
+}
+@media(max-width:380px){
+  .metric-grid{grid-template-columns:minmax(0,1fr)}
+  .topbar-title h1{max-width:34vw}
+  .topbar-btn{width:36px;height:36px;flex-basis:36px}
+  .sidebar{height:64px;min-height:64px;flex-basis:64px}
+}
+@media(max-height:520px) and (orientation:landscape){
+  .topbar{min-height:48px;height:48px}
+  .topbar-logo{width:34px;height:34px}
+  .sidebar{height:56px;min-height:56px;flex-basis:56px}
+  .sidebar>.sidebar-item,.sidebar-group summary{height:46px}
+  .content{padding-top:8px;padding-bottom:8px}
+  .modal{max-height:88dvh}
+}
+@media(hover:none) and (pointer:coarse){
+  .btn,.topbar-btn,.sidebar-item,.sidebar-group summary{min-height:42px}
+  .metric-card:hover,.pdv-prod-card:hover{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+
 </style>
 </head>
 <body>
