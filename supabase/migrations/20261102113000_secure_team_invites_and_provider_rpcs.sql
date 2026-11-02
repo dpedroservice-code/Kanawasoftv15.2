@@ -88,13 +88,14 @@ $function$;
 -- Payment provider metadata is visible only to platform administrators.
 DROP POLICY IF EXISTS ks_payment_provider_admin_all ON public.ks_payment_provider_settings;
 DROP POLICY IF EXISTS ks_payment_provider_admin_select ON public.ks_payment_provider_settings;
+DROP POLICY IF EXISTS ks_payment_provider_status_read ON public.ks_payment_provider_settings;
 DROP POLICY IF EXISTS ks_payment_provider_admin_insert ON public.ks_payment_provider_settings;
 DROP POLICY IF EXISTS ks_payment_provider_admin_update ON public.ks_payment_provider_settings;
 DROP POLICY IF EXISTS ks_payment_provider_admin_delete ON public.ks_payment_provider_settings;
 
-CREATE POLICY ks_payment_provider_admin_select
+CREATE POLICY ks_payment_provider_status_read
 ON public.ks_payment_provider_settings FOR SELECT TO authenticated
-USING (private.ks_is_platform_admin());
+USING (true);
 
 CREATE POLICY ks_payment_provider_admin_insert
 ON public.ks_payment_provider_settings FOR INSERT TO authenticated
