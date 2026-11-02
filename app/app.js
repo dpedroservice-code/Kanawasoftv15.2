@@ -8,6 +8,8 @@ let setupStep = 1;
 let currentModule = 'dashboard';
 let scanner = null, scannerActive = false, scannerCallback = null;
 let syncTimer = null;
+let syncInProgress = false;
+let syncEventsBound = false;
 let pdvState = { screen: 1, carrinho: [], cliente: { nome: 'Cliente Anônimo', nif: '', telefone: '' }, pagamento: 'dinheiro', desconto: 0, valorRecebido: 0, aplicarIVA: true, regime: 'geral', observacoes: '' };
 let pdvCache = { produtos: [], favoritos: JSON.parse(localStorage.getItem('kanawa_favoritos') || '[]'), ts: 0 };
 const AGT_CONFIG = { iva: 0.14, ivaReduzido: 0.07, irt: { faixas: [
@@ -131,8 +133,9 @@ async function getData(store) {
     }
     return await DB.getAll(store);
   } catch (e) {
-    console.warn('getData:', store, e);
-    return [];
+    console.error('Falha ao ler o armazenamento local:', store, e);
+    toast('Não foi possível ler os dados locais de ' + store + '. Não foram substituídos por uma lista vazia.', 'error');
+    throw e;
   }
 }
 
@@ -179,8 +182,33 @@ async function deleteData(store, id) {
 
 async function queueSync(entity, action, payload, options) {
   if (window.KanawaCloud && KanawaCloud.isLocalOnly(entity)) return;
-  try { await DB.add('_sync_queue', { entity: entity, action: action, payload: payload, options: options || {}, data: now(), synced: false }); }
-  catch (e) { console.warn('Não foi possível guardar fila de sincronização:', e); }
+  try {
+    // Coalesce repeated create/update operations for the same record while offline.
+    // Deletes remain separate so create -> delete keeps its original ordering.
+    if (action !== 'delete' && payload && payload.id !== undefined && payload.id !== null) {
+      const pending = await DB.getAll('_sync_queue');
+      const previous = pending.find(function (entry) {
+        return entry.entity === entity && entry.action !== 'delete' &&
+          entry.payload && String(entry.payload.id) === String(payload.id);
+      });
+      if (previous) {
+        previous.action = previous.action === 'create' ? 'create' : action;
+        previous.payload = payload;
+        previous.options = options || {};
+        previous.updatedAt = now();
+        await DB.put('_sync_queue', previous);
+        return previous.id;
+      }
+    }
+    return await DB.add('_sync_queue', {
+      entity: entity, action: action, payload: payload, options: options || {},
+      data: now(), synced: false, attempts: 0
+    });
+  } catch (e) {
+    console.error('Não foi possível guardar a operação na fila de sincronização:', e);
+    toast('Atenção: a operação ficou neste dispositivo, mas a fila de sincronização não pôde ser guardada. Não feche nem limpe os dados do navegador.', 'error');
+    throw e;
+  }
 }
 
 async function processSyncQueue() {
@@ -226,17 +254,28 @@ async function pullFromServer() {
 }
 
 async function syncNow(showMessage) {
-  const online = await API.checkHealth();
-  if (!online) {
-    if (showMessage) toast('Sem ligação à base de dados. Os dados ficam guardados neste dispositivo.', 'warning');
-    return false;
-  }
+  if (syncInProgress) return false;
+  syncInProgress = true;
   const indicator = $('syncIndicator'), label = $('syncText');
-  if (indicator) indicator.className = 'sync-indicator show syncing';
-  if (label) label.textContent = 'A sincronizar com PostgreSQL...';
   try {
+    const online = await API.checkHealth();
+    if (!online) {
+      if (indicator) indicator.className = 'sync-indicator show offline';
+      if (label) label.textContent = 'Sem ligação — dados locais preservados';
+      if (showMessage) toast('Sem ligação à base de dados. Os dados permanecem na cache local e na fila de sincronização.', 'warning');
+      return false;
+    }
+    if (indicator) indicator.className = 'sync-indicator show syncing';
+    if (label) label.textContent = 'A sincronizar com PostgreSQL...';
     const sent = await processSyncQueue();
     const received = await pullFromServer();
+    const pending = await DB.count('_sync_queue');
+    if (pending > 0) {
+      if (indicator) indicator.className = 'sync-indicator show offline';
+      if (label) label.textContent = pending + ' operação(ões) ainda pendente(s)';
+      if (showMessage) toast('Sincronização parcial: ' + sent + ' enviados, ' + pending + ' ainda pendentes. Os dados locais foram preservados.', 'warning');
+      return false;
+    }
     if (indicator) indicator.className = 'sync-indicator show online';
     if (label) label.textContent = 'Base de dados sincronizada ✓';
     if (showMessage) toast('Sincronização concluída: ' + sent + ' enviados, ' + received + ' recebidos.', 'success');
@@ -246,15 +285,37 @@ async function syncNow(showMessage) {
     if (indicator) indicator.className = 'sync-indicator show offline';
     if (label) label.textContent = 'Sincronização pendente';
     if (showMessage) toast('Falha na sincronização: ' + e.message, 'error');
+    console.error('Kanawa sync:', e);
     return false;
+  } finally {
+    syncInProgress = false;
   }
 }
 function toggleSync() { syncNow(true); }
 function startAutoSync() {
   if (syncTimer) clearInterval(syncTimer);
   syncTimer = setInterval(() => {
-    if (window.KanawaCloud && KanawaCloud.ready) syncNow(false);
+    if (window.KanawaCloud && KanawaCloud.ready && navigator.onLine) syncNow(false);
   }, 60000);
+
+  if (!syncEventsBound) {
+    window.addEventListener('online', () => {
+      if (window.KanawaCloud && KanawaCloud.ready) syncNow(false);
+    });
+    window.addEventListener('offline', () => {
+      API_ONLINE = false;
+      updateApiStatus(false);
+      const label = $('syncText');
+      if (label) label.textContent = 'Offline — sincronização será retomada automaticamente';
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && navigator.onLine && window.KanawaCloud && KanawaCloud.ready) syncNow(false);
+    });
+    window.addEventListener('pageshow', () => {
+      if (navigator.onLine && window.KanawaCloud && KanawaCloud.ready) syncNow(false);
+    });
+    syncEventsBound = true;
+  }
 }
 
 async function activateCloudSession(ctx, migrateLocal) {
