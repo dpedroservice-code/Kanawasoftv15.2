@@ -8,11 +8,11 @@ AS $function$
 DECLARE
   v_external_id text := nullif(p_sale->>'external_id','');
   v_invoice text := nullif(p_sale->>'invoice_number','');
-  v_subtotal numeric(18,2) := coalesce((p_sale->>'subtotal')::numeric,0);
-  v_discount numeric(18,2) := coalesce((p_sale->>'discount_value')::numeric,0);
-  v_tax numeric(18,2) := coalesce((p_sale->>'tax_amount')::numeric,0);
-  v_total numeric(18,2) := coalesce((p_sale->>'total')::numeric,0);
-  v_received numeric(18,2) := coalesce((p_sale->>'amount_received')::numeric,0);
+  v_subtotal numeric(18,2) := coalesce(nullif(p_sale->>'subtotal','')::numeric,0);
+  v_discount numeric(18,2) := coalesce(nullif(p_sale->>'discount_value','')::numeric,0);
+  v_tax numeric(18,2) := coalesce(nullif(p_sale->>'tax_amount','')::numeric,0);
+  v_total numeric(18,2) := coalesce(nullif(p_sale->>'total','')::numeric,0);
+  v_received numeric(18,2) := coalesce(nullif(p_sale->>'amount_received','')::numeric,0);
   v_change numeric(18,2) := coalesce((p_sale->>'change_amount')::numeric,0);
   v_method text := coalesce(nullif(p_sale->>'payment_method',''),'não indicado');
   v_item jsonb;
@@ -99,9 +99,9 @@ BEGIN
     v_line:=v_line+1;
     v_product_id:=nullif(v_item->>'product_external_id','');
     v_product_name:=coalesce(nullif(trim(v_item->>'product_name'),''),'Artigo');
-    v_qty:=coalesce((v_item->>'quantity')::numeric,0);
-    v_price:=coalesce((v_item->>'unit_price')::numeric,0);
-    v_line_total:=coalesce((v_item->>'line_total')::numeric,round(v_qty*v_price,2));
+    v_qty:=coalesce(nullif(v_item->>'quantity','')::numeric,0);
+    v_price:=coalesce(nullif(v_item->>'unit_price','')::numeric,0);
+    v_line_total:=coalesce(nullif(v_item->>'line_total','')::numeric,round(v_qty*v_price,2));
     v_stock_tracked:=coalesce((v_item->>'stock_tracked')::boolean,true);
     IF v_product_id IS NULL OR v_qty<=0 OR v_price<0 OR v_line_total<0 OR
        abs(v_line_total-round(v_qty*v_price,2))>0.01 THEN
