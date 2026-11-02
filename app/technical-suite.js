@@ -272,21 +272,4 @@
   async function render() { await load(); return shell(); }
   function tab(name) { state.tab=name; const root=$('kt-content'); if(root) root.innerHTML=bodyForTab(); document.querySelectorAll('.kt-tab').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().includes(({overview:'visão geral',quotes:'orçamentos',products:'produtos',categories:'categorias',services:'serviços',evaluations:'diagnósticos',stock:'stock',production:'kits',tracking:'rastreio',commercial:'preços',people:'técnicos'})[name]))); }
   window.KanawaTechnical={render,tab,submit,approve,convert,refresh};
-  // The add-on is loaded after the core application; preserve all existing routes.
-  const oldOpen=window.openModule;
-  if(typeof oldOpen==='function') window.openModule=function(id){if(id==='tecnica'){if(!canManageTechnical()){notify('Acesso reservado à gerência e administração.','error');return;}currentModule='tecnica';document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.toggle('active',el.dataset.id==='tecnica'));const c=$('content');c.innerHTML='<div class="card">A carregar centro técnico…</div>';render().then(html=>{c.innerHTML=html;c.scrollTop=0;}).catch(e=>{c.innerHTML='<div class="card">Falha ao abrir o módulo: '+escT(e.message)+'</div>';});return;}return oldOpen.apply(this,arguments);};
-  const canManageTechnical = () => {
-    try { const cloudRole=window.KanawaCloud&&window.KanawaCloud.context&&window.KanawaCloud.context.role; const u=JSON.parse(localStorage.getItem('kanawa_user')||'{}'); return ['admin','gerente','owner','manager'].includes(String(cloudRole||u.role||u.perfil||'').toLowerCase()); } catch (_) { return false; }
-  };
-  const oldSidebar=window.renderSidebar;
-  if(typeof oldSidebar==='function') window.renderSidebar=function(){
-    oldSidebar.apply(this,arguments);
-    const sb=document.getElementById('sidebar');
-    if(sb&&canManageTechnical()&&!sb.querySelector('[data-id="tecnica"]')){
-      const b=document.createElement('button'); b.className='sidebar-item'; b.dataset.id='tecnica';
-      b.innerHTML='<i class="fas fa-tools"></i><span>Plano Técnica</span>';
-      b.addEventListener('click',()=>window.openModule('tecnica')); sb.appendChild(b);
-    }
-  };
-  if(typeof window.renderSidebar==='function'&&document.getElementById('sidebar')&&document.getElementById('app')?.classList.contains('active')) window.renderSidebar();
 })();
