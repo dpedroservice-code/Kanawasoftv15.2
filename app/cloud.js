@@ -28,15 +28,18 @@
   function appRole(role) {
     if (role === 'owner' || role === 'admin') return 'admin';
     if (role === 'manager') return 'gerente';
+    if (role === 'operator') return 'operador';
     if (role === 'cashier') return 'caixa';
-    return 'operador';
+    if (role === 'accountant') return 'contabilista';
+    if (role === 'viewer') return 'visualizador';
+    return 'visualizador';
   }
 
   async function loadContext(user) {
     if (!client || !user) throw new Error('Sessão Kanawa não encontrada.');
     const membershipResult = await client
       .from('ks_company_memberships')
-      .select('company_id, role, status')
+      .select('company_id, role, status, permissions')
       .eq('user_id', user.id)
       .eq('status', 'active')
       .order('created_at', { ascending: true })
@@ -309,6 +312,40 @@
       const result = await client.from('ks_companies').update(update).eq('id', context.company.id);
       if (result.error) throw result.error;
       context.company = Object.assign({}, context.company, update);
+    },
+
+    async listCompanyMembers() {
+      if (!this.ready) throw new Error('Sessão da empresa não está ativa.');
+      if (context.role !== 'admin') throw new Error('Apenas administradores podem consultar a equipa.');
+      const memberships = failIfError(await client
+        .from('ks_company_memberships')
+        .select('user_id, role, status, permissions, created_at')
+        .eq('company_id', context.company.id)
+        .order('created_at', { ascending: true })) || [];
+      const ids = memberships.map(function (member) { return member.user_id; });
+      let profiles = [];
+      if (ids.length) {
+        profiles = failIfError(await client
+          .from('ks_profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', ids)) || [];
+      }
+      const byId = new Map(profiles.map(function (profile) { return [profile.user_id, profile]; }));
+      return memberships.map(function (member) {
+        const profile = byId.get(member.user_id) || {};
+        return Object.assign({}, member, { full_name: profile.full_name || 'Utilizador', email: profile.email || '' });
+      });
+    },
+
+    async inviteMember(details) {
+      if (!this.ready) throw new Error('Sessão da empresa não está ativa.');
+      if (context.role !== 'admin') throw new Error('Apenas o proprietário ou administrador pode convidar utilizadores.');
+      const result = await client.functions.invoke('ks-invite-member', {
+        body: { company_id: context.company.id, full_name: details.full_name, email: details.email, role: details.role }
+      });
+      if (result.error) throw result.error;
+      if (result.data && result.data.error) throw new Error(result.data.error);
+      return result.data;
     },
 
     async registerInstallation(appVersion) {
