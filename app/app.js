@@ -428,6 +428,7 @@ const MENU = [
   { id: 'vendas', icon: 'fa-receipt', label: 'Vendas' },
   { id: 'orcamentos', icon: 'fa-file-invoice', label: 'Orçamentos' },
   { id: 'tecnica', icon: 'fa-tools', label: 'Plano Técnica' },
+  { id: 'integracoes', icon: 'fa-plug', label: 'Integrações e APIs' },
   { id: 'produtos', icon: 'fa-boxes', label: 'Produtos' },
   { id: 'produtos-avaliacoes', icon: 'fa-star', label: 'Avaliações' },
   { id: 'categorias', icon: 'fa-tags', label: 'Categorias' },
@@ -535,6 +536,7 @@ async function openModule(id) {
   const R = {
     dashboard: renderDashboard, pdv: renderPDV, vendas: renderVendas, orcamentos: renderOrcamentos,
     tecnica: () => { if (!window.KanawaTechnical) throw new Error('Módulo Plano Técnica não carregou.'); return window.KanawaTechnical.render(); },
+    integracoes: () => { if (!window.KanawaIntegrations) throw new Error('Centro de Integrações não carregou.'); return window.KanawaIntegrations.render(); },
     produtos: renderProdutos, categorias: renderCategorias, ecommerce: renderEcommerce,
     estoque: renderEstoque, compras: renderCompras, clientes: renderClientes,
     fornecedores: renderFornecedores, transportadoras: renderTransportadoras, crm: renderCRM,
