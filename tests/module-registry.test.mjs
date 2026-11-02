@@ -28,6 +28,12 @@ test('every menu module has a route renderer', () => {
   assert.deepEqual(ids.filter(id => !routes.has(id)), [], 'menu modules without route renderers');
 });
 
+test('sidebar groups parent modules and submodules together', () => {
+  assert.ok(app.includes('function moduleGroupLabel(module)'));
+  assert.ok(app.includes('<details class="sidebar-group"'));
+  assert.ok(app.includes("group.open = !!group.querySelector('[data-id=\\\"' + id + '\\\"]')"));
+});
+
 test('all direct route renderers are declared', () => {
   const routeBlock = app.match(/const R = \{([\s\S]*?)\n  \};/);
   const refs = [...routeBlock[1].matchAll(/:\s*(?:async\s*)?([A-Za-z_$][\w$]*)\s*(?:,|\n|$)/g)].map(match => match[1]);
