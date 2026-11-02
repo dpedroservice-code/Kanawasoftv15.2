@@ -146,12 +146,11 @@
     try {
       if(kind==='quote') {
         if(!d.cliente.trim()||!d.titulo.trim()) throw new Error('Cliente e título são obrigatórios.');
-        const labor=num(d.horas)*num(d.precoHora), direct=num(d.equipamentos)+num(d.consumiveis)+labor;
-        const indirect=num(d.deslocacao)+num(d.diarias), contingency=(direct+indirect)*num(d.bdi)/100;
-        const discount=Math.min(num(d.desconto),direct+indirect+contingency);
-        const taxable=Math.max(0,direct+indirect+contingency-discount), tax=taxable*num(d.ivaPercent)/100;
-        const retention=taxable*num(d.retencaoPercent)/100, total=taxable+tax-retention;
-        const row={id:undefined,codigo:uid(),tipo:'tecnico',cliente:d.cliente.trim(),titulo:d.titulo.trim(),validadeDias:Math.max(1,Math.min(90,Math.floor(num(d.validadeDias)||7))),prazoDias:num(d.prazoDias),horas:num(d.horas),custoMaoObra:num(d.horas)*num(d.custoHora),precoMaoObra:labor,equipamentos:num(d.equipamentos),consumiveis:num(d.consumiveis),deslocacao:num(d.deslocacao),diarias:num(d.diarias),bdiPercent:num(d.bdi),contingencia:contingency,desconto:discount,ivaPercent:num(d.ivaPercent),ivaValor:tax,retencaoPercent:num(d.retencaoPercent),retencaoValor:retention,total:Math.max(0,total),escopo:d.escopo,pagamento:d.pagamento,notaFiscal:d.notaFiscal,status:d.status||'Rascunho',criadoEm:new Date().toISOString(),moeda:'AOA'};
+        if(!window.KanawaTechnicalPricing) throw new Error('Motor de composição analítica não carregado.');
+        const costs=window.KanawaTechnicalPricing.calculate({hours:d.horas,hourlyCost:d.custoHora,hourlyPrice:d.precoHora,equipment:d.equipamentos,consumables:d.consumiveis,travel:d.deslocacao,perDiem:d.diarias,bdiPct:d.bdi,discount:d.desconto,ivaPct:d.ivaPercent,retentionPct:d.retencaoPercent});
+        const labor=costs.laborRevenue, direct=costs.direct, indirect=costs.indirect, contingency=costs.contingency;
+        const discount=costs.discount, taxable=costs.taxBase, tax=costs.iva, retention=costs.retention, total=costs.total;
+        const row={id:undefined,codigo:uid(),tipo:'tecnico',cliente:d.cliente.trim(),titulo:d.titulo.trim(),validadeDias:Math.max(1,Math.min(90,Math.floor(num(d.validadeDias)||7))),prazoDias:num(d.prazoDias),horas:num(d.horas),custoMaoObra:costs.laborCost,precoMaoObra:labor,custoInternoEstimado:costs.estimatedInternalCost,margemEstimada:costs.estimatedMargin,equipamentos:num(d.equipamentos),consumiveis:num(d.consumiveis),deslocacao:num(d.deslocacao),diarias:num(d.diarias),bdiPercent:num(d.bdi),contingencia:contingency,desconto:discount,ivaPercent:num(d.ivaPercent),ivaValor:tax,retencaoPercent:num(d.retencaoPercent),retencaoValor:retention,total:Math.max(0,total),escopo:d.escopo,pagamento:d.pagamento,notaFiscal:d.notaFiscal,status:d.status||'Rascunho',criadoEm:new Date().toISOString(),moeda:'AOA'};
         const id=await write(stores.quotes,row); row.id=id; state.quotes.push(row);
         if(row.status==='Em negociação'||row.status==='Aprovado') await reserveQuote(row);
       } else if(kind==='product') {
@@ -221,9 +220,9 @@
   window.KanawaTechnical={render,tab,submit,convert,refresh};
   // The add-on is loaded after the core application; preserve all existing routes.
   const oldOpen=window.openModule;
-  if(typeof oldOpen==='function') window.openModule=function(id){if(id==='tecnica'){currentModule='tecnica';document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.toggle('active',el.dataset.id==='tecnica'));const c=$('content');c.innerHTML='<div class="card">A carregar centro técnico…</div>';render().then(html=>{c.innerHTML=html;c.scrollTop=0;}).catch(e=>{c.innerHTML='<div class="card">Falha ao abrir o módulo: '+escT(e.message)+'</div>';});return;}return oldOpen.apply(this,arguments);};
+  if(typeof oldOpen==='function') window.openModule=function(id){if(id==='tecnica'){if(!canManageTechnical()){notify('Acesso reservado à gerência e administração.','error');return;}currentModule='tecnica';document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.toggle('active',el.dataset.id==='tecnica'));const c=$('content');c.innerHTML='<div class="card">A carregar centro técnico…</div>';render().then(html=>{c.innerHTML=html;c.scrollTop=0;}).catch(e=>{c.innerHTML='<div class="card">Falha ao abrir o módulo: '+escT(e.message)+'</div>';});return;}return oldOpen.apply(this,arguments);};
   const canManageTechnical = () => {
-    try { const u=JSON.parse(localStorage.getItem('kanawa_user')||'{}'); return ['admin','gerente','owner','manager'].includes(String(u.role||u.perfil||'').toLowerCase()); } catch (_) { return false; }
+    try { const cloudRole=window.KanawaCloud&&window.KanawaCloud.context&&window.KanawaCloud.context.role; const u=JSON.parse(localStorage.getItem('kanawa_user')||'{}'); return ['admin','gerente','owner','manager'].includes(String(cloudRole||u.role||u.perfil||'').toLowerCase()); } catch (_) { return false; }
   };
   const oldSidebar=window.renderSidebar;
   if(typeof oldSidebar==='function') window.renderSidebar=function(){
