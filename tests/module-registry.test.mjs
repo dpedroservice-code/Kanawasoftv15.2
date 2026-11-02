@@ -34,6 +34,12 @@ test('Plano Técnica is loaded once and registered in the core menu', () => {
   assert.doesNotMatch(html, /technical-suite\.js[^\n]*technical-suite\.js/);
 });
 
+test('integration diagnostics are registered in the core module system', () => {
+  assert.match(app, /id:\\s*'integracoes'[^\\n]*Integrações e APIs/);
+  assert.match(app, /integracoes:\\s*\\(\\)\\s*=>\\s*\\{[\\s\\S]*KanawaIntegrations\\.render\\(\\)/);
+  assert.match(html, /integration-center\\.js/);
+});
+
 test('manager roles receive technical module access', () => {
   assert.match(permissions, /role === 'manager' \|\| role === 'gerente'.*grants\.tecnica/);
 });
