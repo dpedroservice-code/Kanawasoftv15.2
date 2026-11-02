@@ -10,6 +10,33 @@
   const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
   const money = (v) => new Intl.NumberFormat('pt-AO',{style:'currency',currency:'AOA',maximumFractionDigits:2}).format(num(v));
   const uid = () => 'KT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,7).toUpperCase();
+  function parseQuoteStockLines(raw) {
+    const rows = String(raw || '').split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+    const totals = new Map();
+    for (const line of rows) {
+      const parts = line.split(/[|,;=]/).map(value => value.trim());
+      if (parts.length !== 2) throw new Error('Cada linha de stock deve seguir: SKU ou ID | quantidade.');
+      const product = state.products.find(p => String(p.id) === parts[0] || String(p.codigo || '').toLowerCase() === parts[0].toLowerCase());
+      const quantity = Number(parts[1]);
+      if (!product) throw new Error('Produto/SKU não encontrado: ' + parts[0]);
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Quantidade inválida para ' + parts[0]);
+      totals.set(String(product.id), { produtoId: product.id, produtoNome: product.nome, quantidade: (totals.get(String(product.id))?.quantidade || 0) + quantity });
+    }
+    return Array.from(totals.values());
+  }
+  function parsePaymentMilestones(raw) {
+    const rows = String(raw || '').split(/\\r?\\n/).map(line => line.trim()).filter(Boolean);
+    const terms = rows.map(line => {
+      const parts = line.split('|').map(value => value.trim());
+      if (parts.length < 2) throw new Error('Cada tranche deve seguir: Marco | percentagem | condição opcional.');
+      const percentage = Number(parts[1]);
+      if (!parts[0] || !Number.isFinite(percentage) || percentage <= 0 || percentage > 100) throw new Error('Tranche de pagamento inválida.');
+      return { milestone: parts[0], percentage, condition: parts.slice(2).join(' | ') || null };
+    });
+    const total = terms.reduce((sum, term) => sum + term.percentage, 0);
+    if (total > 100.0001) throw new Error('A soma das tranches não pode ultrapassar 100%.');
+    return terms;
+  }
   const read = async (store) => (typeof getData === 'function' ? await getData(store) : await DB.getAll(store));
   const write = async (store, row) => {
     if (typeof saveData !== 'function') throw new Error('Camada de persistência Kanawa indisponível.');
@@ -38,7 +65,7 @@
   function bodyForTab() {
     const q=state.quotes,p=state.products,s=state.services,e=state.evaluations,r=state.reservations;
     if(state.tab==='overview') return '<div class="kt-grid">'+stat('Orçamentos técnicos',q.length,'Registados')+stat('Em negociação',q.filter(x=>x.status==='Em negociação').length,'Com reserva lógica')+stat('Ordens de serviço',state.workOrders.length,'Criadas a partir de propostas')+stat('Produtos técnicos',p.length,'Peças, consumíveis e equipamentos')+stat('Avaliações',e.length,'Diagnósticos e feedback')+stat('Serviços',s.length,'Catálogo técnico')+'</div><section class="kt-panel" style="margin-top:16px"><h3>Fluxo recomendado</h3><div class="kt-grid">'+['Diagnóstico / vistoria','Orçamento analítico','Aprovação e adjudicação','Reserva de peças','Ordem de Serviço','Execução e check-in/out','Avaliação do cliente','Fecho e garantia'].map((x,i)=>'<div class="kt-stat"><span class="kt-pill">'+(i+1)+'</span><strong style="font-size:1rem">'+x+'</strong></div>').join('')+'</div><div class="kt-note">A reserva registada nesta interface é uma pré-reserva operacional. A baixa definitiva, o bloqueio concorrente de stock e pagamentos reais exigem validação transacional no servidor. Não se altera o stock físico ao criar uma proposta.</div></section>';
-    if(state.tab==='quotes') return quoteForm()+table(['Referência','Cliente','Descrição','Total','Validade','Estado','Ações'],q.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo)+'</td><td>'+escT(x.cliente)+'</td><td>'+escT(x.titulo)+'</td><td>'+money(x.total)+'</td><td>'+escT(x.validadeDias)+' dias</td><td><span class="kt-pill">'+escT(x.status)+'</span></td><td><button class="btn btn-sm btn-primary" onclick="KanawaTechnical.convert('+Number(x.id)+')">Criar OS</button></td></tr>'),'Crie o primeiro orçamento técnico.');
+    if(state.tab==='quotes') return quoteForm()+table(['Referência','Cliente','Descrição','Total','Validade','Estado','Ações'],q.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo)+'</td><td>'+escT(x.cliente)+'</td><td>'+escT(x.titulo)+'</td><td>'+money(x.total)+'</td><td>'+escT(x.validadeDias)+' dias</td><td><span class="kt-pill">'+escT(x.status)+'</span></td><td>'+(x.status==='Em negociação'?'<button class="btn btn-sm btn-success" onclick="KanawaTechnical.approve('+Number(x.id)+')">Aprovar</button> ':'')+(x.status==='Aprovado'?'<button class="btn btn-sm btn-primary" onclick="KanawaTechnical.convert('+Number(x.id)+')">Criar OS</button>':'—')+'</td></tr>'),'Crie o primeiro orçamento técnico.');
     if(state.tab==='products') return productForm()+table(['Código','Produto','Tipo','Moeda base','Custo base','Garantia','Stock','Compatibilidade'],p.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo||'—')+'</td><td>'+escT(x.nome)+'</td><td>'+escT(x.tipoTecnico||'Produto')+'</td><td>'+escT(x.moedaBase||'AOA')+'</td><td>'+money(x.custoBase||x.custo||0)+'</td><td>'+escT(x.garantiaMeses||0)+' meses</td><td>'+num(x.estoque)+'</td><td>'+escT(x.compatibilidade||'—')+'</td></tr>'),'Cadastre peças e equipamentos.');
     if(state.tab==='categories') return categoryForm()+table(['Eixo','Categoria','Categoria superior','Descrição'],state.categories.slice().reverse().map(x=>'<tr><td>'+escT(x.eixo||'—')+'</td><td>'+escT(x.nome)+'</td><td>'+escT(x.parentName||'—')+'</td><td>'+escT(x.descricao||'—')+'</td></tr>'),'Organize as categorias técnicas.');
     if(state.tab==='services') return serviceForm()+table(['Serviço','Especialidade','Unidade','Custo/h','Preço/h','Duração','SLA','Equipa mínima'],s.slice().reverse().map(x=>'<tr><td>'+escT(x.nome)+'</td><td>'+escT(x.especialidade||'—')+'</td><td>'+escT(x.unidadeCobranca||'Hora')+'</td><td>'+money(x.custoHora||0)+'</td><td>'+money(x.precoHora||x.preco||0)+'</td><td>'+escT(x.duracaoHoras||x.duracao||0)+' h</td><td>'+escT(x.slaHoras||'—')+' h</td><td>'+num(x.equipaMinima||1)+'</td></tr>'),'Cadastre os serviços e requisitos.');
@@ -68,9 +95,13 @@
       field('Alimentação / alojamento (AOA)','diarias','number','0',null,false),field('BDI / contingência (%)','bdi','number','0',null,false),
       field('Desconto (AOA)','desconto','number','0',null,false),field('IVA configurado (%)','ivaPercent','number','0',null,false),
       field('Retenção na fonte (%) — se aplicável','retencaoPercent','number','0',null,false),
-      field('Estado','status','select','',[['Rascunho','Rascunho'],['Em negociação','Em negociação'],['Aprovado','Aprovado'],['Rejeitado','Rejeitado']],false),
+      field('Estado inicial','status','select','',[['Rascunho','Rascunho'],['Em negociação','Em negociação']],false),
       field('Escopo / memória descritiva','escopo','textarea','Incluído, excluído, método, materiais, premissas e riscos...',null,true),
       field('Plano de pagamento','pagamento','textarea','50% adjudicação + 50% entrega; ou marcos...',null,true),
+      field('Itens para pré-reserva (SKU ou ID | quantidade, uma linha por item)','itensStock','textarea','CAM-001 | 2\\nCABO-10M | 3',null,true),
+      field('Escopo excluído / exclusões','escopoExcluido','textarea','Obras civis, alimentação eléctrica, licenças...',null,true),
+      field('Referências de anexos / fichas técnicas privadas','anexosReferencia','textarea','Caminhos privados de ficheiros, nunca links públicos...',null,true),
+      field('Tranches (Marco | % | condição, uma linha por tranche)','pagamento','textarea','Adjudicação | 50 | Na aprovação\\nEntrega | 50 | Na conclusão',null,true),
       field('Observações fiscais / retenção','notaFiscal','textarea','Indicar enquadramento sujeito a validação contabilística...',null,true)
     ],'quote','Composição por mão de obra, equipamentos, consumíveis, despesas indirectas, contingência, impostos configuráveis e retenções informativas.');
   }
@@ -157,9 +188,9 @@
         const costs=window.KanawaTechnicalPricing.calculate({hours:d.horas,hourlyCost:d.custoHora,hourlyPrice:d.precoHora,equipment:d.equipamentos,consumables:d.consumiveis,travel:d.deslocacao,perDiem:d.diarias,bdiPct:d.bdi,discount:d.desconto,ivaPct:d.ivaPercent,retentionPct:d.retencaoPercent});
         const labor=costs.laborRevenue, direct=costs.direct, indirect=costs.indirect, contingency=costs.contingency;
         const discount=costs.discount, taxable=costs.taxBase, tax=costs.iva, retention=costs.retention, total=costs.total;
-        const row={id:undefined,codigo:uid(),tipo:'tecnico',cliente:d.cliente.trim(),titulo:d.titulo.trim(),validadeDias:Math.max(1,Math.min(90,Math.floor(num(d.validadeDias)||7))),prazoDias:num(d.prazoDias),horas:num(d.horas),custoMaoObra:costs.laborCost,precoMaoObra:labor,custoInternoEstimado:costs.estimatedInternalCost,margemEstimada:costs.estimatedMargin,equipamentos:num(d.equipamentos),consumiveis:num(d.consumiveis),deslocacao:num(d.deslocacao),diarias:num(d.diarias),bdiPercent:num(d.bdi),contingencia:contingency,desconto:discount,ivaPercent:num(d.ivaPercent),ivaValor:tax,retencaoPercent:num(d.retencaoPercent),retencaoValor:retention,total:Math.max(0,total),escopo:d.escopo,pagamento:d.pagamento,notaFiscal:d.notaFiscal,status:d.status||'Rascunho',criadoEm:new Date().toISOString(),moeda:'AOA'};
+        const row={id:undefined,codigo:uid(),tipo:'tecnico',cliente:d.cliente.trim(),titulo:d.titulo.trim(),validadeDias:Math.max(1,Math.min(90,Math.floor(num(d.validadeDias)||7))),prazoDias:num(d.prazoDias),horas:num(d.horas),custoMaoObra:costs.laborCost,precoMaoObra:labor,custoInternoEstimado:costs.estimatedInternalCost,margemEstimada:costs.estimatedMargin,equipamentos:num(d.equipamentos),consumiveis:num(d.consumiveis),deslocacao:num(d.deslocacao),diarias:num(d.diarias),bdiPercent:num(d.bdi),contingencia:contingency,desconto:discount,ivaPercent:num(d.ivaPercent),ivaValor:tax,retencaoPercent:num(d.retencaoPercent),retencaoValor:retention,total:Math.max(0,total),escopo:d.escopo,escopoExcluido:d.escopoExcluido,anexosReferencia:d.anexosReferencia,itens:parseQuoteStockLines(d.itensStock),tranches:parsePaymentMilestones(d.pagamento),notaFiscal:d.notaFiscal,status:d.status||'Rascunho',criadoEm:new Date().toISOString(),moeda:'AOA'};
         const id=await write(stores.quotes,row); row.id=id; state.quotes.push(row);
-        if(row.status==='Em negociação'||row.status==='Aprovado') await reserveQuote(row);
+        if(row.status==='Em negociação') await reserveQuote(row);
       } else if(kind==='product') {
         if(!d.nome.trim()) throw new Error('O nome do produto é obrigatório.');
         const cost=num(d.custoBase), rate=num(d.taxaCambio);
@@ -216,6 +247,17 @@
       const id=await write(stores.reservations,row);row.id=id;state.reservations.push(row);
     }
   }
+  async function approve(id) {
+    const q=state.quotes.find(x=>Number(x.id)===Number(id));
+    if(!q) return notify('Orçamento não encontrado.','error');
+    if(q.status!=='Em negociação') return notify('Apenas orçamentos em negociação podem ser aprovados.','warning');
+    if(q.validadeDias<=0) return notify('A validade do orçamento é inválida.','error');
+    q.status='Aprovado'; q.aprovadoEm=new Date().toISOString();
+    await write(stores.quotes,q);
+    await reserveQuote(q);
+    notify('Orçamento aprovado. As pré-reservas operacionais foram registadas.','success');
+    await refresh();
+  }
   async function convert(id) {
     const q=state.quotes.find(x=>Number(x.id)===Number(id)); if(!q) return notify('Orçamento não encontrado.','error');
     if(q.status!=='Aprovado') return notify('Apenas orçamentos aprovados podem gerar uma Ordem de Serviço.','warning');
@@ -230,7 +272,7 @@
   }
   async function render() { await load(); return shell(); }
   function tab(name) { state.tab=name; const root=$('kt-content'); if(root) root.innerHTML=bodyForTab(); document.querySelectorAll('.kt-tab').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().includes(({overview:'visão geral',quotes:'orçamentos',products:'produtos',categories:'categorias',services:'serviços',evaluations:'diagnósticos',stock:'stock',production:'kits',tracking:'rastreio',commercial:'preços',people:'técnicos'})[name]))); }
-  window.KanawaTechnical={render,tab,submit,convert,refresh};
+  window.KanawaTechnical={render,tab,submit,approve,convert,refresh};
   // The add-on is loaded after the core application; preserve all existing routes.
   const oldOpen=window.openModule;
   if(typeof oldOpen==='function') window.openModule=function(id){if(id==='tecnica'){if(!canManageTechnical()){notify('Acesso reservado à gerência e administração.','error');return;}currentModule='tecnica';document.querySelectorAll('.sidebar-item').forEach(el=>el.classList.toggle('active',el.dataset.id==='tecnica'));const c=$('content');c.innerHTML='<div class="card">A carregar centro técnico…</div>';render().then(html=>{c.innerHTML=html;c.scrollTop=0;}).catch(e=>{c.innerHTML='<div class="card">Falha ao abrir o módulo: '+escT(e.message)+'</div>';});return;}return oldOpen.apply(this,arguments);};
