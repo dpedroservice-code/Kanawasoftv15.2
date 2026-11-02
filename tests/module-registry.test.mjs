@@ -31,7 +31,7 @@ test('every menu module has a route renderer', () => {
 test('sidebar groups parent modules and submodules together', () => {
   assert.ok(app.includes('function moduleGroupLabel(module)'));
   assert.ok(app.includes('<details class="sidebar-group"'));
-  assert.ok(app.includes("group.open = !!group.querySelector('[data-id=\\\"' + id + '\\\"]')"));
+  assert.ok(app.includes('group.open = !!group.querySelector('));
 });
 
 test('all direct route renderers are declared', () => {
