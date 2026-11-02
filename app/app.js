@@ -2481,8 +2481,77 @@ async function renderLogisticaRastreio() {
   const rastreios = await getData('rastreios') || [];
   return header('Rastreio', rastreios.length + ' encomendas', 'var(--success)',
     '<button class="btn btn-primary" onclick="buscarRastreio()"><i class="fas fa-search"></i> Buscar</button>', 'fa-map-marked-alt') +
-    '<div class="card">' + table(['Código', 'Produto', 'Status', 'Última Atualização'],
-      rastreios.map(r => ['<strong>' + esc(r.codigo) + '</strong>', esc(r.produto || '-'), badge(r.status || 'pendente', r.status === 'entregue' ? 'success' : 'warning'), fmtDT(r.ultimaAtualizacao || r.data)])) + '</div>';
+    '<div class="card"><div class="alert alert-info">Use o botão 🗺️ Mapa para ver e calibrar a posição de cada encomenda. O GPS só será lido após autorização no dispositivo.</div>' +
+    table(['Código', 'Produto', 'Status', 'Última Atualização', 'Localização'],
+      rastreios.map(r => ['<strong>' + esc(r.codigo) + '</strong>', esc(r.produto || '-'), badge(r.status || 'pendente', r.status === 'entregue' ? 'success' : 'warning'), fmtDT(r.ultimaAtualizacao || r.data),
+        '<button class="btn btn-sm btn-info" onclick="abrirMapaRastreio(' + Number(r.id) + ')"><i class="fas fa-map-marked-alt"></i> 🗺️ Mapa</button>'])) + '</div>';
+}
+function coordenadasRastreio(latValue, lngValue) {
+  const lat = Number(String(latValue == null ? '' : latValue).trim().replace(',', '.'));
+  const lng = Number(String(lngValue == null ? '' : lngValue).trim().replace(',', '.'));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw new Error('Introduza latitude entre -90 e 90 e longitude entre -180 e 180.');
+  }
+  return { lat: lat, lng: lng };
+}
+function mapaRastreioHtml(registo) {
+  const lat = Number(registo.lat), lng = Number(registo.lng);
+  const valido = registo.coordinates_valid === true && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  const mapa = valido
+    ? '<iframe title="Mapa da localização da encomenda" loading="lazy" referrerpolicy="no-referrer-when-downgrade" style="width:100%;height:320px;border:0;border-radius:10px" src="https://www.openstreetmap.org/export/embed.html?bbox=' + encodeURIComponent((lng - 0.012) + ',' + (lat - 0.008) + ',' + (lng + 0.012) + ',' + (lat + 0.008)) + '&layer=mapnik&marker=' + encodeURIComponent(lat + ',' + lng) + '"></iframe>'
+    : '<div class="alert alert-warning">Ainda não há coordenadas confirmadas para esta encomenda. Obtenha a posição pelo GPS ou introduza as coordenadas manualmente para carregar o mapa.</div>';
+  return '<div class="form-grid"><div class="form-group"><label>Latitude</label><input id="rastreioMapaLat" type="number" step="any" min="-90" max="90" value="' + (valido ? lat : '') + '" placeholder="-8.8383"></div>' +
+    '<div class="form-group"><label>Longitude</label><input id="rastreioMapaLng" type="number" step="any" min="-180" max="180" value="' + (valido ? lng : '') + '" placeholder="13.2344"></div></div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">' +
+    '<button class="btn btn-primary" onclick="obterGPSRastreio(' + Number(registo.id) + ')"><i class="fas fa-crosshairs"></i> Usar GPS atual</button>' +
+    '<button class="btn btn-info" onclick="atualizarMapaRastreio(' + Number(registo.id) + ')"><i class="fas fa-sync"></i> Atualizar mapa</button>' +
+    '<button class="btn btn-success" onclick="guardarLocalizacaoRastreio(' + Number(registo.id) + ')"><i class="fas fa-save"></i> Guardar posição</button></div>' +
+    '<div id="rastreioMapaPreview">' + mapa + '</div>' +
+    '<p style="font-size:.82rem;color:var(--text-muted);margin-top:10px">Origem: ' + esc(registo.location_source === 'gps' ? 'GPS do dispositivo' : registo.location_source === 'manual' ? 'Coordenadas manuais' : 'Não confirmada') +
+    ' · Última atualização: ' + esc(fmtDT(registo.ultimaAtualizacao || registo.data)) + '</p>' +
+    '<p style="font-size:.82rem;color:var(--text-muted)">Nota: esta função regista uma posição pontual. Não acompanha o movimento em tempo real sem um rastreador/serviço GPS ligado.</p>';
+}
+async function abrirMapaRastreio(id) {
+  const registos = await getData('rastreios') || [];
+  const registo = registos.find(item => Number(item.id) === Number(id));
+  if (!registo) { toast('Encomenda não encontrada.', 'warning'); return; }
+  openModal('🗺️ Calibrar localização — ' + (registo.codigo || 'Rastreio'), mapaRastreioHtml(registo), true);
+}
+function atualizarMapaRastreio(id) {
+  try {
+    const coords = coordenadasRastreio($('rastreioMapaLat').value, $('rastreioMapaLng').value);
+    const preview = $('rastreioMapaPreview');
+    if (preview) preview.innerHTML = mapaRastreioHtml({ id: id, lat: coords.lat, lng: coords.lng, coordinates_valid: true, location_source: 'manual' });
+  } catch (error) { toast(error.message, 'warning'); }
+}
+function obterGPSRastreio(id) {
+  if (!navigator.geolocation || !navigator.geolocation.getCurrentPosition) {
+    toast('Este dispositivo/navegador não disponibiliza GPS. Introduza as coordenadas manualmente.', 'warning'); return;
+  }
+  toast('A solicitar autorização e posição GPS…', 'info');
+  navigator.geolocation.getCurrentPosition(function (position) {
+    const lat = $('rastreioMapaLat'), lng = $('rastreioMapaLng');
+    if (lat) lat.value = position.coords.latitude.toFixed(6);
+    if (lng) lng.value = position.coords.longitude.toFixed(6);
+    atualizarMapaRastreio(id);
+    toast('Posição GPS obtida. Confirme no mapa e carregue em Guardar posição.', 'success');
+  }, function (error) {
+    const mensagens = { 1: 'Permissão de localização recusada.', 2: 'A posição GPS não está disponível.', 3: 'Tempo de espera do GPS esgotado.' };
+    toast(mensagens[error.code] || 'Não foi possível obter a posição GPS.', 'warning');
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+}
+async function guardarLocalizacaoRastreio(id) {
+  try {
+    const coords = coordenadasRastreio($('rastreioMapaLat').value, $('rastreioMapaLng').value);
+    const registos = await getData('rastreios') || [];
+    const registo = registos.find(item => Number(item.id) === Number(id));
+    if (!registo) { toast('Encomenda não encontrada.', 'warning'); return; }
+    Object.assign(registo, coords, { coordinates_valid: true, location_source: 'manual', ultimaAtualizacao: now() });
+    await saveData('rastreios', registo);
+    toast('Localização calibrada e guardada. Confirme que o ponto corresponde ao local real.', 'success');
+    closeModal();
+    openModule('logistica-rastreio');
+  } catch (error) { toast(error.message || 'Não foi possível guardar a localização.', 'warning'); }
 }
 async function buscarRastreio() {
   const codigo = prompt('Código de rastreio:'); if (!codigo) return;
@@ -2493,6 +2562,7 @@ async function buscarRastreio() {
     return;
   }
   toast('Registo interno encontrado: ' + (registo.status || 'sem estado') + '. Não é uma confirmação da transportadora.', 'info');
+  if (registo.id != null) abrirMapaRastreio(registo.id);
 }
 
 /* E-COMMERCE AVANÇADO */
