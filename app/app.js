@@ -730,7 +730,7 @@ async function detectarImpressoras() {
   if (navigator.usb) { try { const dv = await navigator.usb.getDevices(); dv.forEach(d => det.push({ nome: d.productName || 'USB Device', tipo: 'USB', metodo: 'Web USB', disponivel: true })); } catch (e) { } }
   return det;
 }
-function detectarEDetalhes() { toast('🔍 Detectando dispositivos...', 'info'); setTimeout(() => { openModule('dispositivos'); toast('✅ Detecção concluída', 'success'); }, 1000); }
+function detectarEDetalhes() { toast('A deteção automática não foi concluída. Abra Dispositivos e use a consulta de hardware suportada pelo navegador.', 'warning'); openModule('dispositivos'); }
 function abrirModalDispositivo() {
   openModal('Adicionar Dispositivo',
     '<div class="form-group"><label>Nome / Identificação *</label><input id="dispNome" placeholder="Ex: Epson TM-T20"></div>' +
@@ -2281,7 +2281,7 @@ async function renderEcommercePedidos() {
 }
 async function detalharPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; alert('Pedido #' + id + '\nCliente: ' + p.cliente + '\nTotal: ' + fmt(p.total) + '\nStatus: ' + p.status); }
 async function atualizarStatusPedidoEcommerce(id) { const p = await DB.get('ecommercePedidos', id); if (!p) return; const s = prompt('Status (pendente, enviado, entregue, cancelado):', p.status); if (s) { p.status = s; await saveData('ecommercePedidos', p); toast('Status atualizado', 'success'); openModule('ecommerce-pedidos'); } }
-function exportarPedidosEcommerce() { toast('Exportando pedidos...', 'info'); }
+function exportarPedidosEcommerce() { toast('Exportação de pedidos ainda não está implementada; nenhum ficheiro foi criado.', 'warning'); }
 async function renderEcommercePagamento() {
   if (!window.KanawaCloud || !KanawaCloud.ready) {
     return header('Gateway de Pagamento', 'Estado das integrações', 'var(--warning)', '', 'fa-credit-card') +
@@ -2376,7 +2376,7 @@ async function registrarPonto() {
   await saveData('pontoDigital', { funcionario: f, data: a.toISOString().split('T')[0], entrada: a.toTimeString().slice(0, 5), saida: '', dataRegistro: now() });
   toast('Ponto registrado', 'success'); openModule('rh-ponto');
 }
-function relatorioPonto() { toast('Relatório gerado', 'success'); }
+function relatorioPonto() { toast('Relatório de ponto ainda não foi implementado; nenhum relatório foi gerado.', 'warning'); }
 async function renderRHRescisao() {
   const r = await getData('rescisoes') || [];
   return header('Cálculo de Rescisão', r.length + ' cálculos', 'var(--danger)',
@@ -2432,7 +2432,7 @@ function renderProjetosRecursos() {
     '<div class="form-group"><label>Horas</label><input type="number" id="recursoHoras" value="0" min="0"></div></div>' +
     '<button class="btn btn-success" onclick="alocarRecurso()"><i class="fas fa-save"></i> Alocar</button></div>';
 }
-function alocarRecurso() { toast('Recurso alocado', 'success'); }
+function alocarRecurso() { toast('Alocação não executada: falta persistência da equipa e validação de capacidade do projeto.', 'warning'); }
 async function renderProjetosTimesheet() {
   const t = await getData('timesheets') || [];
   return header('Timesheet', t.length + ' registros', 'var(--warning)',
@@ -2449,8 +2449,8 @@ function renderProjetosCustos() {
     '<div class="form-group"><label>Custo Real</label><input type="number" id="custoReal" value="0"></div></div>' +
     '<button class="btn btn-success" onclick="salvarCustoProjeto()"><i class="fas fa-save"></i> Salvar</button> <button class="btn btn-info" onclick="analisarCustos()"><i class="fas fa-chart-line"></i> Analisar</button></div>';
 }
-function salvarCustoProjeto() { toast('Custo salvo', 'success'); }
-function analisarCustos() { toast('Análise concluída', 'success'); }
+function salvarCustoProjeto() { toast('Custo não guardado: o registo de custos de projeto ainda não está ligado à base de dados.', 'warning'); }
+function analisarCustos() { toast('Análise não executada: ainda não existe cálculo real de custos planeados versus realizados.', 'warning'); }
 function renderProjetosRiscos() {
   return header('Matriz de Riscos', 'Identificação e gestão', 'var(--warning)', '', 'fa-exclamation-triangle') +
     '<div class="card"><div class="form-grid">' +
@@ -2460,7 +2460,7 @@ function renderProjetosRiscos() {
     '<div class="form-group"><label>Estratégia</label><input id="riscoEstrategia" placeholder="Estratégia de mitigação"></div></div>' +
     '<button class="btn btn-success" onclick="salvarRisco()"><i class="fas fa-save"></i> Salvar</button></div>';
 }
-function salvarRisco() { toast('Risco salvo', 'success'); }
+function salvarRisco() { toast('Risco não guardado: a matriz de riscos ainda não está ligada à base de dados.', 'warning'); }
 
 /* ATIVOS AVANÇADO */
 async function renderAtivosDepreciacao() {
@@ -2532,7 +2532,7 @@ function renderFrotaDocumentos() {
     '<div class="form-group"><label>Validade</label><input type="date" id="docValidade"></div></div>' +
     '<button class="btn btn-success" onclick="salvarDocumentoFrota()"><i class="fas fa-save"></i> Salvar</button></div>';
 }
-function salvarDocumentoFrota() { toast('Documento salvo', 'success'); }
+function salvarDocumentoFrota() { toast('Documento não guardado: falta persistência e validação documental da frota.', 'warning'); }
 async function renderFrotaMultas() {
   const m = await getData('multas') || [];
   return header('Multas', m.length + ' multas', 'var(--danger)',
@@ -2556,7 +2556,7 @@ async function renderFrotaDesempenho() {
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Detalhes</h3></div>' +
     (f.length > 0 ? f.map(x => '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><strong>' + esc(x.placa) + '</strong> - ' + esc(x.modelo || '-') + ' ' + badge(x.status || 'ativo', x.status === 'ativo' ? 'success' : 'warning') + '</div>').join('') : 'Nenhum veículo') + '</div>';
 }
-function gerarRelatorioFrota() { toast('Relatório gerado', 'success'); }
+function gerarRelatorioFrota() { toast('Relatório da frota ainda não foi implementado; nenhum ficheiro foi gerado.', 'warning'); }
 
 /* OS AVANÇADO */
 async function renderOSManutencao() {
@@ -2674,8 +2674,8 @@ async function renderPortalCliente() {
     '<div class="card">' + table(['Cliente', 'Email', 'Último Acesso', 'Status'],
       c.slice(0, 10).map(x => [esc(x.nome), esc(x.email || '-'), x.ultimoAcesso ? fmtDT(x.ultimoAcesso) : '-', badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger')])) + '</div>';
 }
-function convidarClientePortal() { toast('Convite enviado', 'success'); }
-function abrirPortalCliente() { toast('Abrindo portal...', 'info'); }
+function convidarClientePortal() { toast('Convite não enviado: o portal do cliente ainda não tem fluxo de autenticação e email implementado.', 'warning'); }
+function abrirPortalCliente() { toast('Portal do cliente ainda não está publicado nem ligado a contas de clientes.', 'warning'); }
 async function renderClientesSegmentacao() {
   const s = await getData('segmentacoes') || [];
   return header('Segmentação de Clientes', s.length + ' segmentos', 'var(--purple)',
@@ -2718,8 +2718,8 @@ function renderCRMRemarketing() {
     '<div class="form-group"><label>Mensagem</label><textarea rows="3" style="width:100%;padding:8px;border:2px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text)">Olá! Temos uma oferta especial para você!</textarea></div>' +
     '<div class="form-actions"><button class="btn btn-success" onclick="executarRemarketing()"><i class="fas fa-play"></i> Executar Campanha</button><button class="btn btn-info" onclick="agendarRemarketing()"><i class="fas fa-clock"></i> Agendar</button></div></div>';
 }
-function executarRemarketing() { toast('Campanha executada', 'success'); }
-function agendarRemarketing() { toast('Campanha agendada', 'success'); }
+function executarRemarketing() { toast('Campanha não enviada: falta configurar um provedor de email/WhatsApp e consentimento dos destinatários.', 'warning'); }
+function agendarRemarketing() { toast('Campanha não agendada: o agendador de campanhas ainda não está implementado.', 'warning'); }
 
 /* MARKETING */
 async function renderMarketingCampanhas() {
@@ -2769,7 +2769,7 @@ async function renderElearningQuizzes() {
     '<div class="card">' + (q.length > 0 ? q.map(x => '<div style="padding:8px 12px;background:var(--bg);border-radius:var(--radius-sm);margin-bottom:6px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div><strong style="font-size:.8rem">' + esc(x.titulo) + '</strong><div style="font-size:.6rem;color:var(--text-muted)">' + (x.questoes || 0) + ' questões</div></div><div style="display:flex;gap:4px"><button class="btn btn-sm btn-primary" onclick="responderQuiz(' + x.id + ')"><i class="fas fa-play"></i></button><button class="btn btn-sm btn-danger" onclick="excluirItem(\'quizzes\',' + x.id + ')"><i class="fas fa-trash"></i></button></div></div>').join('') : emptyState('fa-question-circle', 'Nenhum quiz disponível')) + '</div>';
 }
 async function novoQuiz() { const t = prompt('Título do quiz:'); if (!t) return; await saveData('quizzes', { titulo: t, questoes: parseInt(prompt('Número de questões:', '5')) || 5, data: now() }); toast('Quiz criado', 'success'); openModule('elearning-quizzes'); }
-function responderQuiz(id) { toast('Iniciando quiz...', 'info'); }
+function responderQuiz(id) { toast('Quiz não iniciado: ainda falta implementar perguntas, respostas e gravação de resultados.', 'warning'); }
 function renderElearningProgresso() {
   return header('Progresso do Aluno', 'Acompanhamento de aprendizado', 'var(--primary)', '', 'fa-chart-line') +
     '<div class="card"><div class="form-grid">' +
@@ -2778,7 +2778,7 @@ function renderElearningProgresso() {
     '<button class="btn btn-primary" onclick="gerarRelatorioProgresso()"><i class="fas fa-chart-bar"></i> Gerar Relatório</button></div>' +
     '<div id="progressoResultado" style="display:none" class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-list"></i> Resultado</h3></div><div id="progressoConteudo"></div></div>';
 }
-function gerarRelatorioProgresso() { toast('Relatório gerado', 'success'); }
+function gerarRelatorioProgresso() { toast('Relatório não gerado: o cálculo de progresso por aluno e curso ainda não está implementado.', 'warning'); }
 async function renderElearningRelatorios() {
   const c = await getData('cursos') || []; const cert = await getData('certificacoes') || []; const q = await getData('quizzes') || []; const f = await getData('funcionarios') || [];
   return header('Relatórios E-learning', 'Análise de desempenho educacional', 'var(--purple)', '', 'fa-file-alt') +
@@ -2791,8 +2791,8 @@ async function renderElearningRelatorios() {
     '<button class="btn btn-success" onclick="exportarRelatorioElearning()"><i class="fas fa-file-export"></i> Exportar Relatório</button>' +
     '<button class="btn btn-info" onclick="gerarGraficoElearning()"><i class="fas fa-chart-pie"></i> Gerar Gráfico</button></div></div>';
 }
-function exportarRelatorioElearning() { toast('Relatório exportado', 'success'); }
-function gerarGraficoElearning() { toast('Gráfico gerado', 'success'); }
+function exportarRelatorioElearning() { toast('Exportação e-learning ainda não foi implementada; nenhum ficheiro foi criado.', 'warning'); }
+function gerarGraficoElearning() { toast('Gráfico e-learning ainda não foi implementado.', 'warning'); }
 
 /* E-COMMERCE PRODUTOS (catálogo) */
 async function renderEcommerceProdutos() {
