@@ -1168,7 +1168,8 @@ async function renderPDV() {
     '<div class="form-grid">' +
     '<div class="form-group"><label>🏷️ Desconto (%) máx: ' + getPerms().descontoMax + '%</label><input type="number" id="pdvDescontoInput" value="' + pdvState.desconto + '" min="0" max="' + getPerms().descontoMax + '" oninput="pdvAtualizarValores()" style="font-size:1.1rem;text-align:right"></div>' +
     '<div class="form-group"><label>💰 Valor Recebido</label><input type="number" id="pdvValorRecebidoInput" value="' + pdvState.valorRecebido + '" oninput="pdvAtualizarValores()" style="font-size:1.1rem;text-align:right"></div>' +
-    '<div class="form-group"><label>⚖️ Regime Fiscal</label><select id="pdvRegimeInput" onchange="pdvAtualizarValores()"><option value="geral" ' + (pdvState.regime === 'geral' ? 'selected' : '') + '>Regime Geral (IVA 14%)</option><option value="simplificado" ' + (pdvState.regime === 'simplificado' ? 'selected' : '') + '>Simplificado (7%)</option><option value="isento" ' + (pdvState.regime === 'isento' ? 'selected' : '') + '>Isento</option></select></div>' +
+    '<div class="form-group"><label>⚖️ Regime Fiscal</label><select id="pdvRegimeInput" onchange="pdvAtualizarValores()"><option value="geral" ' + (pdvState.regime === 'geral' ? 'selected' : '') + '>Regime Geral (IVA 14%)</option><option value="simplificado" ' + (pdvState.regime === 'simplificado' ? 'selected' : '') + '>Simplificado (7%)</option><option value="isento" ' + (pdvState.regime === 'isento' ? 'selected' : '') + '>Isento (exige fundamento legal)</option></select></div>' +
+    '<div class="form-group" id="pdvMotivoIsencaoGroup" style="display:' + (pdvState.regime === 'isento' ? 'block' : 'none') + '"><label>Fundamento legal da isenção *</label><input id="pdvMotivoIsencao" maxlength="180" value="' + esc(pdvState.exemptionReason || '') + '" placeholder="Código/motivo e referência legal" oninput="pdvAtualizarValores()"></div>' +
     '<div class="form-group"><label>Aplicações</label><div style="padding-top:6px"><label style="display:block;margin-bottom:6px;font-weight:400"><input type="checkbox" id="pdvAplicarIVA" ' + (pdvState.aplicarIVA ? 'checked' : '') + ' onchange="pdvAtualizarValores()"> Aplicar IVA</label></div></div></div>' +
     '<div class="form-group"><label>📝 Observações</label><textarea id="pdvObs" rows="2">' + esc(pdvState.observacoes) + '</textarea></div>' +
     '<div class="total-box" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;border-radius:14px;padding:18px;margin:16px 0">' +
@@ -1296,8 +1297,19 @@ function pdvAtualizarValores() {
     return sum + item.subtotal;
   }, 0));
   const descVal = money(subtotal * (desc / 100)), base = money(subtotal - descVal);
-  let taxa = 0; if (aplicarIVA) taxa = regime === 'geral' ? 0.14 : (regime === 'simplificado' ? 0.07 : 0);
-  const iva = money(base * taxa), total = money(base + iva);
+  const exemptionInput = $('pdvMotivoIsencao');
+  const exemptionReason = exemptionInput ? exemptionInput.value.trim() : '';
+  const exemptionGroup = $('pdvMotivoIsencaoGroup');
+  if (exemptionGroup) exemptionGroup.style.display = regime === 'isento' ? 'block' : 'none';
+  let taxResult;
+  try {
+    taxResult = window.KanawaAngolaTax.calculate({ base, regime, applyVat: aplicarIVA, exemptionReason });
+  } catch (taxError) {
+    toast(taxError.message || 'Configuração fiscal inválida.', 'warning');
+    throw taxError;
+  }
+  const iva = money(taxResult.vatAmount), total = money(base + iva);
+  pdvState.exemptionReason = taxResult.exemptionReason || '';
   const isCredit = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
   const vRec = recebidoInput === 0 && !isCredit ? total : money(recebidoInput);
   const troco = money(Math.max(0, vRec - total)), faltam = money(Math.max(0, total - vRec));
@@ -1353,8 +1365,7 @@ async function pdvFinalizarVenda(modo) {
   const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
   const numeroFatura = 'FT-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6);
-  const venda = { numeroFatura, clienteNome: pdvState.cliente.nome, clienteNif: pdvState.cliente.nif, clienteTelefone: pdvState.cliente.telefone, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, preco: i.preco, qty: i.qty, subtotal: i.subtotal })), subtotal: c.subtotal, desconto: pdvState.desconto, descontoValor: c.descontoValor, iva: c.iva, total: c.total, valorRecebido: pdvState.valorRecebido, troco: c.troco, pagamento: pdvState.pagamento, regime: pdvState.regime, aplicarIVA: pdvState.aplicarIVA, observacoes: pdvState.observacoes, status: modo, data: now(), hash: gerarHash({ total: c.total, data: Date.now() }), operador: user.nome || 'Admin', empresa: emp };
-  venda.assinatura = gerarAssinatura(venda);
+  const venda = { numeroFatura, clienteNome: pdvState.cliente.nome, clienteNif: pdvState.cliente.nif, clienteTelefone: pdvState.cliente.telefone, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, preco: i.preco, qty: i.qty, subtotal: i.subtotal })), subtotal: c.subtotal, desconto: pdvState.desconto, descontoValor: c.descontoValor, iva: c.iva, total: c.total, valorRecebido: pdvState.valorRecebido, troco: c.troco, pagamento: pdvState.pagamento, regime: pdvState.regime, aplicarIVA: pdvState.aplicarIVA, observacoes: pdvState.observacoes, status: modo, data: now(), operador: user.nome || 'Admin', empresa: emp };
   try { await saveData('vendas', venda); }
   catch (saleError) { toast('Venda não finalizada no servidor: ' + (saleError.message || 'verifique licença e stock'), 'error'); return; }
   if (window.KanawaCloud && KanawaCloud.ready) {
