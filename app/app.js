@@ -605,6 +605,10 @@ function toggleMobileMenu(force) {
     sidebar.classList.remove('mobile-menu-open'); backdrop.classList.remove('active');
     document.body.classList.remove('mobile-menu-visible'); sidebar.removeAttribute('aria-hidden');
     if ('inert' in sidebar) sidebar.inert = false;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Abrir menu');
+    toggle.setAttribute('title', 'Abrir menu');
+    toggle.innerHTML = '<i class="fas fa-bars" aria-hidden="true"></i>';
     return false;
   }
   if (topbar) document.documentElement.style.setProperty('--mobile-header-height', topbar.offsetHeight + 'px');
