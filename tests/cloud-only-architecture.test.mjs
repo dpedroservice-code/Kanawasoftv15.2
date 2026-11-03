@@ -25,3 +25,15 @@ test('Cloud bridge defines updateCompany exactly once with owner authorization',
   assert.equal(definitions.length, 1);
   assert.match(cloud, /owner_user_id\s*!==\s*context\.user\.id/);
 });
+
+test('startup avoids serial Supabase context reads and blocks no login on background sync', () => {
+  const cloud = read('app/cloud.js');
+  const app = read('app/app.js');
+  const html = read('app/index.html');
+  assert.match(cloud, /Promise\.all\(\[\s*client\.from\('ks_companies'\)/);
+  assert.match(app, /window\.setTimeout\(async function runDeferredStartup/);
+  assert.doesNotMatch(app, /await pullFromServer\(\);\s*try \{ await KanawaCloud\.registerInstallation/);
+  assert.match(html, /<video[^>]+preload="metadata"/);
+  assert.doesNotMatch(html, /<video[^>]+preload="auto"/);
+  assert.match(html, /<script defer src="https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase/);
+});
