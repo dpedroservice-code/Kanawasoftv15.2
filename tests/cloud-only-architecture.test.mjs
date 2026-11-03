@@ -32,7 +32,9 @@ test('startup avoids serial Supabase context reads and blocks no login on backgr
   const html = read('app/index.html');
   assert.match(cloud, /Promise\.all\(\[\s*client\.from\('ks_companies'\)/);
   assert.match(app, /window\.setTimeout\(async function runDeferredStartup/);
-  assert.doesNotMatch(app, /await pullFromServer\(\);\s*try \{ await KanawaCloud\.registerInstallation/);
+  assert.doesNotMatch(app, /runDeferredStartup\(\)[\s\S]{0,700}pullFromServer\(\)/);
+  assert.match(app, /Background automation only pushes pending changes/);
+  assert.match(app, /await processSyncQueue\(\)/);
   assert.match(html, /<video[^>]+preload="metadata"/);
   assert.doesNotMatch(html, /<video[^>]+preload="auto"/);
   assert.match(html, /<script defer src="https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase/);
