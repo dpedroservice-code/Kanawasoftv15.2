@@ -369,3 +369,201 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
   <div class="loading-bar"><div></div></div>
 </div>
 
+<!-- SETUP -->
+<div id="setupWizard">\n  <svg class="angola-scene" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+
+  <rect width="1440" height="900" fill="#28556c"/>
+  <circle class="sun-glow" cx="1120" cy="270" r="112" fill="#f4b56f" opacity=".86"/>
+  <g class="cloud-one" fill="#fff" opacity=".14"><path d="M90 245c18-46 74-58 109-28 20-54 102-60 131-7 49-10 83 19 85 57H90z"/></g>
+  <g class="cloud-two" fill="#fff" opacity=".1"><path d="M830 170c24-40 80-43 109-12 24-50 93-46 116-2 43-8 78 18 83 51H830z"/></g>
+  <g class="ridge-back" fill="#456b7d" opacity=".82">
+    <path d="M0 610 115 510 190 550 330 360 420 450 530 320 650 445 770 365 880 480 1000 330 1125 455 1240 350 1440 515V900H0z"/>
+    <path d="m270 420 60-60 44 44-35-12-26 23zM485 370l45-50 46 58-38-19-28 24zM954 391l46-61 58 73-48-29-29 25z" fill="#d4d8cf" opacity=".55"/>
+  </g>
+  <g class="ridge-front" fill="#204a54">
+    <path d="M0 690 120 590 205 635 325 515 420 590 540 470 650 590 755 505 865 630 1000 480 1115 600 1230 500 1440 650V900H0z"/>
+    <path d="M0 770 170 665 280 710 430 615 555 700 700 605 820 720 965 610 1110 730 1270 625 1440 740V900H0z" fill="#0b2735" opacity=".76"/>
+  </g>
+  <path d="M1010 500c-15 70-8 115 10 155s13 68 3 106" stroke="#d6e7e4" stroke-width="5" stroke-linecap="round" fill="none" class="waterfall" opacity=".65"/>
+  <path d="M0 820c240-45 380 25 610-12s420-28 830 8v84H0z" fill="#081d2d" opacity=".85"/>
+  <g fill="#f5d7a5" opacity=".7"><circle cx="160" cy="760" r="3"/><circle cx="205" cy="735" r="2"/><circle cx="1260" cy="770" r="3"/><circle cx="1320" cy="742" r="2"/></g>
+</svg>
+  <div class="setup-box">
+    <div class="setup-logo">
+      <div class="logo-circle" id="setupLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
+      <h1 style="font-size:1.6rem;font-weight:800">Bem-vindo ao <span style="color:var(--primary-light)">Kanawa Soft</span></h1>
+      <p style="color:var(--text-muted);font-size:.9rem;margin-top:4px">Vamos configurar a sua empresa</p>
+    </div>
+    <div class="setup-steps">
+      <div class="setup-step active" data-step="1">1</div>
+      <div class="setup-step" data-step="2">2</div>
+      <div class="setup-step" data-step="3">3</div>
+    </div>
+    <div id="setupStep1">
+      <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">📋 Dados da Empresa</h3>
+      <div class="form-grid">
+        <div class="form-group full"><label>Nome da Empresa *</label><input id="setupNome" placeholder="Ex: Kanawa Soft, LDA"></div>
+        <div class="form-group"><label>NIF *</label><input id="setupNif" placeholder="Ex: 006518595L"></div>
+        <div class="form-group"><label>Regime Fiscal</label>
+          <select id="setupRegime">
+            <option value="geral">Regime Geral (IVA 14%)</option>
+            <option value="simplificado">Regime Simplificado (7%)</option>
+            <option value="isento">Isento</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Telefone</label><input id="setupTelefone" placeholder="+244 900 000 000"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="setupEmail" placeholder="contato@empresa.com"></div>
+        <div class="form-group full"><label>Endereço</label><input id="setupEndereco" placeholder="Luanda, Angola"></div>
+        <div class="form-group"><label>Moeda</label>
+          <select id="setupMoeda"><option value="AOA">AOA - Kwanza</option><option value="USD">USD - Dólar</option><option value="EUR">EUR - Euro</option></select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-primary btn-lg" onclick="setupNextStep(2)">Próximo <i class="fas fa-arrow-right"></i></button>
+      </div>
+    </div>
+    <div id="setupStep2" style="display:none">
+      <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">👤 Conta de Administrador</h3>
+      <div class="form-grid">
+        <div class="form-group full"><label>Nome Completo *</label><input id="setupAdminNome" value="Administrador"></div>
+        <div class="form-group"><label>Email *</label><input type="email" id="setupAdminEmail" autocomplete="username" placeholder="seu@email.com"></div>
+        <div class="form-group"><label>Senha *</label><input type="password" id="setupAdminSenha" autocomplete="current-password" placeholder="A sua senha" minlength="6"></div>
+        <div class="form-group"><label>Telefone</label><input id="setupAdminTel" placeholder="+244 900 000 000"></div>
+        <div class="form-group"><label>Perfil</label>
+          <select id="setupAdminPerfil">
+            <option value="admin">Administrador</option>
+            <option value="gerente">Gerente</option>
+            <option value="operador">Operador</option>
+            <option value="caixa">Operador de Caixa</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:16px">
+        <button class="btn btn-secondary" onclick="setupNextStep(1)"><i class="fas fa-arrow-left"></i> Voltar</button>
+        <button class="btn btn-primary btn-lg" onclick="setupNextStep(3)">Próximo <i class="fas fa-arrow-right"></i></button>
+      </div>
+    </div>
+    <div id="setupStep3" style="display:none">
+      <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">✅ Confirmação</h3>
+      <div style="background:var(--bg);border-radius:var(--radius-sm);padding:16px;margin-bottom:14px">
+        <div id="setupResumo" style="font-size:.9rem;line-height:1.9"></div>
+      </div>
+      <div class="form-group"><label><input type="checkbox" id="setupCarregarDemo" checked> Carregar dados de demonstração</label></div>
+      <div style="display:flex;justify-content:space-between;margin-top:16px">
+        <button class="btn btn-secondary" onclick="setupNextStep(2)"><i class="fas fa-arrow-left"></i> Voltar</button>
+        <button class="btn btn-success btn-lg" onclick="finalizarSetup()"><i class="fas fa-check-circle"></i> Concluir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AUTH -->
+<div id="authScreen">\n  <svg class="angola-scene" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+
+  <rect width="1440" height="900" fill="#28556c"/>
+  <circle class="sun-glow" cx="1120" cy="270" r="112" fill="#f4b56f" opacity=".86"/>
+  <g class="cloud-one" fill="#fff" opacity=".14"><path d="M90 245c18-46 74-58 109-28 20-54 102-60 131-7 49-10 83 19 85 57H90z"/></g>
+  <g class="cloud-two" fill="#fff" opacity=".1"><path d="M830 170c24-40 80-43 109-12 24-50 93-46 116-2 43-8 78 18 83 51H830z"/></g>
+  <g class="ridge-back" fill="#456b7d" opacity=".82">
+    <path d="M0 610 115 510 190 550 330 360 420 450 530 320 650 445 770 365 880 480 1000 330 1125 455 1240 350 1440 515V900H0z"/>
+    <path d="m270 420 60-60 44 44-35-12-26 23zM485 370l45-50 46 58-38-19-28 24zM954 391l46-61 58 73-48-29-29 25z" fill="#d4d8cf" opacity=".55"/>
+  </g>
+  <g class="ridge-front" fill="#204a54">
+    <path d="M0 690 120 590 205 635 325 515 420 590 540 470 650 590 755 505 865 630 1000 480 1115 600 1230 500 1440 650V900H0z"/>
+    <path d="M0 770 170 665 280 710 430 615 555 700 700 605 820 720 965 610 1110 730 1270 625 1440 740V900H0z" fill="#0b2735" opacity=".76"/>
+  </g>
+  <path d="M1010 500c-15 70-8 115 10 155s13 68 3 106" stroke="#d6e7e4" stroke-width="5" stroke-linecap="round" fill="none" class="waterfall" opacity=".65"/>
+  <path d="M0 820c240-45 380 25 610-12s420-28 830 8v84H0z" fill="#081d2d" opacity=".85"/>
+  <g fill="#f5d7a5" opacity=".7"><circle cx="160" cy="760" r="3"/><circle cx="205" cy="735" r="2"/><circle cx="1260" cy="770" r="3"/><circle cx="1320" cy="742" r="2"/></g>
+</svg>
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="logo-circle" id="authLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
+      <h1>Kanawa <span>Soft</span></h1>
+      <p style="color:var(--text-muted);font-size:.9rem">ERP Multi-Empresa Angola v15.4 Técnica</p>
+    </div>
+    <div id="loginError" class="alert alert-danger"></div>
+    <form id="loginForm">
+      <div class="form-group"><label>📧 Email</label><input type="email" id="loginEmail" required autocomplete="username" placeholder="seu@email.com"></div>
+      <div class="form-group"><label>🔒 Senha</label><input type="password" id="loginPassword" required autocomplete="current-password" placeholder="A sua senha"></div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg"><i class="fas fa-sign-in-alt"></i> Entrar</button>
+    </form>
+    <div style="text-align:center;margin-top:16px"><button type="button" class="btn btn-block" style="background:transparent;border:1px solid var(--primary);color:var(--primary)" onclick="abrirCadastroEmpresa()"><i class="fas fa-building"></i> Criar conta e configurar empresa</button><p style="font-size:.75rem;color:var(--text-muted);margin-top:10px">Os seus dados ficam guardados na base de dados central e podem ser consultados em vários dispositivos.</p></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <button class="topbar-btn mobile-menu-toggle" id="mobileMenuToggle" type="button" onclick="toggleMobileMenu()" aria-label="Abrir menu" aria-expanded="false" title="Menu"><i class="fas fa-bars"></i></button>
+      <div class="topbar-logo" id="topbarLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
+      <div class="topbar-title">
+        <h1 id="topbarEmpresa">Kanawa Soft ERP</h1>
+        <p>v15.4 Técnica - Base de dados central</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="api-badge offline" id="apiStatus" onclick="toggleSync()" title="Clique para sincronizar"><span class="dot"></span><span id="apiStatusText">Offline</span></span>
+      <button class="topbar-btn" onclick="openModule('notificacoes')" title="Notificações">
+        <i class="fas fa-bell"></i>
+        <span id="notifBadge" style="position:absolute;top:2px;right:2px;background:var(--danger);color:#fff;border-radius:50%;padding:1px 6px;font-size:.6rem;display:none;">0</span>
+      </button>
+      <div class="topbar-user" onclick="toggleUserMenu()">
+        <img id="userAvatar" src="logo.png" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2236%22 height=%2236%22><rect width=%2236%22 height=%2236%22 fill=%22%231a3a5c%22/><text x=%2218%22 y=%2224%22 font-size=%2216%22 fill=%22white%22 text-anchor=%22middle%22>A</text></svg>'">
+        <div class="info"><span id="userName">Administrador</span><small id="userRole">admin</small></div>
+      </div>
+      <button class="topbar-btn" onclick="toggleTheme()" title="Tema"><i class="fas fa-moon" id="themeIcon"></i></button>
+      <button class="topbar-btn" onclick="logout()" title="Sair"><i class="fas fa-sign-out-alt"></i></button>
+    </div>
+  </div>
+  <div class="main-wrap">
+    <aside class="sidebar" id="sidebar" aria-label="Navegação principal"></aside>
+    <button class="mobile-menu-backdrop" id="mobileMenuBackdrop" type="button" onclick="toggleMobileMenu(false)" aria-label="Fechar menu"></button>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+<div class="sync-indicator" id="syncIndicator"><i class="fas fa-sync"></i><span id="syncText">Sincronizando...</span></div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent">
+    <div class="modal-header"><h3 id="modalTitle">Detalhes</h3><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="scannerModal">
+  <div class="modal">
+    <div class="modal-header"><h3><i class="fas fa-barcode"></i> Scanner</h3><button class="modal-close" onclick="fecharScanner()">✕</button></div>
+    <div id="scannerReader"></div>
+    <div style="margin-top:12px;text-align:center;font-size:.85rem;color:var(--text-muted)">Aponte a câmera para o código</div>
+  </div>
+</div>
+
+<!-- ============================================================
+     BIBLIOTECAS LOCAIS (funcionam 100% offline)
+     ============================================================ -->
+<script src="libs/qrcode.min.js"></script>
+<script src="libs/jsbarcode.min.js"></script>
+<script src="libs/html5-qrcode.min.js"></script>
+<script src="libs/chart.min.js"></script>
+<script src="libs/jspdf.min.js"></script>
+<script src="libs/jspdf-autotable.min.js"></script>
+<script src="libs/xlsx.min.js"></script>
+
+<!-- App principal -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0"></script>
+<script src="operations-validation.js?v=15.4.20261102.1"></script>
+<script src="sales-money.js?v=15.4.20261102.1"></script>
+<script src="permissions.js?v=15.4.20261102.1"></script>
+<script src="cloud.js?v=15.4.20261102.1"></script>
+<script src="payment-methods.js?v=15.4.20261103.1"></script>
+<script src="app.js?v=15.4.20261102.1"></script>
+<script src="technical-pricing.js?v=15.4.20261102.1"></script>
+<script src="technical-cloud.js?v=15.4.20261103.1"></script>
+<script src="technical-suite.js?v=15.4.20261103.1"></script>
+<script src="integration-center.js?v=15.4.20261102.2"></script>
+</body>
+</html>
