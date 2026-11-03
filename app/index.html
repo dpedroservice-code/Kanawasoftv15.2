@@ -52,7 +52,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
 @keyframes angolaWater{0%,100%{opacity:.45}50%{opacity:.9}}
 #loadingScreen,#authScreen,#setupWizard{isolation:isolate;overflow:hidden}
 #loadingScreen>*:not(.angola-scene):not(.loading-gif-background),#authScreen>.auth-box,#setupWizard>.setup-box{position:relative;z-index:2}
-#loadingScreen .loading-gif-background{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none}
+#loadingScreen .loading-video-background{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;background:#102b3d}
 #loadingScreen::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(4,17,36,.12),rgba(4,17,36,.42))}
 #loadingScreen{background:linear-gradient(160deg,#0a2340 0%,#174a69 52%,#d17b46 100%)}
 #authScreen{background:linear-gradient(160deg,rgba(10,35,64,.94),rgba(23,74,105,.9) 55%,rgba(209,123,70,.82))}
@@ -357,12 +357,29 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 
+
+/* Navegação mobile: painel e botão permanecem acima do conteúdo e respeitam a altura real do cabeçalho. */
+@media(max-width:600px){
+  .topbar{z-index:1302}
+  .mobile-menu-toggle{position:relative;z-index:1304;display:flex!important;align-items:center;justify-content:center;cursor:pointer}
+  .sidebar{top:var(--mobile-header-height,58px);z-index:1303;width:min(88vw,340px);padding-top:12px}
+  .mobile-menu-backdrop{top:var(--mobile-header-height,58px);z-index:1301}
+  body.mobile-menu-visible{overflow:hidden;touch-action:none}
+  .sidebar-group{width:100%;flex:0 0 auto}
+  .sidebar-group>summary{display:flex;align-items:center;min-height:48px;cursor:pointer;list-style:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  .sidebar-group>summary::-webkit-details-marker{display:none}
+  .sidebar-group:not([open])>.sidebar-item{display:none}
+  .sidebar-group[open]>.sidebar-item{display:flex;min-height:46px}
+  .sidebar .sidebar-item{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  .sidebar-group summary:focus-visible,.sidebar-item:focus-visible,.mobile-menu-toggle:focus-visible{outline:3px solid var(--primary-light,#60a5fa);outline-offset:2px}
+}
+
 </style>
 </head>
 <body>
 
 <!-- LOADING -->
-<div id="loadingScreen">\n  <img class="loading-gif-background" src="assets/kanawasoft-angola-boot.gif" alt="" aria-hidden="true">\n  <div class="loading-landscape-label">Paisagens de Angola · Serra da Leba · Tundavala</div>
+<div id="loadingScreen">\n  <video class="loading-video-background" autoplay muted loop playsinline preload="auto" poster="assets/kanawasoft-angola-boot.gif" aria-hidden="true"><source src="assets/lunda-tchokwe-intro.mp4" type="video/mp4"></video>\n  <div class="loading-landscape-label">Lunda-Cokwe · Arte, tradição e identidade</div>
   <div class="loading-logo" id="loadingLogo"><img src="logo.png" alt="Kanawa" onerror="this.parentElement.textContent='K'"></div>
   <h2 style="font-weight:700;font-size:1.5rem">Kanawa Soft</h2>
   <p style="opacity:.7;font-size:.9rem;margin-top:4px">ERP Multi-Empresa v15.4 Técnica</p>

@@ -598,16 +598,32 @@ function toggleMobileMenu(force) {
   const sidebar = $('sidebar');
   const backdrop = $('mobileMenuBackdrop');
   const toggle = $('mobileMenuToggle');
-  if (!sidebar || !backdrop) return;
+  const topbar = document.querySelector('.topbar');
+  if (!sidebar || !backdrop || !toggle) return false;
+  const isMobile = window.matchMedia ? window.matchMedia('(max-width: 600px)').matches : window.innerWidth <= 600;
+  if (!isMobile) {
+    sidebar.classList.remove('mobile-menu-open'); backdrop.classList.remove('active');
+    document.body.classList.remove('mobile-menu-visible'); sidebar.removeAttribute('aria-hidden');
+    if ('inert' in sidebar) sidebar.inert = false;
+    return false;
+  }
+  if (topbar) document.documentElement.style.setProperty('--mobile-header-height', topbar.offsetHeight + 'px');
   const shouldOpen = typeof force === 'boolean' ? force : !sidebar.classList.contains('mobile-menu-open');
   sidebar.classList.toggle('mobile-menu-open', shouldOpen);
   backdrop.classList.toggle('active', shouldOpen);
-  if (toggle) {
-    toggle.setAttribute('aria-expanded', String(shouldOpen));
-    toggle.setAttribute('aria-label', shouldOpen ? 'Fechar menu' : 'Abrir menu');
-    toggle.innerHTML = '<i class="fas ' + (shouldOpen ? 'fa-times' : 'fa-bars') + '" aria-hidden="true"></i>';
-  }
+  sidebar.setAttribute('aria-hidden', String(!shouldOpen));
+  if ('inert' in sidebar) sidebar.inert = !shouldOpen;
+  toggle.setAttribute('aria-expanded', String(shouldOpen));
+  toggle.setAttribute('aria-label', shouldOpen ? 'Fechar menu' : 'Abrir menu');
+  toggle.setAttribute('title', shouldOpen ? 'Fechar menu' : 'Abrir menu');
+  toggle.innerHTML = '<i class="fas ' + (shouldOpen ? 'fa-times' : 'fa-bars') + '" aria-hidden="true"></i>';
   document.body.classList.toggle('mobile-menu-visible', shouldOpen);
+  if (shouldOpen) {
+    const active = sidebar.querySelector('.sidebar-item.active');
+    const target = active || sidebar.querySelector('.sidebar-group[open] .sidebar-item, .sidebar-item');
+    if (target) window.setTimeout(() => { if (sidebar.classList.contains('mobile-menu-open')) target.focus({ preventScroll: true }); }, 40);
+  } else toggle.focus({ preventScroll: true });
+  return shouldOpen;
 }
 
 async function openModule(id) {
@@ -3437,6 +3453,22 @@ async function seedDemo() {
 /* ====== INIT ====== */
 async function init() {
   try {
+    const mobileToggle = $('mobileMenuToggle');
+    const mobileBackdrop = $('mobileMenuBackdrop');
+    if (mobileToggle) mobileToggle.addEventListener('click', event => {
+      event.preventDefault(); event.stopPropagation(); toggleMobileMenu();
+    });
+    if (mobileBackdrop) mobileBackdrop.addEventListener('click', () => toggleMobileMenu(false));
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && $('sidebar')?.classList.contains('mobile-menu-open')) toggleMobileMenu(false);
+    });
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 600) toggleMobileMenu(false);
+      else if ($('sidebar')?.classList.contains('mobile-menu-open')) {
+        const bar = document.querySelector('.topbar');
+        if (bar) document.documentElement.style.setProperty('--mobile-header-height', bar.offsetHeight + 'px');
+      }
+    }, { passive: true });
     const manifest = { name: 'Kanawa Soft ERP', short_name: 'Kanawa', start_url: '.', display: 'standalone', background_color: '#1a3a5c', theme_color: '#1a3a5c', orientation: 'any', icons: [{ src: 'logo.png', sizes: '192x192', type: 'image/png' }, { src: 'logo.png', sizes: '512x512', type: 'image/png' }] };
     const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
     const manifestLink = $('pwaManifest'); if (manifestLink) manifestLink.href = URL.createObjectURL(blob);
@@ -3513,7 +3545,7 @@ if (window.kanawaNative && window.kanawaNative.isDesktop) {
 
 /* ====== EXPORT GLOBAL ====== */
 const EXPORTS = [
-  'openModule','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirCadastroEmpresa','toggleSync','syncNow','mostrarToast','toast',
+  'openModule','toggleMobileMenu','closeModal','openModal','toggleTheme','toggleUserMenu','logout','aplicarLogo','setupNextStep','finalizarSetup','abrirCadastroEmpresa','toggleSync','syncNow','mostrarToast','toast',
   'pdvIrParaTela','pdvSelecionarProduto','pdvAltQty','pdvRemoverItem','pdvSalvarCliente','pdvClienteAnonimo','pdvSelecionarPagamento','pdvAtualizarValores','pdvCancelarVenda','pdvSalvarRascunho','pdvSalvarOrcamento','pdvFinalizarVenda','abrirModalPDVCliente','salvarNovoClientePDV','filtrarPDV','toggleFavorito',
   'abrirScanner','fecharScanner','buscarPorCodigo','cadastroRapidoProduto','salvarCadastroRapido',
   'imprimirEtiquetaIndividual','imprimirEtiquetasLote','gerarLoteEtiquetas','imprimirEtiquetaHTML','baixarEtiquetaPDF',
