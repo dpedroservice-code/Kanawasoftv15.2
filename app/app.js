@@ -1231,10 +1231,11 @@ async function pdvSelecionarProduto(id) {
       const proposed = nextCart.map(i => String(i.id) === String(id) ? Object.assign({}, i, { qty: Number(i.qty) + 1 }) : i);
       window.KanawaSales.validateCartStock(proposed, produtos);
       current.qty = Number(current.qty) + 1;
+      current.stockAvailable = Number(p.estoque !== undefined ? p.estoque : p.stock_quantity);
       current.subtotal = current.preco * current.qty;
     } else {
       window.KanawaSales.validateCartStock([{ id: p.id, nome: p.nome, qty: 1 }], produtos);
-      pdvState.carrinho.push({ id: p.id, nome: p.nome, preco: p.preco, qty: 1, subtotal: p.preco, imagem: p.imagem, codigoBarras: p.codigoBarras });
+      pdvState.carrinho.push({ id: p.id, nome: p.nome, preco: p.preco, qty: 1, stockAvailable: Number(p.estoque !== undefined ? p.estoque : p.stock_quantity), subtotal: p.preco, imagem: p.imagem, codigoBarras: p.codigoBarras });
     }
     toast('✅ ' + p.nome + ' adicionado ao carrinho.', 'success');
     const el = $('pdvScreen1Total'); if (el) el.textContent = pdvState.carrinho.length + ' itens';
@@ -1250,7 +1251,7 @@ function pdvRenderCarrinhoFull() {
     '<div style="display:flex;align-items:center;gap:10px">' +
     '<button onclick="pdvAltQty(' + i.id + ',-1)" style="width:38px;height:38px;border-radius:50%;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:700;font-size:1.1rem">−</button>' +
     '<span style="min-width:44px;text-align:center;font-weight:700;font-size:1.1rem">' + i.qty + '</span>' +
-    '<button onclick="pdvAltQty(' + i.id + ',1)" style="width:38px;height:38px;border-radius:50%;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:700;font-size:1.1rem">+</button></div>' +
+    '<button onclick="pdvAltQty(' + i.id + ',1)" ' + (i.stockAvailable !== undefined && Number(i.qty) >= Number(i.stockAvailable) ? 'disabled title="Limite de stock atingido"' : '') + ' style="width:38px;height:38px;border-radius:50%;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:700;font-size:1.1rem">+</button></div>' +
     '<div style="font-weight:800;font-size:1.1rem;min-width:110px;text-align:right">' + fmt(i.subtotal) + '</div>' +
     '<button onclick="pdvRemoverItem(' + i.id + ')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1.2rem;padding:6px 10px"><i class="fas fa-trash"></i></button></div>').join('');
   const st = pdvState.carrinho.reduce((s, i) => s + i.subtotal, 0);
@@ -1262,6 +1263,8 @@ async function pdvAltQty(id, d) {
   if (d > 0) {
     try {
       const products = await pdvAtualizarStockLocal();
+      const currentProduct = products.find(product => String(product.id) === String(id));
+      if (currentProduct) it.stockAvailable = Number(currentProduct.estoque !== undefined ? currentProduct.estoque : currentProduct.stock_quantity);
       const proposed = pdvState.carrinho.map(line => String(line.id) === String(id)
         ? Object.assign({}, line, { qty: Number(line.qty) + Number(d) }) : Object.assign({}, line));
       window.KanawaSales.validateCartStock(proposed, products);
