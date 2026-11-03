@@ -36,3 +36,29 @@ O teste `tests/angola-tax.test.mjs` valida:
 
 ## Fora do âmbito desta entrega
 Ainda não testar nem usar como função legal: SAF-T AO XML, certificação/homologação AGT, documentos fiscais oficiais, escalões completos de IRT, INSS, guias oficiais, conciliação bancária e fecho cego de caixa. Estes módulos exigem implementação e validação próprias.
+
+## Cenários Stock e Inventário — primeira entrega
+
+1. Abrir **Stock e Inventário** com uma empresa de teste.
+2. Selecionar um produto com saldo 10 e mínimo 3.
+3. Registar uma entrada de 5 unidades com motivo/documento.
+   - Esperado: saldo 15; movimento com saldo anterior 10, quantidade 5, saldo final 15 e operador.
+4. Registar uma saída de 4 unidades.
+   - Esperado: saldo 11; movimento com saldo anterior 15 e saldo final 11.
+5. Tentar uma saída de 12 unidades quando existem 11.
+   - Esperado: bloqueio, sem alteração do produto e sem movimento criado.
+6. Fazer uma contagem física de 8 unidades.
+   - Esperado: saldo final 8 e movimento de ajuste com diferença calculada.
+7. Tentar quantidade zero ou negativa numa entrada/saída.
+   - Esperado: operação bloqueada.
+8. Abrir o sistema sem rede, registar um movimento e voltar a ligar.
+   - Esperado: produto e movimento ficam na fila local para sincronização; confirmar a fila antes de declarar sincronização concluída.
+9. No PDV, finalizar uma venda de teste.
+   - Esperado: o stock segue o RPC transacional existente quando online; o livro local regista um movimento por artigo, com referência da venda.
+
+## Limites desta primeira entrega de stock
+
+- Movimentos locais são gravados em conjunto com o saldo do produto numa transação IndexedDB.
+- A sincronização para PostgreSQL é feita pela fila existente, em duas operações ordenadas; não é ainda uma transação SQL única entre saldo e livro de movimentos.
+- O stock normalizado cloud continua a usar o saldo agregado por produto. Armazéns múltiplos com saldos independentes, transferências inter-armazéns, custo médio ponderado, lotes/validades e inventário cíclico ainda não estão implementados nesta entrega.
+- O teste automatizado cobre o motor de movimentos; não substitui um teste de concorrência com duas caixas ligadas ao mesmo produto nem um ensaio num dispositivo móvel.
