@@ -50,23 +50,16 @@
       throw new Error('A conta foi autenticada, mas ainda não tem uma empresa ativa. Confirme o email ou contacte o administrador.');
     }
 
-    const company = failIfError(await client
-      .from('ks_companies')
-      .select('*')
-      .eq('id', membership.company_id)
-      .single());
-
-    const profile = failIfError(await client
-      .from('ks_profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle());
-
-    const platformAdmin = failIfError(await client
-      .from('ks_platform_admins')
-      .select('role')
-      .eq('user_id', user.id)
-      .maybeSingle());
+    // After membership resolves, fetch independent context records concurrently.
+    // This reduces three serial network round-trips to one parallel batch.
+    const [companyResult, profileResult, platformAdminResult] = await Promise.all([
+      client.from('ks_companies').select('*').eq('id', membership.company_id).single(),
+      client.from('ks_profiles').select('*').eq('user_id', user.id).maybeSingle(),
+      client.from('ks_platform_admins').select('role').eq('user_id', user.id).maybeSingle()
+    ]);
+    const company = failIfError(companyResult);
+    const profile = failIfError(profileResult);
+    const platformAdmin = failIfError(platformAdminResult);
 
     context = {
       user: user,
