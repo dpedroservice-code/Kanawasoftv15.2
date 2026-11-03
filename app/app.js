@@ -270,8 +270,13 @@ async function syncNow(showMessage) {
 function toggleSync() { syncNow(true); }
 function startAutoSync() {
   if (syncTimer) clearInterval(syncTimer);
-  syncTimer = setInterval(() => {
-    if (window.KanawaCloud && KanawaCloud.ready) syncNow(false);
+  // Background automation only pushes pending changes. A full pull of every
+  // company record is reserved for an explicit manual sync to avoid recurring
+  // bandwidth, IndexedDB churn and UI contention during busy sales periods.
+  syncTimer = setInterval(async () => {
+    if (!window.KanawaCloud || !KanawaCloud.ready) return;
+    try { await processSyncQueue(); }
+    catch (e) { console.warn('Envio automático da fila pendente:', e); }
   }, 60000);
 }
 
@@ -365,8 +370,9 @@ async function activateCloudSession(ctx, migrateLocal) {
   // the device and checking subscription metadata. These tasks run after the
   // authenticated shell is displayed; sales still require server confirmation.
   window.setTimeout(async function runDeferredStartup() {
-    try { await pullFromServer(); }
-    catch (pullError) { console.warn('Sincronização inicial adiada; será retomada quando houver internet:', pullError); }
+    // Do not download the entire company database on every login.
+    // Individual modules load their own required stores; full reconciliation
+    // remains available through the user's explicit synchronization action.
     try { await KanawaCloud.registerInstallation(APP_VERSION); }
     catch (e) { console.warn('Registo de instalação pendente:', e); }
 
