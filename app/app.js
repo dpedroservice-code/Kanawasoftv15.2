@@ -594,8 +594,25 @@ function renderSidebar() {
   }).join('');
 }
 
+function toggleMobileMenu(force) {
+  const sidebar = $('sidebar');
+  const backdrop = $('mobileMenuBackdrop');
+  const toggle = $('mobileMenuToggle');
+  if (!sidebar || !backdrop) return;
+  const shouldOpen = typeof force === 'boolean' ? force : !sidebar.classList.contains('mobile-menu-open');
+  sidebar.classList.toggle('mobile-menu-open', shouldOpen);
+  backdrop.classList.toggle('active', shouldOpen);
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', String(shouldOpen));
+    toggle.setAttribute('aria-label', shouldOpen ? 'Fechar menu' : 'Abrir menu');
+    toggle.innerHTML = '<i class="fas ' + (shouldOpen ? 'fa-times' : 'fa-bars') + '" aria-hidden="true"></i>';
+  }
+  document.body.classList.toggle('mobile-menu-visible', shouldOpen);
+}
+
 async function openModule(id) {
   if (!podeAcessar(id)) { toast('🔒 Sem permissão', 'error'); return; }
+  toggleMobileMenu(false);
   currentModule = id;
   document.querySelectorAll('.sidebar-group').forEach(group => { group.open = !!group.querySelector('[data-id="' + id + '"]'); });
   $$('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
