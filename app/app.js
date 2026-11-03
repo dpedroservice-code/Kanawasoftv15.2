@@ -733,6 +733,13 @@ function table(headers, rows) {
 const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#e2e8f0"/><text x="100" y="130" font-size="80" text-anchor="middle">📦</text></svg>');
 function imgSrc(p) { return p && p.imagem ? p.imagem : PLACEHOLDER; }
 function aplicarLogo() {
+  try {
+    const freshProducts = await pdvAtualizarStockLocal();
+    pdvValidarStockCarrinho(freshProducts);
+  } catch (stockError) {
+    toast('Venda bloqueada: ' + (stockError.message || 'stock insuficiente.'), 'error');
+    return;
+  }
   const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const src = (emp.logo && emp.logo.indexOf('data:') === 0) ? emp.logo : 'logo.png';
   ['loadingLogo', 'setupLogo', 'authLogo', 'topbarLogo'].forEach(id => { const el = $(id); if (el) el.innerHTML = '<img src="' + src + '" alt="Logo" onerror="this.parentElement.textContent=\'K\'">'; });
@@ -1192,15 +1199,48 @@ function pdvIrParaTela(n) {
   if (n === 6) pdvRenderResumoFinal();
   const c = $('content'); if (c) c.scrollTop = 0;
 }
+async function pdvAtualizarStockLocal() {
+  let produtos;
+  if (window.KanawaCloud && KanawaCloud.ready) {
+    // Refresh the catalogue from the active company before changing quantities.
+    produtos = await KanawaCloud.getStore('produtos');
+    if (!Array.isArray(produtos)) throw new Error('Não foi possível confirmar o stock atual no servidor.');
+    await DB.clear('produtos');
+    for (const product of produtos) await DB.put('produtos', product);
+  } else {
+    produtos = await DB.getAll('produtos');
+  }
+  pdvCache.produtos = Array.isArray(produtos) ? produtos : [];
+  pdvCache.ts = Date.now();
+  return pdvCache.produtos;
+}
+function pdvValidarStockCarrinho(produtos) {
+  if (!window.KanawaSales || typeof window.KanawaSales.validateCartStock !== 'function') {
+    throw new Error('Validador de stock não carregado. Atualize a aplicação.');
+  }
+  return window.KanawaSales.validateCartStock(pdvState.carrinho, produtos || pdvCache.produtos);
+}
 async function pdvSelecionarProduto(id) {
-  const p = pdvCache.produtos.find(x => x.id === id) || await DB.get('produtos', id);
-  if (!p) return;
-  if ((p.estoque || 0) <= 0) { toast('Produto sem estoque', 'warning'); return; }
-  const it = pdvState.carrinho.find(i => i.id === id);
-  if (it) { if (it.qty >= p.estoque) { toast('Estoque insuficiente', 'warning'); return; } it.qty++; it.subtotal = it.preco * it.qty; }
-  else { pdvState.carrinho.push({ id: p.id, nome: p.nome, preco: p.preco, qty: 1, subtotal: p.preco, imagem: p.imagem, codigoBarras: p.codigoBarras }); }
-  toast('✅ ' + p.nome + ' (x' + pdvState.carrinho.length + ')', 'success');
-  const el = $('pdvScreen1Total'); if (el) el.textContent = pdvState.carrinho.length + ' itens';
+  try {
+    const produtos = await pdvAtualizarStockLocal();
+    const p = produtos.find(x => String(x.id) === String(id));
+    if (!p) { toast('Produto não encontrado no stock. Atualize o catálogo.', 'warning'); return; }
+    const current = pdvState.carrinho.find(i => String(i.id) === String(id));
+    const nextCart = pdvState.carrinho.map(i => i);
+    if (current) {
+      const proposed = nextCart.map(i => String(i.id) === String(id) ? Object.assign({}, i, { qty: Number(i.qty) + 1 }) : i);
+      window.KanawaSales.validateCartStock(proposed, produtos);
+      current.qty = Number(current.qty) + 1;
+      current.subtotal = current.preco * current.qty;
+    } else {
+      window.KanawaSales.validateCartStock([{ id: p.id, nome: p.nome, qty: 1 }], produtos);
+      pdvState.carrinho.push({ id: p.id, nome: p.nome, preco: p.preco, qty: 1, subtotal: p.preco, imagem: p.imagem, codigoBarras: p.codigoBarras });
+    }
+    toast('✅ ' + p.nome + ' adicionado ao carrinho.', 'success');
+    const el = $('pdvScreen1Total'); if (el) el.textContent = pdvState.carrinho.length + ' itens';
+  } catch (error) {
+    toast(error.message || 'Não foi possível adicionar o produto.', 'warning');
+  }
 }
 function pdvRenderCarrinhoFull() {
   const box = $('pdvCarrinhoFull'); if (!box) return;
@@ -1216,7 +1256,25 @@ function pdvRenderCarrinhoFull() {
   const st = pdvState.carrinho.reduce((s, i) => s + i.subtotal, 0);
   const el = $('pdvSubtotalTela2'); if (el) el.textContent = fmt(st);
 }
-function pdvAltQty(id, d) { const it = pdvState.carrinho.find(i => i.id === id); if (!it) return; it.qty += d; it.subtotal = it.preco * it.qty; if (it.qty <= 0) pdvState.carrinho = pdvState.carrinho.filter(i => i.id !== id); pdvRenderCarrinhoFull(); }
+async function pdvAltQty(id, d) {
+  const it = pdvState.carrinho.find(i => String(i.id) === String(id));
+  if (!it) return;
+  if (d > 0) {
+    try {
+      const products = await pdvAtualizarStockLocal();
+      const proposed = pdvState.carrinho.map(line => String(line.id) === String(id)
+        ? Object.assign({}, line, { qty: Number(line.qty) + Number(d) }) : Object.assign({}, line));
+      window.KanawaSales.validateCartStock(proposed, products);
+    } catch (error) {
+      toast(error.message || 'Stock insuficiente.', 'warning');
+      return;
+    }
+  }
+  it.qty = Number(it.qty) + Number(d);
+  if (it.qty <= 0) pdvState.carrinho = pdvState.carrinho.filter(i => String(i.id) !== String(id));
+  else it.subtotal = it.preco * it.qty;
+  pdvRenderCarrinhoFull();
+}
 function pdvRemoverItem(id) { pdvState.carrinho = pdvState.carrinho.filter(i => i.id !== id); pdvRenderCarrinhoFull(); toast('Removido', 'info'); }
 function pdvSalvarCliente() { pdvState.cliente.nome = ($('pdvClienteNome').value.trim() || 'Cliente Anônimo'); pdvState.cliente.nif = $('pdvClienteNif').value.trim(); pdvState.cliente.telefone = $('pdvClienteTel').value.trim(); pdvIrParaTela(4); }
 function pdvClienteAnonimo() { $('pdvClienteNome').value = 'Cliente Anônimo'; $('pdvClienteNif').value = ''; $('pdvClienteTel').value = ''; pdvState.cliente = { nome: 'Cliente Anônimo', nif: '', telefone: '' }; toast('Cliente anônimo', 'info'); }
