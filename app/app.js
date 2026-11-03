@@ -1231,7 +1231,7 @@ async function pdvSelecionarProduto(id) {
       window.KanawaSales.validateCartStock([{ id: p.id, nome: p.nome, qty: 1 }], produtos);
       pdvState.carrinho.push({ id: p.id, nome: p.nome, preco: p.preco, qty: 1, stockAvailable: Number(p.estoque !== undefined ? p.estoque : p.stock_quantity), subtotal: p.preco, imagem: p.imagem, codigoBarras: p.codigoBarras });
     }
-    toast('✅ ' + p.nome + ' adicionado ao carrinho.', 'success');
+    toast('Produto ' + p.nome + ' adicionado. Quantidade: ' + (current ? current.qty : 1) + '. Stock disponível: ' + Number(p.estoque !== undefined ? p.estoque : p.stock_quantity) + '.', 'success');
     const el = $('pdvScreen1Total'); if (el) el.textContent = pdvState.carrinho.length + ' itens';
   } catch (error) {
     toast(error.message || 'Não foi possível adicionar o produto.', 'warning');
