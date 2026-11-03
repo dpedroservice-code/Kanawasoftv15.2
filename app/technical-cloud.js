@@ -31,7 +31,7 @@
         unit_cost: cost, unit_price: price, line_total: amount, metadata: {}
       });
     }
-    add('labor', 'Mão de obra técnica', row.horas, 'hora', row.custoHora, row.precoHora, costs.laborRevenue);
+    add('labor', 'Mão de obra técnica', row.horas, 'hora', row.horas ? costs.laborCost / row.horas : 0, row.horas ? costs.laborRevenue / row.horas : 0, costs.laborRevenue);
     add('equipment', 'Equipamentos principais', 1, 'lote', row.equipamentos, row.equipamentos, costs.equipment);
     add('consumable', 'Materiais e consumíveis', 1, 'lote', row.consumiveis, row.consumiveis, costs.consumables);
     add('travel', 'Deslocação', 1, 'serviço', row.deslocacao, row.deslocacao, costs.travel);
