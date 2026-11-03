@@ -31,8 +31,10 @@
     if(!profile) throw new Error('Regime fiscal não reconhecido.');
     const applyVat=x.applyVat!==false;
     const reason=String(x.exemptionReason||'').trim();
-    if(applyVat&&regime==='isento'&&reason.length<5)
+    if(regime==='isento'&&reason.length<5)
       throw new Error('A isenção exige o motivo e o fundamento legal antes de concluir a venda.');
+    if(!applyVat&&regime!=='isento')
+      throw new Error('Não é permitido desativar o IVA num regime tributável sem um enquadramento fiscal de isenção validado.');
     if(regime!=='isento'&&reason)
       throw new Error('O fundamento de isenção só pode ser indicado no regime isento.');
     const rate=applyVat?profile.rate:0;
