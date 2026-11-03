@@ -9,7 +9,7 @@
   function roundMoney(value) {
     const number = Number(value);
     if (!Number.isFinite(number)) throw new Error('Valor monetário inválido.');
-    return Math.round((number + Number.EPSILON) * 100) / 100;
+    return number;
   }
 
   function normalizeSale(item) {
@@ -20,13 +20,13 @@
     }
 
     const items = sourceItems.map(function (line) {
-      const quantity = Math.round((Number(line.qty !== undefined ? line.qty : line.quantidade) + Number.EPSILON) * 1000) / 1000;
+      const quantity = Number(line.qty !== undefined ? line.qty : line.quantidade);
       const unitPrice = roundMoney(line.preco !== undefined ? line.preco : line.unit_price);
       const expectedLineTotal = roundMoney(quantity * unitPrice);
       const lineTotal = roundMoney(line.subtotal !== undefined ? line.subtotal : expectedLineTotal);
       const productId = String(line.id !== undefined ? line.id : (line.product_external_id || line.product_id || ''));
       if (!productId || !Number.isFinite(quantity) || quantity <= 0 || unitPrice < 0 || lineTotal < 0 ||
-          Math.abs(lineTotal - expectedLineTotal) > 0.01) {
+          lineTotal !== expectedLineTotal) {
         throw new Error('Artigo inválido: confirme o produto, a quantidade e o preço.');
       }
       return {
@@ -46,9 +46,9 @@
     const total = roundMoney(item.total);
     const expectedTotal = roundMoney(subtotal - discount + tax);
 
-    if (subtotal <= 0 || Math.abs(subtotal - subtotalFromItems) > 0.01 ||
+    if (subtotal <= 0 || subtotal !== subtotalFromItems ||
         discount < 0 || discount > subtotal || tax < 0 || total <= 0 ||
-        Math.abs(total - expectedTotal) > 0.01) {
+        total !== expectedTotal) {
       throw new Error('Valores da venda inválidos: confirme subtotal, desconto, imposto e total.');
     }
 
@@ -58,7 +58,7 @@
     if (received < 0) throw new Error('O valor recebido não pode ser negativo.');
     if (received === 0 && !isCredit) received = total;
     if (!isCredit && received < total) throw new Error('Pagamento insuficiente: falta receber ' + roundMoney(total - received).toFixed(2) + '.');
-    const change = roundMoney(Math.max(0, received - total));
+    const change = Math.max(0, received - total);
 
     return {
       sale: {
@@ -89,7 +89,7 @@
     const byId = new Map(products.map(function (product) { return [String(product.id), product]; }));
     return cart.map(function (line) {
       const product = byId.get(String(line.id));
-      if (!product) throw new Error('Produto "' + (line.nome || line.id) + '" não encontrado no stock. Atualize o catálogo.');
+      if (!product || product.ativo === false || product.is_active === false) throw new Error('Produto "' + (line.nome || line.id) + '" não existe, está inativo ou foi removido do catálogo.');
       const rawStock = product.estoque !== undefined ? product.estoque : product.stock_quantity;
       const stock = Number(rawStock);
       const quantity = Number(line.qty !== undefined ? line.qty : line.quantidade);
@@ -97,7 +97,7 @@
         throw new Error('Stock ou quantidade inválida para "' + (line.nome || product.nome || line.id) + '".');
       }
       if (quantity > stock) {
-        throw new Error('Stock insuficiente para "' + (line.nome || product.nome || line.id) + '". Disponível: ' + stock + '; no carrinho: ' + quantity + '.');
+        throw new Error(stock === 0 ? 'Produto esgotado: ' + (line.nome || product.nome || line.id) + '. Stock disponível: 0.' : 'Quantidade indisponível para "' + (line.nome || product.nome || line.id) + '". Stock actual: ' + stock + '; quantidade pedida: ' + quantity + '.');
       }
       return { id: product.id, quantity: quantity, available: stock };
     });
