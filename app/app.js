@@ -1703,15 +1703,16 @@ async function gravarMovimentoStock(produto, tipo, quantidade, motivo, referenci
   });
   const atualizado = Object.assign({}, produto, { estoque: movimento.saldoFinal, stock_quantity: movimento.saldoFinal });
   // Commit local product balance and its audit event in one IndexedDB transaction.
-  const tx = DB.db.transaction(['produtos','movimentacoesEstoque'], 'readwrite');
+  const tx = DB.db.transaction(['produtos','movimentacoesEstoque','_sync_queue'], 'readwrite');
   tx.objectStore('produtos').put(atualizado);
   const movementId = nextGeneratedRecordId();
   movimento.id = movementId;
   tx.objectStore('movimentacoesEstoque').add(movimento);
+  // Persist both ordered cloud operations in the same local transaction as the balance and ledger.
+  tx.objectStore('_sync_queue').add({ entity: 'produtos', action: 'update', payload: atualizado, options: { stockMovementId: movementId }, data: now(), synced: false });
+  tx.objectStore('_sync_queue').add({ entity: 'movimentacoesEstoque', action: 'create', payload: movimento, options: { stockMovementId: movementId }, data: now(), synced: false });
   await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error || new Error('Movimento cancelado.')); });
-  // The two records are queued in order. Server-side normalized stock remains authoritative for POS sales.
-  await queueSync('produtos', 'update', atualizado, { stockMovementId: movementId });
-  await queueSync('movimentacoesEstoque', 'create', movimento, { stockMovementId: movementId });
+  // Server-side normalized stock remains authoritative for POS sales.
   pdvCache.ts = 0;
   return movimento;
 }
