@@ -1380,7 +1380,16 @@ async function pdvFinalizarVenda(modo) {
       if (product) { product.estoque = Math.max(0, Number(product.estoque || 0) - Number(item.qty)); await DB.put('produtos', product); }
     }
   }
-  await saveData('movimentacoesEstoque', { tipo: 'saida', descricao: 'Venda ' + numeroFatura, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, qtd: i.qty })), data: now() });
+  for (const item of pdvState.carrinho) {
+    const saldoAnterior = Number(item.stockAvailable);
+    const saldoFinal = Number.isFinite(saldoAnterior) ? Math.max(0, saldoAnterior - Number(item.qty)) : null;
+    await saveData('movimentacoesEstoque', {
+      tipo: 'saida', produtoId: item.id, produtoNome: item.nome, qtd: Number(item.qty),
+      saldoAnterior: saldoAnterior, saldoFinal: saldoFinal, delta: -Number(item.qty),
+      descricao: 'Venda ' + numeroFatura, referencia: numeroFatura, origem: 'pdv',
+      data: now(), auditavel: true
+    });
+  }
   if (pdvState.pagamento === 'credito') await saveData('contasReceber', { cliente: pdvState.cliente.nome, valor: c.total, descricao: 'Venda ' + numeroFatura, vencimento: new Date(Date.now() + 30 * 86400000).toISOString(), status: 'pendente', data: now() });
   await criarNotificacao('Nova Venda', numeroFatura + ' - ' + fmt(c.total), 'success', 'vendas');
   toast('✅ Venda ' + numeroFatura + ': ' + fmt(c.total), 'success');
@@ -1642,51 +1651,101 @@ async function renderTransportadoras() {
 function abrirModalTransportadora() { openModal('Nova Transportadora', '<div class="form-group"><label>Nome *</label><input id="tNome"></div><div class="form-group"><label>Telefone</label><input id="tTel"></div><div class="form-group"><label>Custo Base (Kz)</label><input id="tCusto" type="number" value="0"></div><button class="btn btn-primary btn-block" onclick="salvarTransportadora()">Salvar</button>'); }
 async function salvarTransportadora() { const n = $('tNome').value.trim(); if (!n) { toast('Informe nome', 'warning'); return; } await saveData('transportadoras', { nome: n, telefone: $('tTel').value, custoBase: num($('tCusto').value, 0) }); toast('Cadastrada', 'success'); closeModal(); openModule('transportadoras'); }
 
-/* ====== ESTOQUE ====== */
+/* ====== ESTOQUE / MOVIMENTOS AUDITÁVEIS ====== */
 async function renderEstoque() {
-  const p = await getData('produtos'); const m = await getData('movimentacoesEstoque');
-  const total = p.reduce((s, x) => s + (x.estoque || 0), 0);
-  const baixo = p.filter(x => (x.estoque || 0) < (x.estoqueMin || 10));
-  const prodRows = p.map(x => ['<strong>' + esc(x.nome) + '</strong>', '<strong>' + (x.estoque || 0) + '</strong>', x.estoqueMin || 10,
-    badge((x.estoque || 0) >= (x.estoqueMin || 10) ? 'OK' : ((x.estoque || 0) > 0 ? 'Baixo' : 'Esgotado'), (x.estoque || 0) >= (x.estoqueMin || 10) ? 'success' : ((x.estoque || 0) > 0 ? 'warning' : 'danger')),
-    '<button class="btn btn-sm btn-success" onclick="ajustarEstoque(' + x.id + ',1)"><i class="fas fa-plus"></i></button> <button class="btn btn-sm btn-danger" onclick="ajustarEstoque(' + x.id + ',-1)"><i class="fas fa-minus"></i></button>']);
-  const movRows = m.slice(-30).reverse().map(x => [fmtDT(x.data), badge(x.tipo, x.tipo === 'entrada' ? 'success' : (x.tipo === 'saida' ? 'danger' : 'info')), esc(x.descricao)]);
-  return header('Estoque', fmtN(total) + ' unidades em ' + p.length + ' produtos', 'var(--info)',
-    '<button class="btn btn-sm btn-success" onclick="abrirMovEstoque(\'entrada\')"><i class="fas fa-arrow-down"></i> Entrada</button>' +
-    '<button class="btn btn-sm btn-danger" onclick="abrirMovEstoque(\'saida\')"><i class="fas fa-arrow-up"></i> Saída</button>' +
-    '<button class="btn btn-sm btn-warning" onclick="abrirMovEstoque(\'ajuste\')"><i class="fas fa-edit"></i> Ajuste</button>', 'fa-warehouse') +
-    '<div class="metric-grid"><div class="metric-card"><div class="label">Total Itens</div><div class="value">' + fmtN(total) + '</div></div>' +
-    '<div class="metric-card" style="border-left-color:var(--success)"><div class="label">OK</div><div class="value">' + (p.length - baixo.length) + '</div></div>' +
-    '<div class="metric-card" style="border-left-color:var(--danger)"><div class="label">Baixo</div><div class="value">' + baixo.length + '</div></div>' +
-    '<div class="metric-card" style="border-left-color:var(--info)"><div class="label">Movimentações</div><div class="value">' + m.length + '</div></div></div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-boxes"></i> Produtos</h3></div>' + table(['Produto', 'Qtd', 'Mín', 'Status', 'Ações'], prodRows) + '</div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-history"></i> Movimentações</h3></div>' + table(['Data', 'Tipo', 'Descrição'], movRows) + '</div>';
-}
-async function ajustarEstoque(id, d) {
-  const p = await DB.get('produtos', id); if (!p) return;
-  p.estoque = Math.max(0, (p.estoque || 0) + d);
-  await saveData('produtos', p);
-  await saveData('movimentacoesEstoque', { tipo: d > 0 ? 'entrada' : 'saida', descricao: 'Ajuste: ' + (d > 0 ? '+' : '') + d + ' ' + p.nome, data: now() });
-  pdvCache.ts = 0; openModule('estoque');
-}
-function abrirMovEstoque(tipo) {
-  DB.getAll('produtos').then(ps => {
-    openModal(tipo.charAt(0).toUpperCase() + tipo.slice(1) + ' de Estoque',
-      '<div class="form-group"><label>Produto *</label><select id="movProd">' + ps.map(p => '<option value="' + p.id + '">' + esc(p.nome) + ' (Est: ' + (p.estoque || 0) + ')</option>').join('') + '</select></div>' +
-      '<div class="form-group"><label>Quantidade *</label><input id="movQtd" type="number" value="1" min="1"></div>' +
-      '<div class="form-group"><label>Motivo</label><input id="movObs"></div>' +
-      '<button class="btn btn-primary btn-block" onclick="salvarMov(\'' + tipo + '\')">Registrar</button>');
+  const produtos = await getData('produtos');
+  const movimentos = await getData('movimentacoesEstoque');
+  const total = produtos.reduce((sum, p) => sum + Math.max(0, Number(p.estoque) || 0), 0);
+  const estados = produtos.map(p => window.KanawaStock.classify(p.estoque || 0, p.estoqueMin || 0));
+  const baixos = estados.filter(x => x === 'baixo').length;
+  const esgotados = estados.filter(x => x === 'esgotado').length;
+  const podeMovimentar = podeFazer('editar', 'estoque');
+  const linhas = produtos.map(p => {
+    const saldo = Number(p.estoque) || 0, minimo = Number(p.estoqueMin) || 0;
+    const estado = window.KanawaStock.classify(saldo, minimo);
+    const status = estado === 'normal' ? badge('Normal', 'success') : estado === 'baixo' ? badge('Stock baixo', 'warning') : badge('Esgotado', 'danger');
+    const acoes = podeMovimentar
+      ? '<button class="btn btn-sm btn-success" title="Entrada de uma unidade" onclick="ajustarEstoque(' + p.id + ',1)"><i class="fas fa-plus"></i></button> ' +
+        '<button class="btn btn-sm btn-danger" title="Saída de uma unidade" onclick="ajustarEstoque(' + p.id + ',-1)" ' + (saldo <= 0 ? 'disabled' : '') + '><i class="fas fa-minus"></i></button>'
+      : '<span class="text-muted">Sem permissão</span>';
+    return ['<strong>' + esc(p.nome) + '</strong><br><small>' + esc(p.codigoBarras || p.codigo || '') + '</small>', fmtN(saldo) + ' ' + esc(p.unidade || 'UN'), fmtN(minimo), status, acoes];
   });
+  const ultimos = movimentos.slice().sort((x,y) => String(y.data || '').localeCompare(String(x.data || ''))).slice(0,50);
+  const movLinhas = ultimos.map(m => [
+    fmtDT(m.data), badge(m.tipo, m.tipo === 'entrada' ? 'success' : m.tipo === 'saida' ? 'danger' : 'info'),
+    esc(m.produtoNome || m.descricao || '—'), fmtN(m.qtd || 0),
+    m.saldoAnterior == null ? '—' : fmtN(m.saldoAnterior),
+    m.saldoFinal == null ? '—' : fmtN(m.saldoFinal),
+    esc(m.operador || '—'), esc(m.referencia || m.descricao || '—')
+  ]);
+  return header('Stock e Inventário', produtos.length + ' produtos registados', 'var(--info)',
+    (podeMovimentar ? '<button class="btn btn-sm btn-success" onclick="abrirMovEstoque(\'entrada\')"><i class="fas fa-arrow-down"></i> Entrada</button>' +
+    '<button class="btn btn-sm btn-danger" onclick="abrirMovEstoque(\'saida\')"><i class="fas fa-arrow-up"></i> Saída</button>' +
+    '<button class="btn btn-sm btn-warning" onclick="abrirMovEstoque(\'ajuste\')"><i class="fas fa-balance-scale"></i> Inventário / Ajuste</button>' : ''), 'fa-warehouse') +
+    '<div class="metric-grid"><div class="metric-card"><div class="label">Unidades em stock</div><div class="value">' + fmtN(total) + '</div></div>' +
+    '<div class="metric-card" style="border-left-color:var(--success)"><div class="label">Stock normal</div><div class="value">' + (produtos.length - baixos - esgotados) + '</div></div>' +
+    '<div class="metric-card" style="border-left-color:var(--warning)"><div class="label">Stock baixo</div><div class="value">' + baixos + '</div></div>' +
+    '<div class="metric-card" style="border-left-color:var(--danger)"><div class="label">Esgotados</div><div class="value">' + esgotados + '</div></div></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-boxes"></i> Saldo por produto</h3></div>' + table(['Produto / Código', 'Disponível', 'Mínimo', 'Estado', 'Ações'], linhas) + '</div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-history"></i> Livro de movimentos (últimos 50)</h3></div>' +
+    table(['Data', 'Tipo', 'Produto', 'Qtd', 'Saldo anterior', 'Saldo final', 'Operador', 'Referência / Motivo'], movLinhas) + '</div>';
+}
+async function gravarMovimentoStock(produto, tipo, quantidade, motivo, referencia, origem) {
+  if (!podeFazer('editar', 'estoque')) throw new Error('Não tem permissão para movimentar stock.');
+  if (!window.KanawaStock) throw new Error('Módulo de stock não carregado.');
+  const actor = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
+  const before = Number(produto.estoque) || 0;
+  const movimento = window.KanawaStock.createMovement({
+    productId: produto.id, productName: produto.nome, before: before,
+    type: tipo, quantity: quantidade, reason: motivo,
+    reference: referencia || null, actor: actor.nome || actor.email || 'Utilizador',
+    source: origem || 'manual'
+  });
+  const atualizado = Object.assign({}, produto, { estoque: movimento.saldoFinal, stock_quantity: movimento.saldoFinal });
+  // Commit local product balance and its audit event in one IndexedDB transaction.
+  const tx = DB.db.transaction(['produtos','movimentacoesEstoque'], 'readwrite');
+  tx.objectStore('produtos').put(atualizado);
+  const movementId = nextGeneratedRecordId();
+  movimento.id = movementId;
+  tx.objectStore('movimentacoesEstoque').add(movimento);
+  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error || new Error('Movimento cancelado.')); });
+  // The two records are queued in order. Server-side normalized stock remains authoritative for POS sales.
+  await queueSync('produtos', 'update', atualizado, { stockMovementId: movementId });
+  await queueSync('movimentacoesEstoque', 'create', movimento, { stockMovementId: movementId });
+  pdvCache.ts = 0;
+  return movimento;
+}
+async function ajustarEstoque(id, delta) {
+  try {
+    const produto = await DB.get('produtos', id);
+    if (!produto) throw new Error('Produto não encontrado.');
+    const tipo = Number(delta) > 0 ? 'entrada' : 'saida';
+    await gravarMovimentoStock(produto, tipo, Math.abs(Number(delta)), 'Ajuste rápido de stock', null, 'ajuste_rapido');
+    toast('Stock atualizado e movimento registado.', 'success');
+    await openModule('estoque');
+  } catch (error) { toast(error.message || 'Não foi possível ajustar o stock.', 'error'); }
+}
+async function abrirMovEstoque(tipo) {
+  const produtos = await DB.getAll('produtos');
+  if (!produtos.length) { toast('Cadastre primeiro um produto.', 'warning'); return; }
+  openModal(tipo === 'ajuste' ? 'Contagem física / Ajuste de inventário' : (tipo === 'entrada' ? 'Entrada de stock' : 'Saída de stock'),
+    '<div class="form-group"><label>Produto *</label><select id="movProd">' + produtos.map(p => '<option value="' + p.id + '">' + esc(p.nome) + ' (Disponível: ' + (Number(p.estoque) || 0) + ')</option>').join('') + '</select></div>' +
+    '<div class="form-group"><label>' + (tipo === 'ajuste' ? 'Quantidade contada fisicamente *' : 'Quantidade *') + '</label><input id="movQtd" type="number" value="1" min="0" step="1"></div>' +
+    '<div class="form-group"><label>Motivo / documento de suporte *</label><input id="movObs" maxlength="180" placeholder="Ex.: compra, devolução, quebra, contagem física"></div>' +
+    '<button class="btn btn-primary btn-block" onclick="salvarMov(\'' + tipo + '\')">Confirmar movimento</button>');
 }
 async function salvarMov(tipo) {
-  const pid = int($('movProd').value); const qtd = int($('movQtd').value, 0); const obs = $('movObs').value;
-  const p = await DB.get('produtos', pid); if (!p) return;
-  if (tipo === 'entrada') p.estoque = (p.estoque || 0) + qtd;
-  else if (tipo === 'saida') { if ((p.estoque || 0) < qtd) { toast('Estoque insuficiente', 'error'); return; } p.estoque -= qtd; }
-  else if (tipo === 'ajuste') p.estoque = qtd;
-  await saveData('produtos', p);
-  await saveData('movimentacoesEstoque', { tipo, descricao: (obs || tipo) + ': ' + qtd + ' ' + p.nome, produtoId: pid, qtd, data: now() });
-  pdvCache.ts = 0; toast('✅ ' + tipo + ' registrada', 'success'); closeModal(); openModule('estoque');
+  try {
+    const produtoId = Number($('movProd').value);
+    const quantidade = Number($('movQtd').value);
+    const motivo = $('movObs').value.trim();
+    if (!motivo) throw new Error('Informe o motivo ou documento de suporte.');
+    const produto = await DB.get('produtos', produtoId);
+    if (!produto) throw new Error('Produto não encontrado.');
+    const movimento = await gravarMovimentoStock(produto, tipo, quantidade, motivo, null, tipo);
+    toast('Movimento registado. Saldo final: ' + fmtN(movimento.saldoFinal) + '.', 'success');
+    closeModal(); await openModule('estoque');
+  } catch (error) { toast(error.message || 'Falha ao registar movimento.', 'error'); }
 }
 
 /* ====== COMPRAS ====== */
