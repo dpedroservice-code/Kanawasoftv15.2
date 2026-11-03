@@ -22,9 +22,9 @@ function sale(overrides = {}) {
   };
 }
 
-test('rounds monetary values to cents without binary floating residue', () => {
-  assert.equal(roundMoney(0.1 + 0.2), 0.3);
-  assert.equal(roundMoney(100.105), 100.11);
+test('preserves the supplied monetary value without silently rounding', () => {
+  assert.equal(roundMoney(0.1 + 0.2), 0.1 + 0.2);
+  assert.equal(roundMoney(100.105), 100.105);
 });
 
 test('defaults an empty non-credit payment to exact total and zero change', () => {
@@ -66,16 +66,21 @@ test('blocks cart quantity above current product stock', () => {
   const { validateCartStock } = require('../app/sales-money.js');
   const products = [{ id: 7, nome: 'Produto', estoque: 4 }];
   assert.equal(validateCartStock([{ id: 7, qty: 4 }], products)[0].available, 4);
-  assert.throws(() => validateCartStock([{ id: 7, qty: 5 }], products), /Disponível: 4; no carrinho: 5/);
+  assert.throws(() => validateCartStock([{ id: 7, qty: 5 }], products), /Stock actual: 4; quantidade pedida: 5/);
 });
 
 test('blocks missing products and invalid stock values', () => {
   const { validateCartStock } = require('../app/sales-money.js');
-  assert.throws(() => validateCartStock([{ id: 8, qty: 1 }], [{ id: 7, estoque: 4 }]), /não encontrado no stock/);
+  assert.throws(() => validateCartStock([{ id: 8, qty: 1 }], [{ id: 7, estoque: 4 }]), /não existe, está inativo/);
   assert.throws(() => validateCartStock([{ id: 7, qty: 1 }], [{ id: 7, estoque: 'inválido' }]), /Stock ou quantidade inválida/);
 });
 
 test('supports normalized stock_quantity records from the cloud catalogue', () => {
   const { validateCartStock } = require('../app/sales-money.js');
   assert.equal(validateCartStock([{ id: 'SKU-1', qty: 2 }], [{ id: 'SKU-1', stock_quantity: 2 }])[0].quantity, 2);
+});
+
+test('rejects products marked inactive even when stock is positive', () => {
+  const { validateCartStock } = require('../app/sales-money.js');
+  assert.throws(() => validateCartStock([{ id: 7, qty: 1 }], [{ id: 7, nome: 'Produto', estoque: 4, ativo: false }]), /não existe, está inativo/);
 });
