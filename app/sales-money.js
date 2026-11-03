@@ -12,6 +12,24 @@
     return number;
   }
 
+  function subtractDecimal(left, right) {
+    function parts(value) {
+      let text = String(value);
+      let sign = 1n;
+      if (text[0] === '-') { sign = -1n; text = text.slice(1); }
+      const split = text.split('.');
+      const fraction = split[1] || '';
+      return { coefficient: sign * BigInt((split[0] || '0') + fraction), scale: fraction.length };
+    }
+    const a = parts(left), b = parts(right), scale = Math.max(a.scale, b.scale);
+    const factor = 10n ** BigInt(scale);
+    const result = a.coefficient * (factor / (10n ** BigInt(a.scale))) -
+      b.coefficient * (factor / (10n ** BigInt(b.scale)));
+    const negative = result < 0n, digits = (negative ? -result : result).toString().padStart(scale + 1, '0');
+    const text = scale ? digits.slice(0, -scale) + '.' + digits.slice(-scale) : digits;
+    return Number((negative ? '-' : '') + text);
+  }
+
   function normalizeSale(item) {
     if (!item || item.status !== 'finalizada') throw new Error('Apenas vendas finalizadas podem ser sincronizadas.');
     const sourceItems = item.itens || item.carrinho || [];
@@ -58,7 +76,7 @@
     if (received < 0) throw new Error('O valor recebido não pode ser negativo.');
     if (received === 0 && !isCredit) received = total;
     if (!isCredit && received < total) throw new Error('Pagamento insuficiente: falta receber ' + roundMoney(total - received).toFixed(2) + '.');
-    const change = Math.max(0, received - total);
+    const change = Math.max(0, subtractDecimal(received, total));
 
     return {
       sale: {
