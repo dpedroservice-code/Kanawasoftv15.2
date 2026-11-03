@@ -44,7 +44,7 @@
   };
   const notify = (msg,type) => typeof toast === 'function' ? toast(msg,type || 'info') : alert(msg);
   const stores = { quotes:'orcamentos', products:'produtos', services:'servicos', evaluations:'avaliacoes', reservations:'transferencias', workOrders:'ordensServico', kits:'boms', tracking:'rastreios', staff:'tecnicos', skills:'certificacoes', categories:'categorias', priceTables:'tabelasPrecos', production:'ordensProducao' };
-  const state = { tab:'overview', quotes:[], products:[], services:[], evaluations:[], reservations:[], workOrders:[], kits:[], tracking:[], staff:[], skills:[], categories:[], priceTables:[], production:[] };
+  const state = { tab:'overview', quotes:[], products:[], services:[], evaluations:[], reservations:[], workOrders:[], kits:[], tracking:[], staff:[], skills:[], categories:[], priceTables:[], production:[], cloudBacked:false, cloudError:null };
   const tabs = [
     ['overview','Visão geral','fa-chart-pie'],['quotes','Orçamentos técnicos','fa-file-invoice-dollar'],
     ['products','Produtos técnicos','fa-boxes'],['categories','Categorias técnicas','fa-sitemap'],['services','Serviços e equipas','fa-tools'],
@@ -54,6 +54,22 @@
   ];
   async function load() {
     for (const [k,s] of Object.entries(stores)) state[k] = await read(s).catch(()=>[]);
+    state.cloudBacked = false;
+    state.cloudError = null;
+    const cloud = window.KanawaCloud;
+    if (cloud && cloud.ready && window.KanawaTechnicalCloud) {
+      try {
+        const [quotes, workOrders] = await Promise.all([
+          window.KanawaTechnicalCloud.listQuotes(),
+          window.KanawaTechnicalCloud.listWorkOrders()
+        ]);
+        state.quotes = quotes;
+        state.workOrders = workOrders;
+        state.cloudBacked = true;
+      } catch (error) {
+        state.cloudError = error && error.message ? error.message : 'Não foi possível carregar as tabelas técnicas.';
+      }
+    }
   }
   function shell() {
     return '<style>'+
@@ -65,7 +81,7 @@
   function bodyForTab() {
     const q=state.quotes,p=state.products,s=state.services,e=state.evaluations,r=state.reservations;
     if(state.tab==='overview') return '<div class="kt-grid">'+stat('Orçamentos técnicos',q.length,'Registados')+stat('Em negociação',q.filter(x=>x.status==='Em negociação').length,'Com reserva lógica')+stat('Ordens de serviço',state.workOrders.length,'Criadas a partir de propostas')+stat('Produtos técnicos',p.length,'Peças, consumíveis e equipamentos')+stat('Avaliações',e.length,'Diagnósticos e feedback')+stat('Serviços',s.length,'Catálogo técnico')+'</div><section class="kt-panel" style="margin-top:16px"><h3>Fluxo recomendado</h3><div class="kt-grid">'+['Diagnóstico / vistoria','Orçamento analítico','Aprovação e adjudicação','Reserva de peças','Ordem de Serviço','Execução e check-in/out','Avaliação do cliente','Fecho e garantia'].map((x,i)=>'<div class="kt-stat"><span class="kt-pill">'+(i+1)+'</span><strong style="font-size:1rem">'+x+'</strong></div>').join('')+'</div><div class="kt-note">A reserva registada nesta interface é uma pré-reserva operacional. A baixa definitiva, o bloqueio concorrente de stock e pagamentos reais exigem validação transacional no servidor. Não se altera o stock físico ao criar uma proposta.</div></section>';
-    if(state.tab==='quotes') return quoteForm()+table(['Referência','Cliente','Descrição','Total','Validade','Estado','Ações'],q.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo)+'</td><td>'+escT(x.cliente)+'</td><td>'+escT(x.titulo)+'</td><td>'+money(x.total)+'</td><td>'+escT(x.validadeDias)+' dias</td><td><span class="kt-pill">'+escT(x.status)+'</span></td><td>'+(x.status==='Em negociação'?'<button class="btn btn-sm btn-success" onclick="KanawaTechnical.approve('+Number(x.id)+')">Aprovar</button> ':'')+(x.status==='Aprovado'?'<button class="btn btn-sm btn-primary" onclick="KanawaTechnical.convert('+Number(x.id)+')">Criar OS</button>':'—')+'</td></tr>'),'Crie o primeiro orçamento técnico.');
+    if(state.tab==='quotes') return (state.cloudBacked?'':'<div class="kt-note">O módulo de orçamentos exige as migrações técnicas no Supabase e uma sessão activa. '+escT(state.cloudError||'Os registos locais não são considerados confirmação de gravação no servidor.')+'</div>')+quoteForm()+table(['Referência','Cliente','Descrição','Total','Validade','Estado','Ações'],q.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo)+'</td><td>'+escT(x.cliente)+'</td><td>'+escT(x.titulo)+'</td><td>'+money(x.total)+'</td><td>'+escT(x.validadeDias)+' dias</td><td><span class="kt-pill">'+escT(x.status)+'</span></td><td>'+(x.status==='Em negociação'?'<button class="btn btn-sm btn-success" onclick="KanawaTechnical.approve(\''+escT(x.cloudId||x.id)+'\')">Aprovar</button> ':'')+(x.status==='Aprovado'?'<button class="btn btn-sm btn-primary" onclick="KanawaTechnical.convert(\''+escT(x.cloudId||x.id)+'\')">Criar OS</button>':'—')+'</td></tr>'),'Crie o primeiro orçamento técnico.');
     if(state.tab==='products') return productForm()+table(['Código','Produto','Tipo','Moeda base','Custo base','Garantia','Stock','Compatibilidade'],p.slice().reverse().map(x=>'<tr><td>'+escT(x.codigo||'—')+'</td><td>'+escT(x.nome)+'</td><td>'+escT(x.tipoTecnico||'Produto')+'</td><td>'+escT(x.moedaBase||'AOA')+'</td><td>'+money(x.custoBase||x.custo||0)+'</td><td>'+escT(x.garantiaMeses||0)+' meses</td><td>'+num(x.estoque)+'</td><td>'+escT(x.compatibilidade||'—')+'</td></tr>'),'Cadastre peças e equipamentos.');
     if(state.tab==='categories') return categoryForm()+table(['Eixo','Categoria','Categoria superior','Descrição'],state.categories.slice().reverse().map(x=>'<tr><td>'+escT(x.eixo||'—')+'</td><td>'+escT(x.nome)+'</td><td>'+escT(x.parentName||'—')+'</td><td>'+escT(x.descricao||'—')+'</td></tr>'),'Organize as categorias técnicas.');
     if(state.tab==='services') return serviceForm()+table(['Serviço','Especialidade','Unidade','Custo/h','Preço/h','Duração','SLA','Equipa mínima'],s.slice().reverse().map(x=>'<tr><td>'+escT(x.nome)+'</td><td>'+escT(x.especialidade||'—')+'</td><td>'+escT(x.unidadeCobranca||'Hora')+'</td><td>'+money(x.custoHora||0)+'</td><td>'+money(x.precoHora||x.preco||0)+'</td><td>'+escT(x.duracaoHoras||x.duracao||0)+' h</td><td>'+escT(x.slaHoras||'—')+' h</td><td>'+num(x.equipaMinima||1)+'</td></tr>'),'Cadastre os serviços e requisitos.');
@@ -144,13 +160,7 @@
     field('Tempo real (horas)','tempoReal','number','0',null,false),field('Peças desperdiçadas / justificativa','refugo','textarea','Quantidade e motivo...',null,true)
   ],'evaluation','Notas inferiores a 3 geram sinalização no painel; a assinatura deve ser recolhida com consentimento e guardada como evidência, não como imagem pública.');}
   function stockPanel(){
-    const products=state.products;
-    return '<section class="kt-panel"><h3>Pré-reserva de stock por orçamento / OS</h3><form class="kt-form" onsubmit="return KanawaTechnical.submit(event,\'reservation\')">'+
-      field('Produto','produtoId','select','',products.map(p=>[String(p.id),p.nome+' — stock '+num(p.estoque)]),false)+
-      field('Quantidade','quantidade','number','1',null,false)+field('Referência orçamento / OS','referencia','text','ORC-... / OS-...',null,false)+
-      field('Armazém de origem','armazem','text','Central / Oficina / Carrinha',null,false)+
-      '<div class="full kt-actions"><button class="btn btn-primary" type="submit">Pré-reservar</button></div></form>'+
-      '<div class="kt-note">Pré-reserva informativa no registo operacional. Não reduz o stock físico e não substitui uma transacção atómica no PostgreSQL. Antes de activar vendas concorrentes, deve ser ligada a RPC transaccional e teste de concorrência.</div></section>';
+    return '<section class="kt-panel"><h3>Stock técnico transaccional</h3><div class="kt-note">A reserva e a baixa de stock só serão disponibilizadas depois de o catálogo técnico e os armazéns normalizados estarem ligados a esta interface. Não serão criadas reservas locais que aparentem bloquear stock real.</div><p class="kt-muted">As operações de reserva, libertação e ajuste existem como RPCs protegidas no PostgreSQL, mas ainda exigem ligação a produtos técnicos e armazéns reais.</p></section>';
   }
   function productionForm(){return form('Criar kit / ordem de produção',[
     field('Produto / kit *','produtoNome','text','Quadro eléctrico montado...',null,false),field('Quantidade','quantidade','number','1',null,false),
@@ -188,8 +198,11 @@
         const labor=costs.laborRevenue, direct=costs.direct, indirect=costs.indirect, contingency=costs.contingency;
         const discount=costs.discount, taxable=costs.taxBase, tax=costs.iva, retention=costs.retention, total=costs.total;
         const row={id:undefined,codigo:uid(),tipo:'tecnico',cliente:d.cliente.trim(),titulo:d.titulo.trim(),validadeDias:Math.max(1,Math.min(90,Math.floor(num(d.validadeDias)||7))),prazoDias:num(d.prazoDias),horas:num(d.horas),custoMaoObra:costs.laborCost,precoMaoObra:labor,custoInternoEstimado:costs.estimatedInternalCost,margemEstimada:costs.estimatedMargin,equipamentos:num(d.equipamentos),consumiveis:num(d.consumiveis),deslocacao:num(d.deslocacao),diarias:num(d.diarias),bdiPercent:num(d.bdi),contingencia:contingency,desconto:discount,ivaPercent:num(d.ivaPercent),ivaValor:tax,retencaoPercent:num(d.retencaoPercent),retencaoValor:retention,total:Math.max(0,total),escopo:d.escopo,escopoExcluido:d.escopoExcluido,anexosReferencia:d.anexosReferencia,itens:parseQuoteStockLines(d.itensStock),tranches:parsePaymentMilestones(d.pagamento),notaFiscal:d.notaFiscal,status:d.status||'Rascunho',criadoEm:new Date().toISOString(),moeda:'AOA'};
-        const id=await write(stores.quotes,row); row.id=id; state.quotes.push(row);
-        if(row.status==='Em negociação') await reserveQuote(row);
+        if(!window.KanawaTechnicalCloud) throw new Error('Módulo cloud técnico não carregado. Atualize a aplicação.');
+        const created=await window.KanawaTechnicalCloud.createQuote(row,costs);
+        row.id=created.quote_id; row.cloudId=created.quote_id;
+        row.status=row.status==='Em negociação'?'Em negociação':'Rascunho';
+        state.quotes.push(row); state.cloudBacked=true;
       } else if(kind==='product') {
         if(!d.nome.trim()) throw new Error('O nome do produto é obrigatório.');
         const cost=num(d.custoBase), rate=num(d.taxaCambio);
@@ -247,24 +260,29 @@
     }
   }
   async function approve(id) {
-    const q=state.quotes.find(x=>Number(x.id)===Number(id));
+    const q=state.quotes.find(x=>String(x.cloudId||x.id)===String(id));
     if(!q) return notify('Orçamento não encontrado.','error');
     if(q.status!=='Em negociação') return notify('Apenas orçamentos em negociação podem ser aprovados.','warning');
-    if(q.validadeDias<=0) return notify('A validade do orçamento é inválida.','error');
-    q.status='Aprovado'; q.aprovadoEm=new Date().toISOString();
-    await write(stores.quotes,q);
-    await reserveQuote(q);
-    notify('Orçamento aprovado. As pré-reservas operacionais foram registadas.','success');
-    await refresh();
+    if(!window.KanawaTechnicalCloud) return notify('Módulo cloud técnico não carregado.','error');
+    try {
+      await window.KanawaTechnicalCloud.approveQuote(q.cloudId||q.id);
+      q.status='Aprovado'; q.aprovadoEm=new Date().toISOString();
+      notify('Orçamento aprovado no PostgreSQL. A reserva física de peças continua pendente de ligação ao armazém técnico.','success');
+      await refresh();
+    } catch(error) { notify(error.message||'Não foi possível aprovar o orçamento no servidor.','error'); }
   }
   async function convert(id) {
-    const q=state.quotes.find(x=>Number(x.id)===Number(id)); if(!q) return notify('Orçamento não encontrado.','error');
+    const q=state.quotes.find(x=>String(x.cloudId||x.id)===String(id));
+    if(!q) return notify('Orçamento não encontrado.','error');
     if(q.status!=='Aprovado') return notify('Apenas orçamentos aprovados podem gerar uma Ordem de Serviço.','warning');
-    const exists=state.workOrders.some(x=>x.orcamentoId===q.id||x.referenciaOrcamento===q.codigo);
+    const exists=state.workOrders.some(x=>String(x.orcamentoId)===String(q.cloudId||q.id));
     if(exists) return notify('Já existe uma OS para este orçamento.','warning');
-    const row={codigo:'OS-'+uid(),orcamentoId:q.id,referenciaOrcamento:q.codigo,cliente:q.cliente,descricao:q.titulo,escopo:q.escopo,prazoDias:q.prazoDias,status:'Pendente de planeamento',criadoEm:new Date().toISOString(),origem:'orcamento_tecnico'};
-    const idOS=await write(stores.workOrders,row);row.id=idOS;state.workOrders.push(row);
-    notify('Ordem de Serviço criada a partir do orçamento.','success'); await refresh();
+    if(!window.KanawaTechnicalCloud) return notify('Módulo cloud técnico não carregado.','error');
+    try {
+      const result=await window.KanawaTechnicalCloud.convertQuote(q.cloudId||q.id,'OS-'+uid());
+      await refresh();
+      notify(result&&result.duplicate?'Já existia uma OS para este orçamento.':'Ordem de Serviço criada no PostgreSQL.','success');
+    } catch(error) { notify(error.message||'Não foi possível criar a Ordem de Serviço.','error'); }
   }
   async function refresh() {
     await load(); const root=$('kt-content'); if(root) root.innerHTML=bodyForTab();
