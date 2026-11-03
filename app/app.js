@@ -87,8 +87,6 @@ function toggleTheme() {
 }
 function toggleUserMenu() { openModule('perfil'); }
 function calcIRT(s) { const f = AGT_CONFIG.irt.faixas.find(x => s >= x.min && s <= x.max); return f ? { irt: Math.max(0, (s * f.taxa) - f.parcela), faixa: f } : { irt: 0, faixa: null }; }
-function gerarHash(d) { const s = JSON.stringify(d) + Date.now() + Math.random(); let h = 0; for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h = h & h; } return Math.abs(h).toString(16).toUpperCase().padStart(16, '0'); }
-function gerarAssinatura(v) { const d = (v.numeroFatura || '') + '|' + (v.total || 0) + '|' + (v.data || '') + '|' + ((v.empresa && v.empresa.nif) || ''); let h = 0; for (let i = 0; i < d.length; i++) { h = ((h << 5) - h) + d.charCodeAt(i); h = h & h; } return Math.abs(h).toString(36).toUpperCase().padStart(12, '0'); }
 
 /* ====== INDEXEDDB ====== */
 const DB_STORES = [
@@ -956,10 +954,10 @@ async function abrirFatura(venda) {
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f8fafc;padding:10px;border-radius:6px;margin-bottom:12px;font-size:.78rem">' +
     '<div style="line-height:1.6"><strong style="color:#1a3a5c;display:block;margin-bottom:2px">CLIENTE</strong><div>Nome: ' + esc(venda.clienteNome || 'Consumidor Final') + '</div>' +
     (venda.clienteNif ? '<div>NIF: ' + esc(venda.clienteNif) + '</div>' : '') + (venda.clienteTelefone ? '<div>Tel: ' + esc(venda.clienteTelefone) + '</div>' : '') + '</div>' +
-    '<div style="line-height:1.6"><strong style="color:#1a3a5c;display:block;margin-bottom:2px">OPERAÇÃO</strong><div>Pagamento: ' + esc(venda.pagamento || '-') + '</div><div>Regime: ' + esc(venda.regime || 'geral') + '</div><div>Tipo Doc: Fatura-Recibo</div></div></div>' +
+    '<div style="line-height:1.6"><strong style="color:#1a3a5c;display:block;margin-bottom:2px">OPERAÇÃO</strong><div>Pagamento: ' + esc(venda.pagamento || '-') + '</div><div>Regime: ' + esc(venda.regime || 'geral') + '</div><div>Tipo: Documento comercial de gestão</div></div></div>' +
     '<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr style="background:#1a3a5c;color:#fff"><th style="padding:6px;text-align:left;font-size:.75rem">#</th><th style="padding:6px;text-align:left;font-size:.75rem">Descrição</th><th style="padding:6px;text-align:center;font-size:.75rem">Qtd</th><th style="padding:6px;text-align:right;font-size:.75rem">Preço Unit.</th><th style="padding:6px;text-align:right;font-size:.75rem">Total</th></tr></thead><tbody>' + itensHTML + '</tbody></table>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">' +
-    '<div style="font-size:.78rem;color:#475569"><strong>Documento comercial</strong><br>Emitido pelo sistema de gestão da empresa.</div>' +
+    '<div style="font-size:.78rem;color:#b91c1c"><strong>Documento comercial de teste</strong><br>Não substitui factura fiscal emitida por software validado pela AGT.</div>' +
     '<div style="font-size:.82rem;line-height:1.8">' +
     '<div style="display:flex;justify-content:space-between"><span>Subtotal:</span><strong>' + fmt(subtotal) + '</strong></div>' +
     (desconto > 0 ? '<div style="display:flex;justify-content:space-between;color:#dc3545"><span>Desconto (' + venda.desconto + '%):</span><strong>-' + fmt(desconto) + '</strong></div>' : '') +
@@ -1793,21 +1791,8 @@ async function renderFiscal() {
     '<button class="btn btn-primary" onclick="exportarInventario()"><i class="fas fa-boxes"></i> Inventário</button></div></div>';
 }
 async function exportarSAFTCompleto() {
-  const [vendas, produtos, clientes, emp] = await Promise.all([getData('vendas'), getData('produtos'), getData('clientes'), Promise.resolve(JSON.parse(localStorage.getItem('kanawa_empresa') || '{}'))]);
-  const saft = {
-    AuditFile: {
-      Header: { AuditFileVersion: '1.0_01', CompanyID: emp.nif || '', TaxRegistrationNumber: emp.nif || '', CompanyName: emp.firma || emp.nome || '', FiscalYear: new Date().getFullYear(), StartDate: new Date(new Date().getFullYear(), 0, 1).toISOString(), EndDate: now(), CurrencyCode: 'AOA', DateCreated: now(), ProductID: 'KanawaSoft/ERP' },
-      MasterFiles: {
-        Customer: clientes.map(c => ({ CustomerID: c.id, AccountID: 'C' + c.id, CustomerTaxID: c.nif || '', CompanyName: c.nome, BillingAddress: { AddressDetail: c.endereco || '-', City: 'Luanda', PostalCode: '0000', Country: 'AO' } })),
-        Product: produtos.map(p => ({ ProductType: 'P', ProductCode: p.codigo || 'P' + p.id, ProductDescription: p.nome, ProductNumberCode: p.codigoBarras || p.codigo || '', UnitOfMeasure: p.unidade || 'UN' }))
-      },
-      SourceDocuments: { SalesInvoices: { NumberOfEntries: vendas.length, TotalDebit: 0, TotalCredit: vendas.reduce((s, v) => s + (v.total || 0), 0), Invoice: vendas.map(v => ({ InvoiceNo: v.numeroFatura, DocumentStatus: { InvoiceStatus: 'N', InvoiceStatusDate: v.data, SourceID: 'KanawaSoft', SourceBilling: 'P' }, Hash: v.hash || '', InvoiceDate: v.data, InvoiceType: 'FT', CustomerID: v.clienteNif || 'Consumidor Final', Line: (v.itens || []).map((it, i) => ({ LineNumber: i + 1, ProductCode: it.id ? it.id.toString() : 'P' + i, ProductDescription: it.nome, Quantity: it.qty, UnitPrice: it.preco, CreditAmount: it.subtotal, Tax: { TaxType: 'IVA', TaxCountryRegion: 'AO', TaxCode: 'NOR', TaxPercentage: 14 } })), DocumentTotals: { TaxPayable: v.iva || 0, NetTotal: v.subtotal - (v.descontoValor || 0), GrossTotal: v.total || 0 } })) } }
-    }
-  };
-  const blob = new Blob([JSON.stringify(saft, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob); const a = document.createElement('a');
-  a.href = url; a.download = 'SAFT_' + (emp.nif || 'empresa') + '_' + new Date().getFullYear() + '.xml'; a.click();
-  URL.revokeObjectURL(url); toast('📄 SAF-T completo exportado', 'success');
+  toast('Exportação SAF-T AO bloqueada: o exportador atual ainda não gera XML conforme o esquema oficial nem valida assinatura, sequência e integridade documental. Não será descarregado um JSON com extensão XML.', 'warning');
+  return false;
 }
 async function exportarIRTDeclaracao() {
   const funcs = await getData('funcionarios'); const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
