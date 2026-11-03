@@ -1802,10 +1802,30 @@ async function exportarInventario() {
 }
 
 /* ====== RH ====== */
+let rhActiveTab = 'funcionarios';
+function openRHSection(tab) { rhActiveTab = tab; openModule('rh'); }
 async function renderRH() {
-  const f = await getData('funcionarios');
-  const rows = f.map(x => { const irt = calcIRT(x.salario || 0).irt; return [x.id, '<strong>' + esc(x.nome) + '</strong>', esc(x.cargo || '-'), fmt(x.salario), '<span style="color:var(--danger)">-' + fmt(irt) + '</span>', '<span style="color:var(--success);font-weight:700">' + fmt((x.salario || 0) - irt) + '</span>', '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'funcionarios\',' + x.id + ')"><i class="fas fa-trash"></i></button>']; });
-  return header('RH — Recursos Humanos', f.length + ' funcionários', 'var(--info)', '<button class="btn btn-success" onclick="abrirModalFuncionario()"><i class="fas fa-plus"></i> Novo</button>', 'fa-user-tie') + '<div class="card">' + table(['#', 'Nome', 'Cargo', 'Salário', 'IRT', 'Líquido', 'Ações'], rows) + '</div>';
+  const tabs = [['funcionarios','Funcionários'],['recrutamento','Recrutamento'],['desempenho','Desempenho'],['beneficios','Benefícios'],['onboarding','Onboarding'],['ponto','Ponto'],['rescisao','Rescisão'],['plano-carreira','Carreira']];
+  const nav = tabs.map(([id,label]) => '<button class="btn '+(rhActiveTab===id?'btn-primary':'btn-secondary')+'" onclick="openRHSection(\''+id+'\')">'+label+'</button>').join('');
+  let body = '';
+  if (rhActiveTab==='recrutamento') body=await renderRHRecrutamento();
+  else if (rhActiveTab==='desempenho') body=await renderRHDesempenho();
+  else if (rhActiveTab==='beneficios') body=await renderRHBeneficios();
+  else if (rhActiveTab==='onboarding') body=await renderRHOnboarding();
+  else if (rhActiveTab==='ponto') body=await renderRHPonto();
+  else if (rhActiveTab==='rescisao') body=await renderRHRescisao();
+  else if (rhActiveTab==='plano-carreira') body=await renderRHPlanoCarreira();
+  else {
+    const f=await getData('funcionarios');
+    const rows=f.map(x=>{const irt=calcIRT(x.salario||0).irt;return [x.id,'<strong>'+esc(x.nome)+'</strong>',esc(x.cargo||'-'),fmt(x.salario||0),fmt(irt),fmt((x.salario||0)-irt),fmtD(x.dataContratacao||x.dataInicio||x.admissao),esc(x.telefone||'-'),esc(x.email||'-'),'<button class="btn btn-sm btn-primary" onclick="verFuncionarioRH('+x.id+')">Ficha completa</button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'funcionarios\','+x.id+')"><i class="fas fa-trash"></i></button>'];});
+    body='<div class="card">'+table(['#','Trabalhador','Cargo','Salário bruto','IRT estimado','Líquido estimado','Admissão','Telefone','Email','Ações'],rows)+'</div>';
+  }
+  return header('Recursos Humanos','Gestão integrada de trabalhadores e ciclo de vida','var(--info)','<button class="btn btn-success" onclick="abrirModalFuncionario()"><i class="fas fa-plus"></i> Novo trabalhador</button>','fa-users')+'<div class="card" style="display:flex;gap:8px;flex-wrap:wrap">'+nav+'</div>'+body;
+}
+async function verFuncionarioRH(id) {
+ const f=await DB.get('funcionarios',id); if(!f)return toast('Trabalhador não encontrado.','error');
+ const fields=[['Nome completo',f.nome],['Cargo',f.cargo],['Departamento',f.departamento],['NIF',f.nif],['BI',f.bi],['Telefone',f.telefone],['Email',f.email],['Morada',f.endereco||f.morada],['Data de nascimento',f.dataNascimento],['Data de admissão',f.dataContratacao||f.dataInicio||f.admissao],['Tipo de contrato',f.tipoContrato],['Salário bruto',fmt(f.salario||0)],['Banco',f.banco],['IBAN',f.iban],['Estado',f.status||'Activo']];
+ openModal('Ficha completa do trabalhador','<div class="form-grid">'+fields.map(([k,v])=>'<div class="form-group"><label>'+esc(k)+'</label><div>'+esc(v||'Não informado')+'</div></div>').join('')+'</div>',true);
 }
 function abrirModalFuncionario() { openModal('Novo Funcionário', '<div class="form-group"><label>Nome *</label><input id="fnNome"></div><div class="form-group"><label>Cargo</label><input id="fnCargo"></div><div class="form-group"><label>Salário *</label><input id="fnSalario" type="number" value="0"></div><button class="btn btn-primary btn-block" onclick="salvarFuncionario()">Salvar</button>'); }
 async function salvarFuncionario() { const n = $('fnNome').value.trim(); if (!n) { toast('Informe nome', 'warning'); return; } await saveData('funcionarios', { nome: n, cargo: $('fnCargo').value, salario: num($('fnSalario').value, 0), dataContratacao: now() }); toast('Cadastrado', 'success'); closeModal(); openModule('rh'); }
