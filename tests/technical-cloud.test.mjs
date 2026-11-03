@@ -51,7 +51,7 @@ test('rejects technical quotes without customer, title or billable lines', () =>
   );
 });
 
-test('does not allow more than 100 percent in payment milestones at payload boundary', () => {
+test('rejects payment milestones above 100 percent at payload boundary', () => {
   const row = {
     codigo: 'ORC-TEST-002', cliente: 'Cliente', titulo: 'Serviço',
     horas: 1, validadeDias: 7, tranches: [
@@ -60,6 +60,5 @@ test('does not allow more than 100 percent in payment milestones at payload boun
     ]
   };
   const costs = Pricing.calculate({ hours: 1, hourlyCost: 10, hourlyPrice: 20 });
-  const payload = TechnicalCloud.buildQuotePayload(row, costs);
-  assert.equal(payload.installments.reduce((sum, item) => sum + item.percentage, 0), 110);
+  assert.throws(() => TechnicalCloud.buildQuotePayload(row, costs), /soma não pode ultrapassar 100%/);
 });
