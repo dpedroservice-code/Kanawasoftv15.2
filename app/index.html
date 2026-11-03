@@ -37,6 +37,26 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
 ::-webkit-scrollbar-track{background:var(--bg);border-radius:4px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
 ::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+/* Paisagem animada inspirada nas montanhas e escarpas de Angola */
+.angola-scene{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;overflow:hidden}
+.angola-scene svg{width:100%;height:100%;display:block}
+.angola-scene .sun-glow{transform-origin:50% 50%;animation:angolaSun 9s ease-in-out infinite}
+.angola-scene .cloud-one{animation:angolaCloud 34s linear infinite}
+.angola-scene .cloud-two{animation:angolaCloud 46s linear infinite reverse}
+.angola-scene .ridge-back{animation:angolaRidge 18s ease-in-out infinite alternate}
+.angola-scene .ridge-front{animation:angolaRidge 13s ease-in-out infinite alternate-reverse}
+.angola-scene .waterfall{animation:angolaWater 3s ease-in-out infinite}
+@keyframes angolaSun{0%,100%{transform:scale(.96);opacity:.72}50%{transform:scale(1.06);opacity:1}}
+@keyframes angolaCloud{from{transform:translateX(-7%)}to{transform:translateX(7%)}}
+@keyframes angolaRidge{from{transform:translateY(0)}to{transform:translateY(-10px)}}
+@keyframes angolaWater{0%,100%{opacity:.45}50%{opacity:.9}}
+#loadingScreen,#authScreen,#setupWizard{isolation:isolate;overflow:hidden}
+#loadingScreen>*:not(.angola-scene),#authScreen>.auth-box,#setupWizard>.setup-box{position:relative;z-index:2}
+#loadingScreen{background:linear-gradient(160deg,#0a2340 0%,#174a69 52%,#d17b46 100%)}
+#authScreen{background:linear-gradient(160deg,rgba(10,35,64,.94),rgba(23,74,105,.9) 55%,rgba(209,123,70,.82))}
+#setupWizard{background:linear-gradient(160deg,rgba(10,35,64,.86),rgba(23,74,105,.82) 55%,rgba(209,123,70,.7))}
+.loading-landscape-label{position:absolute;z-index:2;bottom:24px;left:20px;right:20px;text-align:center;color:rgba(255,255,255,.82);font-size:.75rem;letter-spacing:.14em;text-transform:uppercase}
+.auth-box,.setup-box{backdrop-filter:blur(8px)}
 #loadingScreen{position:fixed;inset:0;background:var(--primary);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;color:#fff}
 #loadingScreen.hidden{display:none}
 .loading-logo{width:120px;height:120px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:3.5rem;color:var(--primary);font-weight:800;margin-bottom:20px;overflow:hidden;animation:pulse 1.5s infinite}
@@ -321,7 +341,29 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
 <body>
 
 <!-- LOADING -->
-<div id="loadingScreen">
+<div id="loadingScreen">\n  <svg class="angola-scene" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="angolaSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#102e50"/><stop offset=".56" stop-color="#39738a"/><stop offset="1" stop-color="#e4a06a"/></linearGradient>
+    <linearGradient id="angolaSun" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffe9a8"/><stop offset="1" stop-color="#e88a54"/></linearGradient>
+    <linearGradient id="angolaFar" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#547b8b"/><stop offset="1" stop-color="#263f59"/></linearGradient>
+    <linearGradient id="angolaNear" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#264c58"/><stop offset="1" stop-color="#102d3b"/></linearGradient>
+  </defs>
+  <rect width="1440" height="900" fill="url(#angolaSky)"/>
+  <circle class="sun-glow" cx="1120" cy="270" r="112" fill="url(#angolaSun)" opacity=".86"/>
+  <g class="cloud-one" fill="#fff" opacity=".14"><path d="M90 245c18-46 74-58 109-28 20-54 102-60 131-7 49-10 83 19 85 57H90z"/></g>
+  <g class="cloud-two" fill="#fff" opacity=".1"><path d="M830 170c24-40 80-43 109-12 24-50 93-46 116-2 43-8 78 18 83 51H830z"/></g>
+  <g class="ridge-back" fill="url(#angolaFar)" opacity=".82">
+    <path d="M0 610 115 510 190 550 330 360 420 450 530 320 650 445 770 365 880 480 1000 330 1125 455 1240 350 1440 515V900H0z"/>
+    <path d="m270 420 60-60 44 44-35-12-26 23zM485 370l45-50 46 58-38-19-28 24zM954 391l46-61 58 73-48-29-29 25z" fill="#d4d8cf" opacity=".55"/>
+  </g>
+  <g class="ridge-front" fill="url(#angolaNear)">
+    <path d="M0 690 120 590 205 635 325 515 420 590 540 470 650 590 755 505 865 630 1000 480 1115 600 1230 500 1440 650V900H0z"/>
+    <path d="M0 770 170 665 280 710 430 615 555 700 700 605 820 720 965 610 1110 730 1270 625 1440 740V900H0z" fill="#0b2735" opacity=".76"/>
+  </g>
+  <path d="M1010 500c-15 70-8 115 10 155s13 68 3 106" stroke="#d6e7e4" stroke-width="5" stroke-linecap="round" fill="none" class="waterfall" opacity=".65"/>
+  <path d="M0 820c240-45 380 25 610-12s420-28 830 8v84H0z" fill="#081d2d" opacity=".85"/>
+  <g fill="#f5d7a5" opacity=".7"><circle cx="160" cy="760" r="3"/><circle cx="205" cy="735" r="2"/><circle cx="1260" cy="770" r="3"/><circle cx="1320" cy="742" r="2"/></g>
+</svg>\n  <div class="loading-landscape-label">Paisagens de Angola · Serra da Leba · Tundavala</div>
   <div class="loading-logo" id="loadingLogo"><img src="logo.png" alt="Kanawa" onerror="this.parentElement.textContent='K'"></div>
   <h2 style="font-weight:700;font-size:1.5rem">Kanawa Soft</h2>
   <p style="opacity:.7;font-size:.9rem;margin-top:4px">ERP Multi-Empresa v15.4 Técnica</p>
@@ -329,7 +371,29 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
 </div>
 
 <!-- SETUP -->
-<div id="setupWizard">
+<div id="setupWizard">\n  <svg class="angola-scene" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="angolaSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#102e50"/><stop offset=".56" stop-color="#39738a"/><stop offset="1" stop-color="#e4a06a"/></linearGradient>
+    <linearGradient id="angolaSun" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffe9a8"/><stop offset="1" stop-color="#e88a54"/></linearGradient>
+    <linearGradient id="angolaFar" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#547b8b"/><stop offset="1" stop-color="#263f59"/></linearGradient>
+    <linearGradient id="angolaNear" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#264c58"/><stop offset="1" stop-color="#102d3b"/></linearGradient>
+  </defs>
+  <rect width="1440" height="900" fill="url(#angolaSky)"/>
+  <circle class="sun-glow" cx="1120" cy="270" r="112" fill="url(#angolaSun)" opacity=".86"/>
+  <g class="cloud-one" fill="#fff" opacity=".14"><path d="M90 245c18-46 74-58 109-28 20-54 102-60 131-7 49-10 83 19 85 57H90z"/></g>
+  <g class="cloud-two" fill="#fff" opacity=".1"><path d="M830 170c24-40 80-43 109-12 24-50 93-46 116-2 43-8 78 18 83 51H830z"/></g>
+  <g class="ridge-back" fill="url(#angolaFar)" opacity=".82">
+    <path d="M0 610 115 510 190 550 330 360 420 450 530 320 650 445 770 365 880 480 1000 330 1125 455 1240 350 1440 515V900H0z"/>
+    <path d="m270 420 60-60 44 44-35-12-26 23zM485 370l45-50 46 58-38-19-28 24zM954 391l46-61 58 73-48-29-29 25z" fill="#d4d8cf" opacity=".55"/>
+  </g>
+  <g class="ridge-front" fill="url(#angolaNear)">
+    <path d="M0 690 120 590 205 635 325 515 420 590 540 470 650 590 755 505 865 630 1000 480 1115 600 1230 500 1440 650V900H0z"/>
+    <path d="M0 770 170 665 280 710 430 615 555 700 700 605 820 720 965 610 1110 730 1270 625 1440 740V900H0z" fill="#0b2735" opacity=".76"/>
+  </g>
+  <path d="M1010 500c-15 70-8 115 10 155s13 68 3 106" stroke="#d6e7e4" stroke-width="5" stroke-linecap="round" fill="none" class="waterfall" opacity=".65"/>
+  <path d="M0 820c240-45 380 25 610-12s420-28 830 8v84H0z" fill="#081d2d" opacity=".85"/>
+  <g fill="#f5d7a5" opacity=".7"><circle cx="160" cy="760" r="3"/><circle cx="205" cy="735" r="2"/><circle cx="1260" cy="770" r="3"/><circle cx="1320" cy="742" r="2"/></g>
+</svg>
   <div class="setup-box">
     <div class="setup-logo">
       <div class="logo-circle" id="setupLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
@@ -400,7 +464,29 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
 </div>
 
 <!-- AUTH -->
-<div id="authScreen">
+<div id="authScreen">\n  <svg class="angola-scene" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="angolaSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#102e50"/><stop offset=".56" stop-color="#39738a"/><stop offset="1" stop-color="#e4a06a"/></linearGradient>
+    <linearGradient id="angolaSun" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffe9a8"/><stop offset="1" stop-color="#e88a54"/></linearGradient>
+    <linearGradient id="angolaFar" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#547b8b"/><stop offset="1" stop-color="#263f59"/></linearGradient>
+    <linearGradient id="angolaNear" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#264c58"/><stop offset="1" stop-color="#102d3b"/></linearGradient>
+  </defs>
+  <rect width="1440" height="900" fill="url(#angolaSky)"/>
+  <circle class="sun-glow" cx="1120" cy="270" r="112" fill="url(#angolaSun)" opacity=".86"/>
+  <g class="cloud-one" fill="#fff" opacity=".14"><path d="M90 245c18-46 74-58 109-28 20-54 102-60 131-7 49-10 83 19 85 57H90z"/></g>
+  <g class="cloud-two" fill="#fff" opacity=".1"><path d="M830 170c24-40 80-43 109-12 24-50 93-46 116-2 43-8 78 18 83 51H830z"/></g>
+  <g class="ridge-back" fill="url(#angolaFar)" opacity=".82">
+    <path d="M0 610 115 510 190 550 330 360 420 450 530 320 650 445 770 365 880 480 1000 330 1125 455 1240 350 1440 515V900H0z"/>
+    <path d="m270 420 60-60 44 44-35-12-26 23zM485 370l45-50 46 58-38-19-28 24zM954 391l46-61 58 73-48-29-29 25z" fill="#d4d8cf" opacity=".55"/>
+  </g>
+  <g class="ridge-front" fill="url(#angolaNear)">
+    <path d="M0 690 120 590 205 635 325 515 420 590 540 470 650 590 755 505 865 630 1000 480 1115 600 1230 500 1440 650V900H0z"/>
+    <path d="M0 770 170 665 280 710 430 615 555 700 700 605 820 720 965 610 1110 730 1270 625 1440 740V900H0z" fill="#0b2735" opacity=".76"/>
+  </g>
+  <path d="M1010 500c-15 70-8 115 10 155s13 68 3 106" stroke="#d6e7e4" stroke-width="5" stroke-linecap="round" fill="none" class="waterfall" opacity=".65"/>
+  <path d="M0 820c240-45 380 25 610-12s420-28 830 8v84H0z" fill="#081d2d" opacity=".85"/>
+  <g fill="#f5d7a5" opacity=".7"><circle cx="160" cy="760" r="3"/><circle cx="205" cy="735" r="2"/><circle cx="1260" cy="770" r="3"/><circle cx="1320" cy="742" r="2"/></g>
+</svg>
   <div class="auth-box">
     <div class="auth-logo">
       <div class="logo-circle" id="authLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
