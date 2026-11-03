@@ -9,7 +9,7 @@ let currentModule = 'dashboard';
 let scanner = null, scannerActive = false, scannerCallback = null;
 let syncTimer = null;
 let pdvState = { screen: 1, carrinho: [], cliente: { nome: 'Cliente Anônimo', nif: '', telefone: '' }, pagamento: 'dinheiro', desconto: 0, valorRecebido: 0, aplicarIVA: true, regime: 'geral', observacoes: '' };
-const DEFAULT_PDV_PAYMENT_METHODS = [
+const DEFAULT_PDV_PAYMENT_METHODS = window.KanawaPaymentMethods ? window.KanawaPaymentMethods.defaults : [
   { method_code:'dinheiro', display_name:'Dinheiro', enabled:true, sort_order:10 },
   { method_code:'cartao', display_name:'Cartão bancário', enabled:true, sort_order:20 },
   { method_code:'transferencia', display_name:'Transferência', enabled:true, sort_order:30 },
@@ -2753,10 +2753,10 @@ async function guardarMetodosPagamento() {
       instructions: instructions ? instructions.value.trim().slice(0,300) : ''
     };
   });
-  if (!methods.some(method => method.enabled)) return toast('Mantenha pelo menos uma forma de pagamento activa.', 'warning');
   try {
-    const result = await KanawaCloud.saveCompanyPaymentMethods(methods);
-    pdvPaymentMethods = methods.filter(method => method.enabled);
+    const validated = window.KanawaPaymentMethods ? window.KanawaPaymentMethods.validate(methods) : methods;
+    const result = await KanawaCloud.saveCompanyPaymentMethods(validated);
+    pdvPaymentMethods = validated.filter(method => method.enabled);
     toast('Configuração guardada no PostgreSQL (' + (result.saved || methods.length) + ' métodos).', 'success');
     await openModule('ecommerce-pagamento');
   } catch (error) {
