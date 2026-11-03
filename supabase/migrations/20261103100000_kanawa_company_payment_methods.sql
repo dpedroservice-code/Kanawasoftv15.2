@@ -2,7 +2,7 @@
 -- This controls accepted checkout methods only; it does not activate a payment gateway.
 
 CREATE TABLE IF NOT EXISTS public.ks_company_payment_methods (
-  id uuid PRIMARY KEY DEFAULT extensions.gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id uuid NOT NULL REFERENCES public.ks_companies(id) ON DELETE CASCADE,
   method_code text NOT NULL CHECK (method_code IN (
     'dinheiro','cartao','transferencia','multicaixa','misto','credito','referencia','multicaixa_express'
@@ -100,7 +100,7 @@ BEGIN
     v_name := trim(coalesce(v_item->>'display_name',''));
     IF v_code NOT IN ('dinheiro','cartao','transferencia','multicaixa','misto','credito','referencia','multicaixa_express')
        OR length(v_name)<2 OR length(v_name)>60
-       OR jsonb_typeof(v_item->'enabled')<>'boolean'
+       OR jsonb_typeof(v_item->'enabled') IS DISTINCT FROM 'boolean'
        OR length(coalesce(v_item->>'instructions',''))>300
        OR v_code=ANY(v_seen) THEN
       RAISE EXCEPTION 'Método inválido ou repetido na configuração.' USING ERRCODE='22023';
