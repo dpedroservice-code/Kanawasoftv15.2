@@ -12,6 +12,7 @@ test('saída reduz o saldo sem permitir stock negativo', () => {
 });
 test('ajuste define o saldo contado e calcula a diferença', () => {
   assert.deepEqual(Stock.applyMovement(8, 'ajuste', 5), { before: 8, quantity: 5, after: 5, delta: -3 });
+  assert.deepEqual(Stock.applyMovement(8, 'ajuste', 0), { before: 8, quantity: 0, after: 0, delta: -8 });
 });
 test('quantidade zero, negativa, infinita ou não numérica é rejeitada', () => {
   for (const q of [0, -1, Infinity, NaN, 'x']) assert.throws(() => Stock.applyMovement(5, 'entrada', q));
