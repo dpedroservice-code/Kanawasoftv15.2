@@ -1690,38 +1690,51 @@ async function renderEstoque() {
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-history"></i> Livro de movimentos (últimos 50)</h3></div>' +
     table(['Data', 'Tipo', 'Produto', 'Qtd', 'Saldo anterior', 'Saldo final', 'Operador', 'Referência / Motivo'], movLinhas) + '</div>';
 }
-async function gravarMovimentoStock(produto, tipo, quantidade, motivo, referencia, origem) {
+async function gravarMovimentoStock(produtoId, tipo, quantidade, motivo, referencia, origem) {
   if (!podeFazer('editar', 'estoque')) throw new Error('Não tem permissão para movimentar stock.');
   if (!window.KanawaStock) throw new Error('Módulo de stock não carregado.');
   const actor = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
-  const before = Number(produto.estoque) || 0;
-  const movimento = window.KanawaStock.createMovement({
-    productId: produto.id, productName: produto.nome, before: before,
-    type: tipo, quantity: quantidade, reason: motivo,
-    reference: referencia || null, actor: actor.nome || actor.email || 'Utilizador',
-    source: origem || 'manual'
-  });
-  const atualizado = Object.assign({}, produto, { estoque: movimento.saldoFinal, stock_quantity: movimento.saldoFinal });
-  // Commit local product balance and its audit event in one IndexedDB transaction.
   const tx = DB.db.transaction(['produtos','movimentacoesEstoque','_sync_queue'], 'readwrite');
-  tx.objectStore('produtos').put(atualizado);
-  const movementId = nextGeneratedRecordId();
-  movimento.id = movementId;
-  tx.objectStore('movimentacoesEstoque').add(movimento);
-  // Persist both ordered cloud operations in the same local transaction as the balance and ledger.
-  tx.objectStore('_sync_queue').add({ entity: 'produtos', action: 'update', payload: atualizado, options: { stockMovementId: movementId }, data: now(), synced: false });
-  tx.objectStore('_sync_queue').add({ entity: 'movimentacoesEstoque', action: 'create', payload: movimento, options: { stockMovementId: movementId }, data: now(), synced: false });
-  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error || new Error('Movimento cancelado.')); });
-  // Server-side normalized stock remains authoritative for POS sales.
-  pdvCache.ts = 0;
-  return movimento;
+  const productsStore = tx.objectStore('produtos');
+  const movementStore = tx.objectStore('movimentacoesEstoque');
+  const queueStore = tx.objectStore('_sync_queue');
+  let movimento = null, failure = null;
+  const request = productsStore.get(produtoId);
+  request.onsuccess = () => {
+    try {
+      const produto = request.result;
+      if (!produto) throw new Error('Produto não encontrado.');
+      const movimentoNovo = window.KanawaStock.createMovement({
+        productId: produto.id, productName: produto.nome, before: Number(produto.estoque) || 0,
+        type: tipo, quantity: quantidade, reason: motivo,
+        reference: referencia || null, actor: actor.nome || actor.email || 'Utilizador',
+        source: origem || 'manual'
+      });
+      const atualizado = Object.assign({}, produto, { estoque: movimentoNovo.saldoFinal, stock_quantity: movimentoNovo.saldoFinal });
+      const movementId = nextGeneratedRecordId();
+      movimentoNovo.id = movementId;
+      productsStore.put(atualizado);
+      movementStore.add(movimentoNovo);
+      // Persist the balance, audit event, and ordered sync queue atomically on this device.
+      queueStore.add({ entity: 'produtos', action: 'update', payload: atualizado, options: { stockMovementId: movementId }, data: now(), synced: false });
+      queueStore.add({ entity: 'movimentacoesEstoque', action: 'create', payload: movimentoNovo, options: { stockMovementId: movementId }, data: now(), synced: false });
+      movimento = movimentoNovo;
+    } catch (error) {
+      failure = error;
+      try { tx.abort(); } catch (abortError) { }
+    }
+  };
+  request.onerror = () => { failure = request.error || new Error('Não foi possível ler o produto.'); };
+  return await new Promise((resolve, reject) => {
+    tx.oncomplete = () => { pdvCache.ts = 0; resolve(movimento); };
+    tx.onerror = () => reject(failure || tx.error || new Error('Falha ao gravar movimento de stock.'));
+    tx.onabort = () => reject(failure || tx.error || new Error('Movimento cancelado.'));
+  });
 }
 async function ajustarEstoque(id, delta) {
   try {
-    const produto = await DB.get('produtos', id);
-    if (!produto) throw new Error('Produto não encontrado.');
     const tipo = Number(delta) > 0 ? 'entrada' : 'saida';
-    await gravarMovimentoStock(produto, tipo, Math.abs(Number(delta)), 'Ajuste rápido de stock', null, 'ajuste_rapido');
+    await gravarMovimentoStock(id, tipo, Math.abs(Number(delta)), 'Ajuste rápido de stock', null, 'ajuste_rapido');
     toast('Stock atualizado e movimento registado.', 'success');
     await openModule('estoque');
   } catch (error) { toast(error.message || 'Não foi possível ajustar o stock.', 'error'); }
@@ -1741,9 +1754,7 @@ async function salvarMov(tipo) {
     const quantidade = Number($('movQtd').value);
     const motivo = $('movObs').value.trim();
     if (!motivo) throw new Error('Informe o motivo ou documento de suporte.');
-    const produto = await DB.get('produtos', produtoId);
-    if (!produto) throw new Error('Produto não encontrado.');
-    const movimento = await gravarMovimentoStock(produto, tipo, quantidade, motivo, null, tipo);
+    const movimento = await gravarMovimentoStock(produtoId, tipo, quantidade, motivo, null, tipo);
     toast('Movimento registado. Saldo final: ' + fmtN(movimento.saldoFinal) + '.', 'success');
     closeModal(); await openModule('estoque');
   } catch (error) { toast(error.message || 'Falha ao registar movimento.', 'error'); }
