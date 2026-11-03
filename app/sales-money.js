@@ -84,5 +84,24 @@
     };
   }
 
-  return { roundMoney: roundMoney, normalizeSale: normalizeSale };
+  function validateCartStock(cart, products) {
+    if (!Array.isArray(cart) || !Array.isArray(products)) throw new Error('Não foi possível validar o stock do carrinho.');
+    const byId = new Map(products.map(function (product) { return [String(product.id), product]; }));
+    return cart.map(function (line) {
+      const product = byId.get(String(line.id));
+      if (!product) throw new Error('Produto "' + (line.nome || line.id) + '" não encontrado no stock. Atualize o catálogo.');
+      const rawStock = product.estoque !== undefined ? product.estoque : product.stock_quantity;
+      const stock = Number(rawStock);
+      const quantity = Number(line.qty !== undefined ? line.qty : line.quantidade);
+      if (!Number.isFinite(stock) || stock < 0 || !Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error('Stock ou quantidade inválida para "' + (line.nome || product.nome || line.id) + '".');
+      }
+      if (quantity > stock) {
+        throw new Error('Stock insuficiente para "' + (line.nome || product.nome || line.id) + '". Disponível: ' + stock + '; no carrinho: ' + quantity + '.');
+      }
+      return { id: product.id, quantity: quantity, available: stock };
+    });
+  }
+
+  return { roundMoney: roundMoney, normalizeSale: normalizeSale, validateCartStock: validateCartStock };
 });
