@@ -362,8 +362,12 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
 @media(max-width:600px){
   .topbar{z-index:1302}
   .mobile-menu-toggle{position:relative;z-index:1304;display:flex!important;align-items:center;justify-content:center;cursor:pointer}
-  .sidebar{top:var(--mobile-header-height,58px);z-index:1303;width:min(88vw,340px);padding-top:12px}
-  .mobile-menu-backdrop{top:var(--mobile-header-height,58px);z-index:1301}
+  .sidebar{position:fixed;top:var(--mobile-header-height,58px);right:auto;bottom:0;left:0;z-index:1303;width:min(88vw,340px);height:auto!important;min-height:0!important;max-height:none!important;flex:0 0 auto!important;align-self:stretch;padding-top:12px;overflow-x:hidden;overflow-y:auto;touch-action:pan-y}
+  .sidebar.mobile-menu-open{transform:translateX(0);visibility:visible}
+  .sidebar:not(.mobile-menu-open){transform:translateX(-105%);visibility:hidden;pointer-events:none}
+  .mobile-menu-backdrop{position:fixed;top:var(--mobile-header-height,58px);right:0;bottom:0;left:0;z-index:1301}
+  @media(max-width:380px){.sidebar{height:auto!important;min-height:0!important;flex-basis:auto!important}}
+  @media(max-height:520px) and (orientation:landscape){.sidebar{height:auto!important;min-height:0!important;flex-basis:auto!important;top:var(--mobile-header-height,48px);bottom:0}.sidebar>.sidebar-item,.sidebar-group summary{height:auto;min-height:44px}}
   body.mobile-menu-visible{overflow:hidden;touch-action:none}
   .sidebar-group{width:100%;flex:0 0 auto}
   .sidebar-group>summary{display:flex;align-items:center;min-height:48px;cursor:pointer;list-style:none;user-select:none;-webkit-tap-highlight-color:transparent}
