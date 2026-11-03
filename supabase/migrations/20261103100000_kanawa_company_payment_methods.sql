@@ -20,6 +20,7 @@ CREATE INDEX IF NOT EXISTS ks_company_payment_methods_company_idx
   ON public.ks_company_payment_methods(company_id, sort_order);
 
 ALTER TABLE public.ks_company_payment_methods ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ks_company_payment_methods TO authenticated;
 
 DROP POLICY IF EXISTS ks_company_payment_methods_read ON public.ks_company_payment_methods;
 CREATE POLICY ks_company_payment_methods_read
