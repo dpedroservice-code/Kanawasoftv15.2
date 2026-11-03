@@ -453,7 +453,7 @@ const MENU = [
   { id: 'ecommerce-vitrine', icon: 'fa-store', label: 'E-commerce' },
   { id: 'ecommerce-carrinho', icon: 'fa-shopping-bag', label: 'Carrinho' },
   { id: 'ecommerce-pedidos', icon: 'fa-truck', label: 'Pedidos' },
-  { id: 'ecommerce-pagamento', icon: 'fa-credit-card', label: 'Pagamento' },
+  { id: 'ecommerce-pagamento', icon: 'fa-credit-card', label: 'Formas de Pagamento' },
   { id: 'ecommerce-rastreio', icon: 'fa-map-marker-alt', label: 'Rastreio' },
   { id: 'estoque', icon: 'fa-warehouse', label: 'Estoque' },
   { id: 'producao', icon: 'fa-industry', label: 'Produção' },
