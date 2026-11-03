@@ -1753,6 +1753,9 @@ async function renderFiscal() {
     '<div class="metric-card" style="border-left-color:' + ((ivaV - ivaC) >= 0 ? 'var(--danger)' : 'var(--success)') + '"><div class="label">Saldo IVA</div><div class="value">' + fmt(Math.abs(ivaV - ivaC)) + '</div></div>' +
     '<div class="metric-card"><div class="label">Faturação</div><div class="value">' + fmt(tV) + '</div></div></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-percent"></i> Tabela IRT</h3></div>' + table(['Faixa', 'Taxa', 'Parcela'], irtRows) + '</div>' +
+    '<div class="card" style="border-left:4px solid var(--warning)"><div class="card-header"><h3 class="card-title"><i class="fas fa-shield-alt"></i> Ligação oficial e certificado</h3>'+badge('Não configurada','warning')+'</div>' +
+    '<p>As credenciais e o certificado ainda não estão ligados a um serviço seguro no servidor. Não introduza a chave privada ou a senha do certificado nesta página nem no armazenamento do navegador.</p>' +
+    '<p>A ativação exige endpoint de integração autenticado, armazenamento de segredos no servidor, certificado válido, ambiente de testes, documentação técnica oficial e validação da resposta do serviço. Até essa validação, as faturas comerciais não apresentam códigos, endereços ou declarações de validação oficial.</p></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-download"></i> Exportações AGT</h3></div>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
     '<button class="btn btn-success" onclick="exportarSAFTCompleto()"><i class="fas fa-file-code"></i> SAF-T Completo</button>' +
