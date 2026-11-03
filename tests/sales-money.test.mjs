@@ -61,3 +61,21 @@ test('rejects line totals that do not reconcile with quantity and unit price', (
 test('rejects negative received amounts instead of treating them as blank', () => {
   assert.throws(() => normalizeSale(sale({ valorRecebido: -1 })), /não pode ser negativo/);
 });
+
+test('blocks cart quantity above current product stock', () => {
+  const { validateCartStock } = require('../app/sales-money.js');
+  const products = [{ id: 7, nome: 'Produto', estoque: 4 }];
+  assert.equal(validateCartStock([{ id: 7, qty: 4 }], products)[0].available, 4);
+  assert.throws(() => validateCartStock([{ id: 7, qty: 5 }], products), /Disponível: 4; no carrinho: 5/);
+});
+
+test('blocks missing products and invalid stock values', () => {
+  const { validateCartStock } = require('../app/sales-money.js');
+  assert.throws(() => validateCartStock([{ id: 8, qty: 1 }], [{ id: 7, estoque: 4 }]), /não encontrado no stock/);
+  assert.throws(() => validateCartStock([{ id: 7, qty: 1 }], [{ id: 7, estoque: 'inválido' }]), /Stock ou quantidade inválida/);
+});
+
+test('supports normalized stock_quantity records from the cloud catalogue', () => {
+  const { validateCartStock } = require('../app/sales-money.js');
+  assert.equal(validateCartStock([{ id: 'SKU-1', qty: 2 }], [{ id: 'SKU-1', stock_quantity: 2 }])[0].quantity, 2);
+});
