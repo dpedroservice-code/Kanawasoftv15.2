@@ -2,9 +2,9 @@ name: Kanawa CI
 
 on:
   pull_request:
-    branches: [main, audit/fix-sales-validation]
+    branches: [main, audit/fix-sales-validation, feat/kanawasoft-v15.4-plano-tecnica]
   push:
-    branches: [main]
+    branches: [main, feat/kanawasoft-v15.4-plano-tecnica]
   workflow_dispatch:
 
 permissions:
