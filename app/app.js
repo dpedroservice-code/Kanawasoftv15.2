@@ -731,13 +731,6 @@ function table(headers, rows) {
 const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#e2e8f0"/><text x="100" y="130" font-size="80" text-anchor="middle">📦</text></svg>');
 function imgSrc(p) { return p && p.imagem ? p.imagem : PLACEHOLDER; }
 function aplicarLogo() {
-  try {
-    const freshProducts = await pdvAtualizarStockLocal();
-    pdvValidarStockCarrinho(freshProducts);
-  } catch (stockError) {
-    toast('Venda bloqueada: ' + (stockError.message || 'stock insuficiente.'), 'error');
-    return;
-  }
   const emp = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const src = (emp.logo && emp.logo.indexOf('data:') === 0) ? emp.logo : 'logo.png';
   ['loadingLogo', 'setupLogo', 'authLogo', 'topbarLogo'].forEach(id => { const el = $(id); if (el) el.innerHTML = '<img src="' + src + '" alt="Logo" onerror="this.parentElement.textContent=\'K\'">'; });
@@ -1330,6 +1323,13 @@ async function pdvSalvarOrcamento() { const c = pdvAtualizarValores(); await sav
 async function pdvFinalizarVenda(modo) {
   modo = modo || 'finalizada';
   if (!pdvState.carrinho.length) { toast('Carrinho vazio', 'warning'); return; }
+  try {
+    const latestProducts = await pdvAtualizarStockLocal();
+    pdvValidarStockCarrinho(latestProducts);
+  } catch (stockError) {
+    toast('Venda bloqueada: ' + (stockError.message || 'não foi possível confirmar o stock.'), 'error');
+    return;
+  }
   const c = pdvAtualizarValores();
   const isCreditPayment = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
   if (!isCreditPayment && c.faltam > 0) {
@@ -1343,7 +1343,16 @@ async function pdvFinalizarVenda(modo) {
   venda.assinatura = gerarAssinatura(venda);
   try { await saveData('vendas', venda); }
   catch (saleError) { toast('Venda não finalizada no servidor: ' + (saleError.message || 'verifique licença e stock'), 'error'); return; }
-  for (const item of pdvState.carrinho) { const p = await DB.get('produtos', item.id); if (p) { p.estoque = Math.max(0, (p.estoque || 0) - item.qty); await saveData('produtos', p, { skipStockSync: true }); } }
+  if (window.KanawaCloud && KanawaCloud.ready) {
+    // ks_finalize_sale already decremented the normalized stock atomically.
+    // Refresh its authoritative balance; never write a stale client-side quantity back.
+    try { await pdvAtualizarStockLocal(); } catch (stockRefreshError) { console.warn('Stock confirmado no servidor; atualização visual pendente:', stockRefreshError); pdvCache.ts = 0; }
+  } else {
+    for (const item of pdvState.carrinho) {
+      const product = await DB.get('produtos', item.id);
+      if (product) { product.estoque = Math.max(0, Number(product.estoque || 0) - Number(item.qty)); await DB.put('produtos', product); }
+    }
+  }
   await saveData('movimentacoesEstoque', { tipo: 'saida', descricao: 'Venda ' + numeroFatura, itens: pdvState.carrinho.map(i => ({ id: i.id, nome: i.nome, qtd: i.qty })), data: now() });
   if (pdvState.pagamento === 'credito') await saveData('contasReceber', { cliente: pdvState.cliente.nome, valor: c.total, descricao: 'Venda ' + numeroFatura, vencimento: new Date(Date.now() + 30 * 86400000).toISOString(), status: 'pendente', data: now() });
   await criarNotificacao('Nova Venda', numeroFatura + ' - ' + fmt(c.total), 'success', 'vendas');
