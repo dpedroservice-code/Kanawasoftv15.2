@@ -361,25 +361,33 @@ async function activateCloudSession(ctx, migrateLocal) {
   localStorage.setItem('kanawa_user', JSON.stringify(user));
   localStorage.setItem('kanawa_setup_done', 'true');
 
-  try { await pullFromServer(); }
-  catch (pullError) { console.warn('Sincronização inicial adiada; será retomada quando houver internet:', pullError); }
-  try { await KanawaCloud.registerInstallation(APP_VERSION); }
-  catch (e) { console.warn('Registo de instalação pendente:', e); }
+  // Do not hold the login screen while downloading every record, registering
+  // the device and checking subscription metadata. These tasks run after the
+  // authenticated shell is displayed; sales still require server confirmation.
+  window.setTimeout(async function runDeferredStartup() {
+    try { await pullFromServer(); }
+    catch (pullError) { console.warn('Sincronização inicial adiada; será retomada quando houver internet:', pullError); }
+    try { await KanawaCloud.registerInstallation(APP_VERSION); }
+    catch (e) { console.warn('Registo de instalação pendente:', e); }
 
-  try {
-    const license = await KanawaCloud.getLicense();
-    if (license) localStorage.setItem('kanawa_license', JSON.stringify(license));
-    const entitlements = await KanawaCloud.getEntitlements();
-    if (entitlements) localStorage.setItem('kanawa_entitlements', JSON.stringify(entitlements));
-    if (entitlements && entitlements.read_only) toast('A licença ou os limites do plano estão em modo de consulta. Verifique a subscrição.', 'warning');
-    if (license && license.expires_at) {
-      const expiry = new Date(license.expires_at);
-      const days = Math.ceil((expiry.getTime() - Date.now()) / 86400000);
-      if (license.status === 'expired' || days < 0) toast('A licença Kanawa Soft expirou. Contacte a D.PEDRO SOLUÇÕES.', 'warning');
-      else if (days <= 5) toast('A licença expira em ' + Math.max(0, days) + ' dia(s).', 'warning');
-    }
-  } catch (e) { console.warn('Não foi possível consultar a licença:', e); }
-  await API.checkHealth();
+    try {
+      const [license, entitlements] = await Promise.all([
+        KanawaCloud.getLicense(),
+        KanawaCloud.getEntitlements()
+      ]);
+      if (license) localStorage.setItem('kanawa_license', JSON.stringify(license));
+      if (entitlements) localStorage.setItem('kanawa_entitlements', JSON.stringify(entitlements));
+      if (entitlements && entitlements.read_only) toast('A licença ou os limites do plano estão em modo de consulta. Verifique a subscrição.', 'warning');
+      if (license && license.expires_at) {
+        const expiry = new Date(license.expires_at);
+        const days = Math.ceil((expiry.getTime() - Date.now()) / 86400000);
+        if (license.status === 'expired' || days < 0) toast('A licença Kanawa Soft expirou. Contacte a D.PEDRO SOLUÇÕES.', 'warning');
+        else if (days <= 5) toast('A licença expira em ' + Math.max(0, days) + ' dia(s).', 'warning');
+      }
+    } catch (e) { console.warn('Não foi possível consultar a licença:', e); }
+    try { await API.checkHealth(); }
+    catch (e) { console.warn('Verificação de conectividade adiada:', e); }
+  }, 0);
   return { company: company, user: user };
 }
 
