@@ -8,10 +8,10 @@
   function applyMovement(current, type, amount) {
     const before = quantity(current, 'Stock atual');
     const q = quantity(amount, 'Quantidade');
-    if (q <= 0) throw new Error('A quantidade deve ser maior que zero.');
     let after;
-    if (type === 'entrada') after = before + q;
+    if (type === 'entrada') { if (q <= 0) throw new Error('A quantidade deve ser maior que zero.'); after = before + q; }
     else if (type === 'saida') {
+      if (q <= 0) throw new Error('A quantidade deve ser maior que zero.');
       if (q > before) throw new Error('Stock insuficiente. Disponível: ' + before + '.');
       after = before - q;
     } else if (type === 'ajuste') after = q;
