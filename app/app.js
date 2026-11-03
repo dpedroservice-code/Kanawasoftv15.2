@@ -29,7 +29,7 @@ const AGT_CONFIG = { iva: 0.14, ivaReduzido: 0.07, irt: { faixas: [
 ]}};
 
 /* ====== UTILITÁRIOS ====== */
-const fmt = v => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(Number(v) || 0);
+const fmt = v => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA', maximumFractionDigits: 6 }).format(Number(v) || 0);
 const fmtN = v => new Intl.NumberFormat('pt-AO').format(Number(v) || 0);
 const fmtD = d => d ? new Date(d).toLocaleDateString('pt-AO') : '-';
 const fmtDT = d => d ? new Date(d).toLocaleString('pt-AO') : '-';
@@ -961,7 +961,7 @@ async function abrirFatura(venda) {
     '<div style="display:flex;justify-content:space-between;color:#999;font-size:.7rem"><span>Imposto Devido:</span><span>' + fmt(iva) + '</span></div>' +
     '<div style="display:flex;justify-content:space-between;border-top:2px solid #1a3a5c;padding-top:6px;margin-top:6px;font-size:1rem;color:#1a3a5c"><strong>TOTAL LÍQUIDO:</strong><strong>' + fmt(total) + '</strong></div>' +
     (venda.valorRecebido > 0 ? '<div style="display:flex;justify-content:space-between;margin-top:4px"><span>Valor Recebido:</span><strong>' + fmt(venda.valorRecebido) + '</strong></div><div style="display:flex;justify-content:space-between;color:#10b981"><span>Troco:</span><strong>' + fmt(venda.troco) + '</strong></div>' : '') + '</div></div>' +
-    '<div style="margin-top:12px;padding:8px;background:#f8fafc;border-radius:6px;font-size:.75rem;border-left:3px solid #1a3a5c"><strong>Valor por extenso:</strong> <em>' + esc(totalExtenso) + '</em></div>' +
+    '<div style="margin-top:12px;padding:8px;background:#f8fafc;border-radius:6px;font-size:.75rem;border-left:3px solid #1a3a5c"><strong>Valor total:</strong> <em>' + esc(totalExtenso) + '</em></div>' +
     '<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:.7rem;color:#777"><strong>Obrigado pela preferência!</strong><br><span style="font-size:.65rem">' + esc(emp.firma || emp.nome || 'KANAWA SOFT') + ' — ' + new Date().getFullYear() + '</span></div></div>';
   window._vendaAtual = venda;
   openModal('🖨️ Fatura / Recibo — ' + venda.numeroFatura,
