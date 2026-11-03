@@ -1270,6 +1270,7 @@ async function pdvAltQty(id, d) {
       window.KanawaSales.validateCartStock(proposed, products);
     } catch (error) {
       toast(error.message || 'Stock insuficiente.', 'warning');
+      pdvRenderCarrinhoFull();
       return;
     }
   }
