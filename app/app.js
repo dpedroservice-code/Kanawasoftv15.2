@@ -480,14 +480,7 @@ const MENU = [
   { id: 'marketing-analise', icon: 'fa-chart-pie', label: 'Análise Marketing' },
   { id: 'financeiro', icon: 'fa-coins', label: 'Financeiro' },
   { id: 'fiscal', icon: 'fa-landmark', label: 'Fiscal AGT' },
-  { id: 'rh', icon: 'fa-user-tie', label: 'RH' },
-  { id: 'rh-recrutamento', icon: 'fa-user-plus', label: 'Recrutamento' },
-  { id: 'rh-desempenho', icon: 'fa-chart-bar', label: 'Desempenho' },
-  { id: 'rh-beneficios', icon: 'fa-gift', label: 'Benefícios' },
-  { id: 'rh-onboarding', icon: 'fa-user-graduate', label: 'Onboarding' },
-  { id: 'rh-ponto', icon: 'fa-clock', label: 'Ponto' },
-  { id: 'rh-rescisao', icon: 'fa-file-signature', label: 'Rescisão' },
-  { id: 'rh-plano-carreira', icon: 'fa-arrow-up', label: 'Carreira' },
+  { id: 'rh', icon: 'fa-user-tie', label: 'Recursos Humanos' },
   { id: 'projetos', icon: 'fa-project-diagram', label: 'Projetos' },
   { id: 'projetos-tarefas', icon: 'fa-tasks', label: 'Tarefas' },
   { id: 'projetos-kanban', icon: 'fa-columns', label: 'Kanban' },
@@ -659,8 +652,13 @@ async function openModule(id) {
     'ecommerce-vitrine': renderEcommerceVitrine, 'ecommerce-carrinho': renderEcommerceCarrinho,
     'ecommerce-pedidos': renderEcommercePedidos, 'ecommerce-produtos': renderEcommerceProdutos,
     'ecommerce-pagamento': renderEcommercePagamento, 'ecommerce-rastreio': renderEcommerceRastreio,
-    'rh-recrutamento': renderRHRecrutamento, 'rh-desempenho': renderRHDesempenho, 'rh-beneficios': renderRHBeneficios,
-    'rh-onboarding': renderRHOnboarding, 'rh-ponto': renderRHPonto, 'rh-rescisao': renderRHRescisao, 'rh-plano-carreira': renderRHPlanoCarreira,
+    'rh-recrutamento': () => { rhActiveTab = 'recrutamento'; return renderRH(); },
+    'rh-desempenho': () => { rhActiveTab = 'desempenho'; return renderRH(); },
+    'rh-beneficios': () => { rhActiveTab = 'beneficios'; return renderRH(); },
+    'rh-onboarding': () => { rhActiveTab = 'onboarding'; return renderRH(); },
+    'rh-ponto': () => { rhActiveTab = 'ponto'; return renderRH(); },
+    'rh-rescisao': () => { rhActiveTab = 'rescisao'; return renderRH(); },
+    'rh-plano-carreira': () => { rhActiveTab = 'carreira'; return renderRH(); },
     'projetos-tarefas': renderProjetosTarefas, 'projetos-kanban': renderKanban, 'projetos-gantt': renderProjetosGantt,
     'projetos-recursos': renderProjetosRecursos, 'projetos-timesheet': renderProjetosTimesheet,
     'projetos-custos': renderProjetosCustos, 'projetos-riscos': renderProjetosRiscos,
@@ -2917,8 +2915,8 @@ async function renderRHRecrutamento() {
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-users"></i> Candidatos</h3></div>' +
     (candidatos.length > 0 ? candidatos.map(c => '<div style="padding:6px 0;border-bottom:1px solid var(--border)"><strong>' + esc(c.nome) + '</strong> - ' + esc(c.vaga || '-') + ' ' + badge(c.status || 'novo', 'info') + '</div>').join('') : 'Nenhum candidato') + '</div></div>';
 }
-async function novaVaga() { const t = prompt('Título da vaga:'); if (!t) return; await saveData('vagas', { titulo: t, departamento: prompt('Departamento:', 'Geral') || 'Geral', status: 'aberta', data: now() }); toast('Vaga criada', 'success'); openModule('rh-recrutamento'); }
-async function novoCandidato() { const n = prompt('Nome do candidato:'); if (!n) return; await saveData('candidatos', { nome: n, vaga: prompt('Vaga:') || 'Não especificada', status: 'novo', data: now() }); toast('Candidato registrado', 'success'); openModule('rh-recrutamento'); }
+async function novaVaga() { const t = prompt('Título da vaga:'); if (!t) return; await saveData('vagas', { titulo: t, departamento: prompt('Departamento:', 'Geral') || 'Geral', status: 'aberta', data: now() }); toast('Vaga criada', 'success'); openRHSection('recrutamento'); }
+async function novoCandidato() { const n = prompt('Nome do candidato:'); if (!n) return; await saveData('candidatos', { nome: n, vaga: prompt('Vaga:') || 'Não especificada', status: 'novo', data: now() }); toast('Candidato registrado', 'success'); openRHSection('recrutamento'); }
 async function renderRHDesempenho() {
   const d = await getData('desempenhoRH') || [];
   return header('Gestão de Desempenho', d.length + ' avaliações', 'var(--info)',
@@ -2926,7 +2924,7 @@ async function renderRHDesempenho() {
     '<div class="card">' + table(['Funcionário', 'Nota', 'Comentário', 'Data', 'Ações'],
       d.map(x => [esc(x.funcionario || '-'), '<strong>' + (x.nota || 0) + '/10</strong>', esc((x.comentario || '-').substring(0, 50)), fmtD(x.data), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'desempenhoRH\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
-async function novaAvaliacaoDesempenho() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('desempenhoRH', { funcionario: f, nota: parseFloat(prompt('Nota (0-10):', '5')) || 5, comentario: prompt('Comentário:') || '', data: now() }); toast('Avaliação registrada', 'success'); openModule('rh-desempenho'); }
+async function novaAvaliacaoDesempenho() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('desempenhoRH', { funcionario: f, nota: parseFloat(prompt('Nota (0-10):', '5')) || 5, comentario: prompt('Comentário:') || '', data: now() }); toast('Avaliação registrada', 'success'); openRHSection('desempenho'); }
 async function renderRHBeneficios() {
   const b = await getData('beneficios') || [];
   return header('Benefícios', b.length + ' benefícios', 'var(--success)',
@@ -2935,8 +2933,8 @@ async function renderRHBeneficios() {
       b.map(x => ['<strong>' + esc(x.nome) + '</strong>', esc(x.funcionario || '-'), fmt(x.valor || 0), badge(x.ativo !== false ? 'Ativo' : 'Inativo', x.ativo !== false ? 'success' : 'danger'),
       '<button class="btn btn-sm btn-primary" onclick="editarBeneficio(' + x.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'beneficios\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
-async function novoBeneficio() { const n = prompt('Nome do benefício:'); if (!n) return; await saveData('beneficios', { nome: n, funcionario: prompt('Funcionário:', 'Geral') || 'Geral', valor: parseFloat(prompt('Valor (Kz):', '0')) || 0, ativo: true, data: now() }); toast('Benefício criado', 'success'); openModule('rh-beneficios'); }
-async function editarBeneficio(id) { const b = await DB.get('beneficios', id); if (!b) return; const v = prompt('Novo valor:', b.valor); if (v !== null) { b.valor = parseFloat(v) || 0; await saveData('beneficios', b); toast('Atualizado', 'success'); openModule('rh-beneficios'); } }
+async function novoBeneficio() { const n = prompt('Nome do benefício:'); if (!n) return; await saveData('beneficios', { nome: n, funcionario: prompt('Funcionário:', 'Geral') || 'Geral', valor: parseFloat(prompt('Valor (Kz):', '0')) || 0, ativo: true, data: now() }); toast('Benefício criado', 'success'); openRHSection('beneficios'); }
+async function editarBeneficio(id) { const b = await DB.get('beneficios', id); if (!b) return; const v = prompt('Novo valor:', b.valor); if (v !== null) { b.valor = parseFloat(v) || 0; await saveData('beneficios', b); toast('Atualizado', 'success'); openRHSection('beneficios'); } }
 async function renderRHOnboarding() {
   const o = await getData('onboarding') || [];
   return header('Onboarding', o.length + ' processos', 'var(--primary)',
@@ -2945,8 +2943,8 @@ async function renderRHOnboarding() {
       o.map(x => [esc(x.funcionario || '-'), esc(x.etapa || 'Início'), '<div style="background:var(--border);height:6px;border-radius:3px;width:100px;overflow:hidden;display:inline-block;vertical-align:middle"><div style="background:var(--success);height:100%;width:' + (x.progresso || 0) + '%"></div></div> ' + (x.progresso || 0) + '%', badge(x.status === 'concluido' ? 'Concluído' : 'Em Andamento', x.status === 'concluido' ? 'success' : 'warning'),
       '<button class="btn btn-sm btn-primary" onclick="editarOnboarding(' + x.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'onboarding\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
-async function novoOnboarding() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('onboarding', { funcionario: f, etapa: 'Integração', progresso: 10, status: 'em_andamento', data: now() }); toast('Processo iniciado', 'success'); openModule('rh-onboarding'); }
-async function editarOnboarding(id) { const i = await DB.get('onboarding', id); if (!i) return; const p = prompt('Progresso (0-100):', i.progresso); if (p !== null) { i.progresso = parseInt(p) || 0; if (i.progresso >= 100) i.status = 'concluido'; await saveData('onboarding', i); toast('Atualizado', 'success'); openModule('rh-onboarding'); } }
+async function novoOnboarding() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('onboarding', { funcionario: f, etapa: 'Integração', progresso: 10, status: 'em_andamento', data: now() }); toast('Processo iniciado', 'success'); openRHSection('onboarding'); }
+async function editarOnboarding(id) { const i = await DB.get('onboarding', id); if (!i) return; const p = prompt('Progresso (0-100):', i.progresso); if (p !== null) { i.progresso = parseInt(p) || 0; if (i.progresso >= 100) i.status = 'concluido'; await saveData('onboarding', i); toast('Atualizado', 'success'); openRHSection('onboarding'); } }
 async function renderRHPonto() {
   const p = await getData('pontoDigital') || [];
   return header('Controle de Ponto', p.length + ' registros', 'var(--warning)',
@@ -2959,7 +2957,7 @@ async function registrarPonto() {
   const f = prompt('Nome do funcionário:'); if (!f) return;
   const a = new Date();
   await saveData('pontoDigital', { funcionario: f, data: a.toISOString().split('T')[0], entrada: a.toTimeString().slice(0, 5), saida: '', dataRegistro: now() });
-  toast('Ponto registrado', 'success'); openModule('rh-ponto');
+  toast('Ponto registrado', 'success'); openRHSection('ponto');
 }
 function relatorioPonto() { toast('Relatório de ponto ainda não foi implementado; nenhum relatório foi gerado.', 'warning'); }
 async function renderRHRescisao() {
@@ -2969,7 +2967,7 @@ async function renderRHRescisao() {
     '<div class="card">' + table(['Funcionário', 'Data Saída', 'Valor', 'Motivo', 'Ações'],
       r.map(x => [esc(x.funcionario || '-'), fmtD(x.dataSaida), fmt(x.valor || 0), esc(x.motivo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'rescisoes\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
-async function novaRescisao() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('rescisoes', { funcionario: f, dataSaida: prompt('Data de saída (YYYY-MM-DD):') || new Date().toISOString().split('T')[0], valor: parseFloat(prompt('Valor da rescisão:', '0')) || 0, motivo: prompt('Motivo:', 'Demissão') || 'Demissão', data: now() }); toast('Cálculo registrado', 'success'); openModule('rh-rescisao'); }
+async function novaRescisao() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('rescisoes', { funcionario: f, dataSaida: prompt('Data de saída (YYYY-MM-DD):') || new Date().toISOString().split('T')[0], valor: parseFloat(prompt('Valor da rescisão:', '0')) || 0, motivo: prompt('Motivo:', 'Demissão') || 'Demissão', data: now() }); toast('Cálculo registrado', 'success'); openRHSection('rescisao'); }
 async function renderRHPlanoCarreira() {
   const p = await getData('planosCarreira') || [];
   return header('Plano de Carreira', p.length + ' planos', 'var(--success)',
@@ -2978,8 +2976,8 @@ async function renderRHPlanoCarreira() {
       p.map(x => [esc(x.funcionario || '-'), esc(x.posicaoAtual || '-'), esc(x.proximoPasso || '-'), esc(x.previsao || '-'),
       '<button class="btn btn-sm btn-primary" onclick="editarPlanoCarreira(' + x.id + ')"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger" onclick="excluirItem(\'planosCarreira\',' + x.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
-async function novoPlanoCarreira() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('planosCarreira', { funcionario: f, posicaoAtual: prompt('Posição atual:', 'Assistente') || 'Assistente', proximoPasso: prompt('Próximo passo:', 'Analista') || 'Analista', previsao: prompt('Previsão:', '6 meses') || '6 meses', data: now() }); toast('Plano criado', 'success'); openModule('rh-plano-carreira'); }
-async function editarPlanoCarreira(id) { const p = await DB.get('planosCarreira', id); if (!p) return; const n = prompt('Novo próximo passo:', p.proximoPasso); if (n) { p.proximoPasso = n; await saveData('planosCarreira', p); toast('Atualizado', 'success'); openModule('rh-plano-carreira'); } }
+async function novoPlanoCarreira() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('planosCarreira', { funcionario: f, posicaoAtual: prompt('Posição atual:', 'Assistente') || 'Assistente', proximoPasso: prompt('Próximo passo:', 'Analista') || 'Analista', previsao: prompt('Previsão:', '6 meses') || '6 meses', data: now() }); toast('Plano criado', 'success'); openRHSection('plano-carreira'); }
+async function editarPlanoCarreira(id) { const p = await DB.get('planosCarreira', id); if (!p) return; const n = prompt('Novo próximo passo:', p.proximoPasso); if (n) { p.proximoPasso = n; await saveData('planosCarreira', p); toast('Atualizado', 'success'); openRHSection('plano-carreira'); } }
 
 /* PROJETOS AVANÇADO */
 async function renderProjetosTarefas() {
