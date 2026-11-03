@@ -929,9 +929,9 @@ function abrirGavetaAutomatico() {
 async function abrirFatura(venda) {
   const emp = venda.empresa || JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logo = (emp.logo && emp.logo.indexOf('data:') === 0) ? emp.logo : (emp.logo || 'logo.png');
-  const qrText = ['KANAWA-AGT-v1', 'NIF:' + (emp.nif || ''), 'FAT:' + venda.numeroFatura, 'DT:' + venda.data, 'TOT:' + Number(venda.total || 0).toFixed(2), 'IVA:' + Number(venda.iva || 0).toFixed(2), 'HASH:' + venda.hash, 'ASS:' + (venda.assinatura || gerarAssinatura(venda))].join('|');
+  const qrText = null; // Sem certificado e integração validada no servidor, emitir factura simples.
   const subtotal = Number(venda.subtotal || 0), desconto = Number(venda.descontoValor || 0), base = subtotal - desconto, iva = Number(venda.iva || 0), total = Number(venda.total || 0);
-  const totalExtenso = numeroPorExtenso(total);
+  const totalExtenso = fmt(total);
   const itensHTML = (venda.itens || []).map((it, i) => '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:6px;font-size:.75rem">' + (i + 1) + '</td><td style="padding:6px;font-size:.75rem">' + esc(it.nome) + '</td><td style="padding:6px;text-align:center;font-size:.75rem">' + it.qty + '</td><td style="padding:6px;text-align:right;font-size:.75rem">' + fmt(it.preco) + '</td><td style="padding:6px;text-align:right;font-size:.75rem">' + fmt(it.subtotal || it.preco * it.qty) + '</td></tr>').join('');
   const faturaHTML = '<div id="faturaPreview" style="background:#fff;color:#000;padding:24px;max-width:820px;margin:0 auto;font-family:Arial;font-size:.85rem">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a3a5c;padding-bottom:12px;margin-bottom:12px">' +
@@ -952,10 +952,7 @@ async function abrirFatura(venda) {
     '<div style="line-height:1.6"><strong style="color:#1a3a5c;display:block;margin-bottom:2px">OPERAÇÃO</strong><div>Pagamento: ' + esc(venda.pagamento || '-') + '</div><div>Regime: ' + esc(venda.regime || 'geral') + '</div><div>Tipo Doc: Fatura-Recibo</div></div></div>' +
     '<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><thead><tr style="background:#1a3a5c;color:#fff"><th style="padding:6px;text-align:left;font-size:.75rem">#</th><th style="padding:6px;text-align:left;font-size:.75rem">Descrição</th><th style="padding:6px;text-align:center;font-size:.75rem">Qtd</th><th style="padding:6px;text-align:right;font-size:.75rem">Preço Unit.</th><th style="padding:6px;text-align:right;font-size:.75rem">Total</th></tr></thead><tbody>' + itensHTML + '</tbody></table>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">' +
-    '<div style="text-align:center"><div id="qrcodeContainer" style="display:inline-block;padding:6px;background:#fff;border:2px solid #1a3a5c;border-radius:6px;min-width:130px;min-height:130px"></div>' +
-    '<div style="font-size:.6rem;color:#777;margin-top:4px"><strong>Código de Autenticação AGT</strong></div>' +
-    '<div style="font-size:.55rem;color:#999;font-family:monospace;margin-top:2px;word-break:break-all;max-width:200px;line-height:1.3">' + esc(venda.hash) + '</div>' +
-    '<div style="font-size:.55rem;color:#999;margin-top:2px">Verifique em: quiosqueagt.minfin.gov.ao</div></div>' +
+    '<div style="font-size:.78rem;color:#475569"><strong>Documento comercial</strong><br>Emitido pelo sistema de gestão da empresa.</div>' +
     '<div style="font-size:.82rem;line-height:1.8">' +
     '<div style="display:flex;justify-content:space-between"><span>Subtotal:</span><strong>' + fmt(subtotal) + '</strong></div>' +
     (desconto > 0 ? '<div style="display:flex;justify-content:space-between;color:#dc3545"><span>Desconto (' + venda.desconto + '%):</span><strong>-' + fmt(desconto) + '</strong></div>' : '') +
@@ -965,7 +962,6 @@ async function abrirFatura(venda) {
     '<div style="display:flex;justify-content:space-between;border-top:2px solid #1a3a5c;padding-top:6px;margin-top:6px;font-size:1rem;color:#1a3a5c"><strong>TOTAL LÍQUIDO:</strong><strong>' + fmt(total) + '</strong></div>' +
     (venda.valorRecebido > 0 ? '<div style="display:flex;justify-content:space-between;margin-top:4px"><span>Valor Recebido:</span><strong>' + fmt(venda.valorRecebido) + '</strong></div><div style="display:flex;justify-content:space-between;color:#10b981"><span>Troco:</span><strong>' + fmt(venda.troco) + '</strong></div>' : '') + '</div></div>' +
     '<div style="margin-top:12px;padding:8px;background:#f8fafc;border-radius:6px;font-size:.75rem;border-left:3px solid #1a3a5c"><strong>Valor por extenso:</strong> <em>' + esc(totalExtenso) + '</em></div>' +
-    '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:.6rem;color:#666;line-height:1.5"><strong style="color:#1a3a5c">TERMOS E CONDIÇÕES — AGT ANGOLA</strong><br>• Documento emitido nos termos do Decreto Executivo n.º 29/22 de 20 de Março (Facturação Electrónica).<br>• IVA à taxa de ' + (venda.regime === 'simplificado' ? '7%' : '14%') + ' conforme Código do IVA (Lei n.º 7/19 de 24 de Abril).<br>• Processado por computador — Programa certificado Kanawa Soft ERP v' + APP_VERSION + '.<br>• Autenticidade verificável em https://quiosqueagt.minfin.gov.ao<br>• Hash de assinatura: ' + esc(venda.hash) + '<br>• Assinatura digital: ' + esc(venda.assinatura || gerarAssinatura(venda)) + '</div>' +
     '<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:.7rem;color:#777"><strong>Obrigado pela preferência!</strong><br><span style="font-size:.65rem">' + esc(emp.firma || emp.nome || 'KANAWA SOFT') + ' — ' + new Date().getFullYear() + '</span></div></div>';
   window._vendaAtual = venda;
   openModal('🖨️ Fatura / Recibo — ' + venda.numeroFatura,
@@ -977,7 +973,7 @@ async function abrirFatura(venda) {
     '<button class="btn btn-warning" onclick="compartilharWhatsApp(window._vendaAtual)"><i class="fab fa-whatsapp"></i> WhatsApp</button>' +
     '<button class="btn btn-purple" onclick="abrirGaveta()"><i class="fas fa-cash-register"></i> Abrir Gaveta</button>' +
     '<button class="btn btn-secondary" onclick="closeModal()">Fechar</button></div>', true);
-  setTimeout(() => gerarQRCodeFatura(qrText), 250);
+  if (qrText) setTimeout(() => gerarQRCodeFatura(qrText), 250);
 }
 
 function gerarQRCodeFatura(texto) {
@@ -1072,7 +1068,7 @@ function imprimirFatura() {
 function imprimirTermica() {
   const v = window._vendaAtual; if (!v) { toast('Nenhuma venda selecionada para imprimir.', 'error'); return; }
   const emp = v.empresa || JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
-  const texto = ['=================================', '   ' + (emp.firma || emp.nome || 'KANAWA SOFT').toUpperCase(), '   NIF: ' + (emp.nif || '-'), '   ' + (emp.endereco || 'Luanda, Angola'), '   Tel: ' + (emp.telefone || '-'), '=================================', 'FATURA-RECIBO: ' + v.numeroFatura, 'Data: ' + fmtDT(v.data), 'Cliente: ' + (v.clienteNome || 'Consumidor Final'), (v.clienteNif ? 'NIF: ' + v.clienteNif : ''), '=================================', ...(v.itens || []).map(it => String(it.nome || '').substring(0, 20).padEnd(20) + '\n  ' + it.qty + ' x ' + fmt(it.preco).padEnd(12) + fmt(it.subtotal)), '=================================', 'Subtotal:    ' + fmt(v.subtotal), (v.desconto > 0 ? 'Desconto:    -' + fmt(v.descontoValor) : ''), 'Imposto:     ' + fmt(v.iva), 'TOTAL:       ' + fmt(v.total), v.valorRecebido > 0 ? 'Recebido:    ' + fmt(v.valorRecebido) : '', v.valorRecebido > 0 ? 'Troco:       ' + fmt(v.troco) : '', '=================================', 'Valor: ' + numeroPorExtenso(v.total), '---------------------------------', 'Hash: ' + (v.hash || '-'), 'Assinatura: ' + (v.assinatura || '-'), '---------------------------------', '    Obrigado pela preferência!', '   Processado por Kanawa Soft ERP', '================================='].filter(Boolean).join('\n');
+  const texto = ['=================================', '   ' + (emp.firma || emp.nome || 'KANAWA SOFT').toUpperCase(), '   NIF: ' + (emp.nif || '-'), '   ' + (emp.endereco || 'Luanda, Angola'), '   Tel: ' + (emp.telefone || '-'), '=================================', 'FATURA-RECIBO: ' + v.numeroFatura, 'Data: ' + fmtDT(v.data), 'Cliente: ' + (v.clienteNome || 'Consumidor Final'), (v.clienteNif ? 'NIF: ' + v.clienteNif : ''), '=================================', ...(v.itens || []).map(it => String(it.nome || '').substring(0, 20).padEnd(20) + '\n  ' + it.qty + ' x ' + fmt(it.preco).padEnd(12) + fmt(it.subtotal)), '=================================', 'Subtotal:    ' + fmt(v.subtotal), (v.desconto > 0 ? 'Desconto:    -' + fmt(v.descontoValor) : ''), 'Imposto:     ' + fmt(v.iva), 'TOTAL:       ' + fmt(v.total), v.valorRecebido > 0 ? 'Recebido:    ' + fmt(v.valorRecebido) : '', v.valorRecebido > 0 ? 'Troco:       ' + fmt(v.troco) : '', '=================================', 'Valor: ' + numeroPorExtenso(v.total), '---------------------------------', '    Obrigado pela preferência!', '================================='].filter(Boolean).join('\n');
   const html = htmlSeguroParaImpressao('<pre>' + esc(texto) + '</pre>', 'Recibo ' + (v.numeroFatura || ''),
     'body{font-family:"Courier New",monospace;font-size:11px;width:48mm;margin:0 auto;padding:2mm;white-space:pre-wrap;line-height:1.3}' +
     'pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}@page{size:58mm auto;margin:0}');
