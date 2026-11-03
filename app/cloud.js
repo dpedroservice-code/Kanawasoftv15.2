@@ -214,11 +214,29 @@
         .eq('store_key', store)
         .order('updated_at', { ascending: true });
       if (result.error) throw result.error;
-      return (result.data || []).map(function (row) {
+      const records = (result.data || []).map(function (row) {
         const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
         const id = payload.id !== undefined ? payload.id : (/^\d+$/.test(row.record_id) ? Number(row.record_id) : row.record_id);
         return Object.assign({}, payload, { id: id });
       });
+      if (store === 'produtos') {
+        // The normalized inventory table is authoritative after atomic sales.
+        const stockResult = await client.from('ks_products')
+          .select('external_id, stock_quantity, is_active')
+          .eq('company_id', context.company.id);
+        if (stockResult.error) throw stockResult.error;
+        const stockById = new Map((stockResult.data || []).map(function (row) { return [String(row.external_id), row]; }));
+        return records.map(function (product) {
+          const normalized = stockById.get(String(product.id));
+          if (!normalized) return product;
+          return Object.assign({}, product, {
+            estoque: Number(normalized.stock_quantity),
+            stock_quantity: Number(normalized.stock_quantity),
+            ativo: normalized.is_active !== false
+          });
+        });
+      }
+      return records;
     },
 
     async upsertRecord(store, item, options) {
