@@ -1170,6 +1170,7 @@ async function renderPDV() {
     '<div class="form-group"><label>💰 Valor Recebido</label><input type="number" id="pdvValorRecebidoInput" value="' + pdvState.valorRecebido + '" oninput="pdvAtualizarValores()" style="font-size:1.1rem;text-align:right"></div>' +
     '<div class="form-group"><label>⚖️ Regime Fiscal</label><select id="pdvRegimeInput" onchange="pdvAtualizarValores()"><option value="geral" ' + (pdvState.regime === 'geral' ? 'selected' : '') + '>Regime Geral (IVA 14%)</option><option value="simplificado" ' + (pdvState.regime === 'simplificado' ? 'selected' : '') + '>Simplificado (7%)</option><option value="isento" ' + (pdvState.regime === 'isento' ? 'selected' : '') + '>Isento (exige fundamento legal)</option></select></div>' +
     '<div class="form-group" id="pdvMotivoIsencaoGroup" style="display:' + (pdvState.regime === 'isento' ? 'block' : 'none') + '"><label>Fundamento legal da isenção *</label><input id="pdvMotivoIsencao" maxlength="180" value="' + esc(pdvState.exemptionReason || '') + '" placeholder="Código/motivo e referência legal" oninput="pdvAtualizarValores()"></div>' +
+    '<div id="pdvTaxError" role="alert" style="display:none;color:#b91c1c;background:#fee2e2;border-radius:8px;padding:10px;margin:8px 0"></div>' +
     '<div class="form-group"><label>Aplicações</label><div style="padding-top:6px"><label style="display:block;margin-bottom:6px;font-weight:400"><input type="checkbox" id="pdvAplicarIVA" ' + (pdvState.aplicarIVA ? 'checked' : '') + ' onchange="pdvAtualizarValores()"> Aplicar IVA</label></div></div></div>' +
     '<div class="form-group"><label>📝 Observações</label><textarea id="pdvObs" rows="2">' + esc(pdvState.observacoes) + '</textarea></div>' +
     '<div class="total-box" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;border-radius:14px;padding:18px;margin:16px 0">' +
@@ -1301,13 +1302,15 @@ function pdvAtualizarValores() {
   const exemptionReason = exemptionInput ? exemptionInput.value.trim() : '';
   const exemptionGroup = $('pdvMotivoIsencaoGroup');
   if (exemptionGroup) exemptionGroup.style.display = regime === 'isento' ? 'block' : 'none';
-  let taxResult;
+  let taxResult, fiscalError = '';
   try {
     taxResult = window.KanawaAngolaTax.calculate({ base, regime, applyVat: aplicarIVA, exemptionReason });
   } catch (taxError) {
-    toast(taxError.message || 'Configuração fiscal inválida.', 'warning');
-    throw taxError;
+    fiscalError = taxError.message || 'Configuração fiscal inválida.';
+    taxResult = { vatAmount: 0, exemptionReason: '' };
   }
+  const taxErrorBox = $('pdvTaxError');
+  if (taxErrorBox) { taxErrorBox.textContent = fiscalError; taxErrorBox.style.display = fiscalError ? 'block' : 'none'; }
   const iva = money(taxResult.vatAmount), total = money(base + iva);
   pdvState.exemptionReason = taxResult.exemptionReason || '';
   const isCredit = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
@@ -1323,7 +1326,7 @@ function pdvAtualizarValores() {
       tv.textContent = faltam > 0 ? 'Faltam ' + fmt(faltam) : fmt(troco);
     } else tb.style.display = 'none';
   }
-  return { subtotal, descontoValor: descVal, base, iva, total, troco, faltam };
+  return { subtotal, descontoValor: descVal, base, iva, total, troco, faltam, fiscalError };
 }
 function pdvRenderResumoFinal() {
   const c = pdvAtualizarValores();
@@ -1357,6 +1360,7 @@ async function pdvFinalizarVenda(modo) {
     return;
   }
   const c = pdvAtualizarValores();
+  if (c.fiscalError) { toast('Venda bloqueada: ' + c.fiscalError, 'error'); return; }
   const isCreditPayment = ['credito', 'crédito', 'credit'].includes(String(pdvState.pagamento).toLowerCase());
   if (!isCreditPayment && c.faltam > 0) {
     toast('Pagamento insuficiente. Falta receber ' + fmt(c.faltam) + '.', 'warning');
