@@ -1087,7 +1087,7 @@ async function renderPDV() {
   if (!pdvPaymentMethods.length) pdvPaymentMethods = DEFAULT_PDV_PAYMENT_METHODS.filter(method => method.method_code === 'dinheiro');
   if (!pdvPaymentMethods.some(method => method.method_code === pdvState.pagamento)) pdvState.pagamento = pdvPaymentMethods[0].method_code;
   const paymentIcons = { dinheiro:'fa-money-bill-wave', cartao:'fa-credit-card', transferencia:'fa-university', multicaixa:'fa-mobile-alt', misto:'fa-random', credito:'fa-file-invoice', referencia:'fa-barcode', multicaixa_express:'fa-mobile-alt' };
-  const pags = pdvPaymentMethods.map(method => ({ v:method.method_code, i:paymentIcons[method.method_code] || 'fa-credit-card', l:method.display_name }));
+  const pags = pdvPaymentMethods.map(method => ({ v:method.method_code, i:paymentIcons[method.method_code] || 'fa-credit-card', l:method.display_name, instructions:method.instructions || '' }));
   return header('PDV — Ponto de Venda', produtos.length + ' produtos disponíveis', 'var(--success)',
     '<button class="btn btn-sm" onclick="abrirScanner()" style="background:rgba(255,255,255,.2);color:#fff"><i class="fas fa-barcode"></i> Scanner</button>' +
     '<button class="btn btn-sm" onclick="imprimirEtiquetasLote()" style="background:rgba(255,255,255,.2);color:#fff"><i class="fas fa-tags"></i> Etiquetas</button>' +
@@ -1114,7 +1114,8 @@ async function renderPDV() {
     '<div><div style="font-size:.8rem;color:var(--text-muted)">Cliente</div><div style="font-size:1.1rem;font-weight:700" id="pdvClienteResumo">' + esc(pdvState.cliente.nome) + '</div></div>' +
     '<button class="btn btn-primary btn-lg" onclick="pdvSalvarCliente()">Continuar <i class="fas fa-arrow-right"></i></button></div></div>' +
     '<div class="pdv-screen" id="pdvScreen4"><div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-credit-card"></i> Pagamento</h3><button class="btn btn-sm btn-secondary" onclick="pdvIrParaTela(3)"><i class="fas fa-arrow-left"></i> Voltar</button></div>' +
-    '<div class="payment-methods-grid">' + pags.map(p => '<div class="payment-method-card ' + (pdvState.pagamento === p.v ? 'selected' : '') + '" data-payment="' + p.v + '" onclick="pdvSelecionarPagamento(\'' + p.v + '\')"><i class="fas ' + p.i + '"></i><span>' + p.l + '</span></div>').join('') + '</div></div>' +
+    '<div class="payment-methods-grid">' + pags.map(p => '<div class="payment-method-card ' + (pdvState.pagamento === p.v ? 'selected' : '') + '" data-payment="' + p.v + '" onclick="pdvSelecionarPagamento(\'' + p.v + '\')"><i class="fas ' + p.i + '"></i><span>' + p.l + '</span></div>').join('') + '</div>' +
+    '<div id="pdvPaymentInstructions" style="font-size:.82rem;color:var(--text-muted);padding:10px 12px;background:var(--bg);border-radius:8px">' + esc((pdvPaymentMethods.find(method => method.method_code === pdvState.pagamento) || {}).instructions || 'Sem instruções adicionais para este método.') + '</div></div>' +
     '<div style="position:sticky;bottom:16px;background:var(--bg-card);padding:16px;border-radius:14px;box-shadow:var(--shadow-hover);display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border)">' +
     '<div><div style="font-size:.8rem;color:var(--text-muted)">Pagamento</div><div style="font-size:1.1rem;font-weight:700" id="pdvPagamentoResumo">Dinheiro</div></div>' +
     '<button class="btn btn-primary btn-lg" onclick="pdvIrParaTela(5)">Continuar <i class="fas fa-arrow-right"></i></button></div></div>' +
@@ -1182,7 +1183,7 @@ function pdvAltQty(id, d) { const it = pdvState.carrinho.find(i => i.id === id);
 function pdvRemoverItem(id) { pdvState.carrinho = pdvState.carrinho.filter(i => i.id !== id); pdvRenderCarrinhoFull(); toast('Removido', 'info'); }
 function pdvSalvarCliente() { pdvState.cliente.nome = ($('pdvClienteNome').value.trim() || 'Cliente Anônimo'); pdvState.cliente.nif = $('pdvClienteNif').value.trim(); pdvState.cliente.telefone = $('pdvClienteTel').value.trim(); pdvIrParaTela(4); }
 function pdvClienteAnonimo() { $('pdvClienteNome').value = 'Cliente Anônimo'; $('pdvClienteNif').value = ''; $('pdvClienteTel').value = ''; pdvState.cliente = { nome: 'Cliente Anônimo', nif: '', telefone: '' }; toast('Cliente anônimo', 'info'); }
-function pdvSelecionarPagamento(t) { pdvState.pagamento = t; $('.payment-method-card').forEach(el => el.classList.toggle('selected', el.dataset.payment === t)); const method = pdvPaymentMethods.find(item => item.method_code === t); const el = $('pdvPagamentoResumo'); if (el) el.textContent = method ? method.display_name : t; }
+function pdvSelecionarPagamento(t) { pdvState.pagamento = t; $$('.payment-method-card').forEach(el => el.classList.toggle('selected', el.dataset.payment === t)); const method = pdvPaymentMethods.find(item => item.method_code === t); const el = $('pdvPagamentoResumo'); if (el) el.textContent = method ? method.display_name : t; const note = $('pdvPaymentInstructions'); if (note) note.textContent = method && method.instructions ? method.instructions : 'Sem instruções adicionais para este método.'; }
 function pdvAtualizarValores() {
   const dEl = $('pdvDescontoInput'), vEl = $('pdvValorRecebidoInput'), rEl = $('pdvRegimeInput'), iEl = $('pdvAplicarIVA');
   if (!dEl) return { subtotal: 0, descontoValor: 0, base: 0, iva: 0, total: 0, troco: 0, faltam: 0 };
