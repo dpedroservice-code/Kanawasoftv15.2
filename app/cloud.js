@@ -329,21 +329,6 @@
       return true;
     },
 
-    async updateCompany(data) {
-      if (!this.ready) return;
-      const update = {
-        legal_name: data.nome || data.firma || context.company.legal_name,
-        trade_name: data.firma || data.nome || context.company.trade_name,
-        tax_id: data.nif || context.company.tax_id,
-        phone: data.telefone || context.company.phone,
-        email: data.email || context.company.email,
-        updated_at: new Date().toISOString()
-      };
-      const result = await client.from('ks_companies').update(update).eq('id', context.company.id);
-      if (result.error) throw result.error;
-      context.company = Object.assign({}, context.company, update);
-    },
-
     async updateCompany(details) {
       if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
       if (!context.company || context.company.owner_user_id !== context.user.id) {
