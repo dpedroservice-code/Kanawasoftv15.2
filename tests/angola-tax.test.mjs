@@ -14,6 +14,11 @@ test('requires a legal reason before an exempt sale can be calculated',()=>{
   assert.equal(Tax.calculate({base:1000,regime:'isento',exemptionReason:'Artigo e motivo aplicável'}).total,1000);
 });
 
+test('prevents disabling VAT without a validated exemption regime',()=>{
+  assert.throws(()=>Tax.calculate({base:1000,regime:'geral',applyVat:false}),/Não é permitido desativar/);
+  assert.throws(()=>Tax.calculate({base:1000,regime:'isento',applyVat:false}),/fundamento legal/);
+});
+
 test('does not allow exemption reason to be silently attached to taxable regimes',()=>{
   assert.throws(()=>Tax.calculate({base:1000,regime:'geral',exemptionReason:'qualquer motivo'}),/só pode/);
 });
