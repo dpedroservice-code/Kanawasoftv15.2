@@ -947,7 +947,7 @@ async function abrirFatura(venda) {
     (emp.regime ? '<div><strong>Regime:</strong> ' + esc(emp.regime) + '</div>' : '') +
     '<div>' + esc(emp.endereco || 'Luanda, Angola') + '</div><div><strong>Tel:</strong> ' + esc(emp.telefone || '-') + (emp.email ? ' | ' + esc(emp.email) : '') + '</div>' +
     (emp.alvara ? '<div><strong>Alvará:</strong> ' + esc(emp.alvara) + '</div>' : '') + '</div></div></div>' +
-    '<div style="text-align:right"><div style="font-size:.65rem;color:#999">FATURA / RECIBO</div>' +
+    '<div style="text-align:right"><div style="font-size:.65rem;color:#b91c1c;font-weight:700">DOCUMENTO COMERCIAL — NÃO CERTIFICADO PELA AGT</div>' +
     '<div style="font-size:1rem;font-weight:800;color:#1a3a5c">' + esc(venda.numeroFatura) + '</div>' +
     '<div style="font-size:.7rem;color:#555;margin-top:2px"><strong>Data:</strong> ' + fmtDT(venda.data) + '</div>' +
     '<div style="font-size:.7rem;color:#555"><strong>Origem:</strong> ' + esc(venda.operador || 'Admin') + '</div></div></div>' +
@@ -1091,7 +1091,7 @@ async function baixarFaturaPDF() {
 }
 function compartilharWhatsApp(v) {
   if (!v) return;
-  const txt = '*' + (v.empresa && v.empresa.nome || 'Kanawa') + '*\n\nFatura: ' + v.numeroFatura + '\nData: ' + fmtDT(v.data) + '\nTotal: ' + fmt(v.total) + '\n\n' + (v.itens || []).map(i => '• ' + i.nome + ' x' + i.qty + ' = ' + fmt(i.subtotal)).join('\n') + '\n\nHash: ' + v.hash;
+  const txt = '*' + (v.empresa && v.empresa.nome || 'Kanawa') + '*\n\nFatura: ' + v.numeroFatura + '\nData: ' + fmtDT(v.data) + '\nTotal: ' + fmt(v.total) + '\n\n' + (v.itens || []).map(i => '• ' + i.nome + ' x' + i.qty + ' = ' + fmt(i.subtotal)).join('\n');
   window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
 }
 
