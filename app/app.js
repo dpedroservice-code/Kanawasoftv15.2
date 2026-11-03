@@ -1827,8 +1827,15 @@ async function verFuncionarioRH(id) {
  const fields=[['Nome completo',f.nome],['Cargo',f.cargo],['Departamento',f.departamento],['NIF',f.nif],['BI',f.bi],['Telefone',f.telefone],['Email',f.email],['Morada',f.endereco||f.morada],['Data de nascimento',f.dataNascimento],['Data de admissão',f.dataContratacao||f.dataInicio||f.admissao],['Tipo de contrato',f.tipoContrato],['Salário bruto',fmt(f.salario||0)],['Banco',f.banco],['IBAN',f.iban],['Estado',f.status||'Activo']];
  openModal('Ficha completa do trabalhador','<div class="form-grid">'+fields.map(([k,v])=>'<div class="form-group"><label>'+esc(k)+'</label><div>'+esc(v||'Não informado')+'</div></div>').join('')+'</div>',true);
 }
-function abrirModalFuncionario() { openModal('Novo Funcionário', '<div class="form-group"><label>Nome *</label><input id="fnNome"></div><div class="form-group"><label>Cargo</label><input id="fnCargo"></div><div class="form-group"><label>Salário *</label><input id="fnSalario" type="number" value="0"></div><button class="btn btn-primary btn-block" onclick="salvarFuncionario()">Salvar</button>'); }
-async function salvarFuncionario() { const n = $('fnNome').value.trim(); if (!n) { toast('Informe nome', 'warning'); return; } await saveData('funcionarios', { nome: n, cargo: $('fnCargo').value, salario: num($('fnSalario').value, 0), dataContratacao: now() }); toast('Cadastrado', 'success'); closeModal(); openModule('rh'); }
+function abrirModalFuncionario() {
+ openModal('Novo trabalhador','<div class="form-grid"><div class="form-group"><label>Nome completo *</label><input id="fnNome"></div><div class="form-group"><label>Cargo *</label><input id="fnCargo"></div><div class="form-group"><label>Departamento</label><input id="fnDepartamento"></div><div class="form-group"><label>NIF</label><input id="fnNif"></div><div class="form-group"><label>BI</label><input id="fnBI"></div><div class="form-group"><label>Telefone</label><input id="fnTelefone"></div><div class="form-group"><label>Email</label><input id="fnEmail" type="email"></div><div class="form-group"><label>Data de admissão *</label><input id="fnAdmissao" type="date" value="'+new Date().toISOString().slice(0,10)+'"></div><div class="form-group"><label>Tipo de contrato</label><input id="fnContrato"></div><div class="form-group"><label>Salário bruto *</label><input id="fnSalario" type="number" min="0" step="0.01" value="0"></div><div class="form-group"><label>Banco</label><input id="fnBanco"></div><div class="form-group"><label>IBAN</label><input id="fnIBAN"></div></div><button class="btn btn-primary btn-block" onclick="salvarFuncionario()">Salvar trabalhador</button>',true);
+}
+async function salvarFuncionario() {
+ const n=$('fnNome').value.trim(),cargo=$('fnCargo').value.trim(),salario=Number($('fnSalario').value),admissao=$('fnAdmissao').value;
+ if(!n||!cargo||!admissao||!Number.isFinite(salario)||salario<0){toast('Preencha nome, cargo, admissão e salário válido.','warning');return;}
+ await saveData('funcionarios',{nome:n,cargo,departamento:$('fnDepartamento').value.trim(),nif:$('fnNif').value.trim(),bi:$('fnBI').value.trim(),telefone:$('fnTelefone').value.trim(),email:$('fnEmail').value.trim(),dataContratacao:admissao,dataInicio:admissao,tipoContrato:$('fnContrato').value.trim(),salario,banco:$('fnBanco').value.trim(),iban:$('fnIBAN').value.trim(),status:'activo',data:now()});
+ toast('Trabalhador cadastrado.','success');closeModal();openModule('rh');
+}
 
 /* ====== PROJETOS ====== */
 async function renderProjetos() {
