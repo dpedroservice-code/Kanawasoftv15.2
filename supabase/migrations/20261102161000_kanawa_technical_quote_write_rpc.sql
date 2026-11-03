@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION public.ks_technical_create_quote(
   p_installments jsonb DEFAULT '[]'::jsonb
 ) RETURNS jsonb
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path TO ''
 AS $function$
 DECLARE
