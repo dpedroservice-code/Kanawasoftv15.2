@@ -43,6 +43,10 @@
       percentage: number(term.percentage),
       due_date: term.due_date || null
     }));
+    const installmentTotal = terms.reduce((sum, term) => sum + term.percentage, 0);
+    if (terms.some(term => !term.milestone || term.percentage <= 0 || term.percentage > 100) || installmentTotal > 100.0001) {
+      throw new Error('As tranches devem ter percentagens positivas e a soma não pode ultrapassar 100%.');
+    }
     const validDays = Math.max(1, Math.min(90, Math.floor(number(row.validadeDias) || 7)));
     const validUntil = new Date(Date.now() + validDays * 86400000).toISOString().slice(0, 10);
     const status = row.status === 'Em negociação' ? 'negotiation' : 'draft';
