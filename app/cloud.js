@@ -390,6 +390,23 @@
       return failIfError(await client.rpc('ks_list_payment_provider_status')) || [];
     },
 
+    async listCompanyPaymentMethods() {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está ativa.');
+      return failIfError(await client.rpc('ks_list_company_payment_methods', {
+        p_company_id: context.company.id
+      })) || [];
+    },
+
+    async saveCompanyPaymentMethods(methods) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está ativa.');
+      if (!['owner','admin'].includes(context.role)) throw new Error('Apenas o proprietário ou administrador pode configurar métodos de pagamento.');
+      if (!Array.isArray(methods)) throw new Error('Configuração de métodos inválida.');
+      return failIfError(await client.rpc('ks_save_company_payment_methods', {
+        p_company_id: context.company.id,
+        p_methods: methods
+      }));
+    },
+
     async registerInstallation(appVersion) {
       if (!this.ready) return null;
       let key = localStorage.getItem('kanawa_installation_key');
