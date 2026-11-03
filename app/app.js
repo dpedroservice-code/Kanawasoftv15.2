@@ -9,6 +9,17 @@ let currentModule = 'dashboard';
 let scanner = null, scannerActive = false, scannerCallback = null;
 let syncTimer = null;
 let pdvState = { screen: 1, carrinho: [], cliente: { nome: 'Cliente Anônimo', nif: '', telefone: '' }, pagamento: 'dinheiro', desconto: 0, valorRecebido: 0, aplicarIVA: true, regime: 'geral', observacoes: '' };
+const DEFAULT_PDV_PAYMENT_METHODS = [
+  { method_code:'dinheiro', display_name:'Dinheiro', enabled:true, sort_order:10 },
+  { method_code:'cartao', display_name:'Cartão bancário', enabled:true, sort_order:20 },
+  { method_code:'transferencia', display_name:'Transferência', enabled:true, sort_order:30 },
+  { method_code:'multicaixa', display_name:'Multicaixa (TPA)', enabled:true, sort_order:40 },
+  { method_code:'misto', display_name:'Pagamento misto', enabled:true, sort_order:50 },
+  { method_code:'credito', display_name:'Crédito / a prazo', enabled:true, sort_order:60 },
+  { method_code:'referencia', display_name:'Referência de pagamento', enabled:false, sort_order:70 },
+  { method_code:'multicaixa_express', display_name:'Multicaixa Express', enabled:false, sort_order:80 }
+];
+let pdvPaymentMethods = DEFAULT_PDV_PAYMENT_METHODS.filter(method => method.enabled);
 let pdvCache = { produtos: [], favoritos: JSON.parse(localStorage.getItem('kanawa_favoritos') || '[]'), ts: 0 };
 const AGT_CONFIG = { iva: 0.14, ivaReduzido: 0.07, irt: { faixas: [
   { min: 0, max: 70000, taxa: 0, parcela: 0 }, { min: 70001, max: 100000, taxa: 0.10, parcela: 7000 },
@@ -1062,7 +1073,21 @@ function renderGridProdutos(produtos, favs) {
 async function renderPDV() {
   const produtos = await carregarCachePDV();
   const favs = pdvCache.favoritos;
-  const pags = [{ v: 'dinheiro', i: 'fa-money-bill-wave', l: 'Dinheiro' }, { v: 'cartao', i: 'fa-credit-card', l: 'Cartão' }, { v: 'transferencia', i: 'fa-university', l: 'Transferência' }, { v: 'multicaixa', i: 'fa-mobile-alt', l: 'Multicaixa' }, { v: 'misto', i: 'fa-random', l: 'Misto' }, { v: 'credito', i: 'fa-file-invoice', l: 'Crédito' }];
+  try {
+    if (window.KanawaCloud && KanawaCloud.ready && typeof KanawaCloud.listCompanyPaymentMethods === 'function') {
+      const configured = await KanawaCloud.listCompanyPaymentMethods();
+      pdvPaymentMethods = configured.filter(method => method.enabled === true);
+    } else {
+      pdvPaymentMethods = DEFAULT_PDV_PAYMENT_METHODS.filter(method => method.enabled);
+    }
+  } catch (error) {
+    pdvPaymentMethods = DEFAULT_PDV_PAYMENT_METHODS.filter(method => method.enabled);
+    toast('Não foi possível carregar os métodos configurados; foram mostrados os métodos padrão. ' + (error.message || ''), 'warning');
+  }
+  if (!pdvPaymentMethods.length) pdvPaymentMethods = DEFAULT_PDV_PAYMENT_METHODS.filter(method => method.method_code === 'dinheiro');
+  if (!pdvPaymentMethods.some(method => method.method_code === pdvState.pagamento)) pdvState.pagamento = pdvPaymentMethods[0].method_code;
+  const paymentIcons = { dinheiro:'fa-money-bill-wave', cartao:'fa-credit-card', transferencia:'fa-university', multicaixa:'fa-mobile-alt', misto:'fa-random', credito:'fa-file-invoice', referencia:'fa-barcode', multicaixa_express:'fa-mobile-alt' };
+  const pags = pdvPaymentMethods.map(method => ({ v:method.method_code, i:paymentIcons[method.method_code] || 'fa-credit-card', l:method.display_name }));
   return header('PDV — Ponto de Venda', produtos.length + ' produtos disponíveis', 'var(--success)',
     '<button class="btn btn-sm" onclick="abrirScanner()" style="background:rgba(255,255,255,.2);color:#fff"><i class="fas fa-barcode"></i> Scanner</button>' +
     '<button class="btn btn-sm" onclick="imprimirEtiquetasLote()" style="background:rgba(255,255,255,.2);color:#fff"><i class="fas fa-tags"></i> Etiquetas</button>' +
@@ -1157,7 +1182,7 @@ function pdvAltQty(id, d) { const it = pdvState.carrinho.find(i => i.id === id);
 function pdvRemoverItem(id) { pdvState.carrinho = pdvState.carrinho.filter(i => i.id !== id); pdvRenderCarrinhoFull(); toast('Removido', 'info'); }
 function pdvSalvarCliente() { pdvState.cliente.nome = ($('pdvClienteNome').value.trim() || 'Cliente Anônimo'); pdvState.cliente.nif = $('pdvClienteNif').value.trim(); pdvState.cliente.telefone = $('pdvClienteTel').value.trim(); pdvIrParaTela(4); }
 function pdvClienteAnonimo() { $('pdvClienteNome').value = 'Cliente Anônimo'; $('pdvClienteNif').value = ''; $('pdvClienteTel').value = ''; pdvState.cliente = { nome: 'Cliente Anônimo', nif: '', telefone: '' }; toast('Cliente anônimo', 'info'); }
-function pdvSelecionarPagamento(t) { pdvState.pagamento = t; $$('.payment-method-card').forEach(el => el.classList.toggle('selected', el.dataset.payment === t)); const map = { dinheiro: 'Dinheiro', cartao: 'Cartão', transferencia: 'Transferência', multicaixa: 'Multicaixa', misto: 'Misto', credito: 'Crédito' }; const el = $('pdvPagamentoResumo'); if (el) el.textContent = map[t] || t; }
+function pdvSelecionarPagamento(t) { pdvState.pagamento = t; $('.payment-method-card').forEach(el => el.classList.toggle('selected', el.dataset.payment === t)); const method = pdvPaymentMethods.find(item => item.method_code === t); const el = $('pdvPagamentoResumo'); if (el) el.textContent = method ? method.display_name : t; }
 function pdvAtualizarValores() {
   const dEl = $('pdvDescontoInput'), vEl = $('pdvValorRecebidoInput'), rEl = $('pdvRegimeInput'), iEl = $('pdvAplicarIVA');
   if (!dEl) return { subtotal: 0, descontoValor: 0, base: 0, iva: 0, total: 0, troco: 0, faltam: 0 };
@@ -2696,35 +2721,81 @@ async function atualizarStatusPedidoEcommerce(id) {
   } catch (error) { toast(error.message, 'warning'); }
 }
 function exportarPedidosEcommerce() { toast('Exportação de pedidos ainda não está implementada; nenhum ficheiro foi criado.', 'warning'); }
-async function renderEcommercePagamento() {
-  if (!window.KanawaCloud || !KanawaCloud.ready) {
-    return header('Gateway de Pagamento', 'Estado das integrações', 'var(--warning)', '', 'fa-credit-card') +
-      '<div class="card"><p>É necessário iniciar sessão na nuvem para consultar os provedores de pagamento.</p></div>';
-  }
+const PAYMENT_METHOD_ICONS = {
+  dinheiro:'fa-money-bill-wave', cartao:'fa-credit-card', transferencia:'fa-university',
+  multicaixa:'fa-mobile-alt', misto:'fa-random', credito:'fa-file-invoice',
+  referencia:'fa-barcode', multicaixa_express:'fa-mobile-alt'
+};
+function renderPaymentMethodSettings(methods, canConfigure) {
+  const rows = methods.map(method => {
+    const code = esc(method.method_code);
+    return '<div class="card" style="margin:0;padding:14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center">' +
+      '<div style="display:flex;gap:12px;align-items:center;min-width:0"><i class="fas ' + (PAYMENT_METHOD_ICONS[method.method_code] || 'fa-credit-card') + '" style="font-size:1.35rem;color:var(--primary);width:28px;text-align:center"></i><div style="min-width:0"><strong>' + esc(method.display_name) + '</strong><div style="font-size:.75rem;color:var(--text-muted)">' + code + '</div></div></div>' +
+      '<label style="display:flex;align-items:center;gap:8px;white-space:nowrap"><input type="checkbox" data-payment-enabled="' + code + '" ' + (method.enabled ? 'checked' : '') + (canConfigure ? '' : ' disabled') + '> Aceitar</label>' +
+      '<div style="grid-column:1/-1"><label style="display:block;font-size:.78rem;color:var(--text-muted);margin-bottom:4px">Instruções para o operador/cliente</label><input data-payment-instructions="' + code + '" maxlength="300" value="' + esc(method.instructions || '') + '" placeholder="Ex.: apresentar comprovativo da transferência" ' + (canConfigure ? '' : 'disabled') + ' style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)"></div></div>';
+  }).join('');
+  return '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-sliders-h"></i> Formas de pagamento aceites</h3>' +
+    (canConfigure ? '<button class="btn btn-success" onclick="guardarMetodosPagamento()"><i class="fas fa-save"></i> Guardar configuração</button>' : '<span class="badge badge-warning">Só leitura</span>') + '</div>' +
+    '<p style="color:var(--text-muted);font-size:.85rem;margin-bottom:14px">Escolha os métodos que a empresa aceita no PDV e registe instruções operacionais. A configuração é guardada no PostgreSQL e partilhada pelos utilizadores da empresa.</p>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">' + rows + '</div>' +
+    '<div class="alert alert-warning show" style="margin-top:14px">Activar um método nesta lista apenas permite seleccioná-lo na venda. Não confirma uma transferência, não processa pagamentos e não activa um gateway bancário.</div></div>';
+}
+async function guardarMetodosPagamento() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) return toast('Inicie sessão na empresa antes de guardar a configuração.', 'warning');
+  const methods = DEFAULT_PDV_PAYMENT_METHODS.map((method,index) => {
+    const enabled = document.querySelector('[data-payment-enabled="' + method.method_code + '"]');
+    const instructions = document.querySelector('[data-payment-instructions="' + method.method_code + '"]');
+    return {
+      method_code: method.method_code,
+      display_name: method.display_name,
+      enabled: !!(enabled && enabled.checked),
+      sort_order: (index + 1) * 10,
+      instructions: instructions ? instructions.value.trim().slice(0,300) : ''
+    };
+  });
+  if (!methods.some(method => method.enabled)) return toast('Mantenha pelo menos uma forma de pagamento activa.', 'warning');
   try {
-    const providers = await KanawaCloud.listPaymentProviderStatus();
-    const active = providers.filter(function (provider) { return provider.enabled === true; }).length;
-    const rows = providers.map(function (provider) {
-      const enabled = provider.enabled === true;
-      return [
-        '<strong>' + esc(provider.display_name || provider.provider_code) + '</strong>',
-        esc(provider.mode || 'não configurado'),
-        badge(enabled ? 'Ativo' : 'Desativado', enabled ? 'success' : 'warning'),
-        esc((provider.supported_countries || []).join(', ') || '-')
-      ];
-    });
-    return header('Gateway de Pagamento', active + ' de ' + providers.length + ' provedores ativos', 'var(--success)', '', 'fa-credit-card') +
-      '<div class="card"><p style="margin-bottom:12px;color:var(--text-muted)">Estado consultado no servidor. Nenhuma chave secreta deve ser introduzida no navegador. Um provedor só pode ser apresentado como ativo depois da configuração e validação no backend.</p>' +
-      table(['Provedor', 'Modo', 'Estado', 'Países'], rows) +
-      (active === 0 ? '<div class="alert alert-warning" style="margin-top:12px">Não existe gateway de pagamento ativo. O checkout online não pode cobrar clientes neste momento.</div>' : '') +
-      '</div>';
+    const result = await KanawaCloud.saveCompanyPaymentMethods(methods);
+    pdvPaymentMethods = methods.filter(method => method.enabled);
+    toast('Configuração guardada no PostgreSQL (' + (result.saved || methods.length) + ' métodos).', 'success');
+    await openModule('ecommerce-pagamento');
   } catch (error) {
-    return header('Gateway de Pagamento', 'Falha ao consultar provedores', 'var(--danger)', '', 'fa-credit-card') +
-      '<div class="card"><p>' + esc(error.message || 'Não foi possível consultar o estado dos provedores.') + '</p></div>';
+    toast(error.message || 'Não foi possível guardar os métodos de pagamento.', 'error');
   }
 }
-function configurarPagamento() { toast('Configuração de gateways deve ser feita no backend seguro; não é permitido guardar chaves no navegador.', 'warning'); }
-function testarPagamento() { toast('Nenhum teste de cobrança foi executado. Configure primeiro um provedor real no backend.', 'warning'); }
+async function renderEcommercePagamento() {
+  if (!window.KanawaCloud || !KanawaCloud.ready) {
+    return header('Pagamento e formas de pagamento', 'Configuração da empresa', 'var(--warning)', '', 'fa-credit-card') +
+      '<div class="card"><p>Inicie sessão numa empresa para consultar ou guardar os métodos de pagamento no PostgreSQL.</p></div>';
+  }
+  try {
+    const [methods, providers] = await Promise.all([
+      KanawaCloud.listCompanyPaymentMethods(),
+      KanawaCloud.listPaymentProviderStatus()
+    ]);
+    const active = providers.filter(provider => provider.enabled === true).length;
+    const canConfigure = !!(KanawaCloud.context && KanawaCloud.context.role === 'admin');
+    const methodPanel = renderPaymentMethodSettings(methods, canConfigure);
+    const rows = providers.map(provider => [
+      '<strong>' + esc(provider.display_name || provider.provider_code) + '</strong>',
+      esc(provider.mode || 'não configurado'),
+      badge(provider.enabled ? 'Activo no servidor' : 'Desactivado', provider.enabled ? 'success' : 'warning'),
+      esc((provider.supported_countries || []).join(', ') || '-')
+    ]);
+    return header('Pagamento e formas de pagamento', methods.filter(method => method.enabled).length + ' métodos aceites no PDV', 'var(--success)', '', 'fa-credit-card') +
+      methodPanel +
+      '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-plug"></i> Gateways de pagamento online</h3></div>' +
+      '<p style="color:var(--text-muted);font-size:.85rem;margin-bottom:12px">Os gateways são geridos no servidor. Chaves privadas, tokens e segredos nunca são pedidos nem guardados neste ecrã.</p>' +
+      table(['Provedor','Modo','Estado','Países'],rows) +
+      (active === 0 ? '<div class="alert alert-warning show" style="margin-top:12px">Não existe gateway online activo. O checkout não pode cobrar clientes pela internet neste momento.</div>' : '') +
+      '<p style="font-size:.78rem;color:var(--text-muted);margin-top:10px">A disponibilidade do gateway é apenas o estado publicado pelo servidor; não substitui um pagamento de teste confirmado pelo fornecedor.</p></div>';
+  } catch (error) {
+    return header('Pagamento e formas de pagamento', 'Falha ao consultar configuração', 'var(--danger)', '', 'fa-credit-card') +
+      '<div class="card"><p>' + esc(error.message || 'Não foi possível consultar a configuração.') + '</p></div>';
+  }
+}
+function configurarPagamento() { openModule('ecommerce-pagamento'); }
+function testarPagamento() { toast('Nenhuma cobrança foi executada. Faça um pagamento de teste no ambiente sandbox do fornecedor depois da integração backend.', 'warning'); }
 function renderEcommerceRastreio() {
   return header('Rastreio de Encomendas', 'Consulta externa indisponível', 'var(--warning)', '', 'fa-map-marker-alt') +
     '<div class="card"><div class="alert alert-warning">Não existe integração ativa com transportadoras. O sistema não vai inventar estados de envio. Consulte apenas atualizações registadas pela equipa em Logística → Rastreio.</div></div>';
