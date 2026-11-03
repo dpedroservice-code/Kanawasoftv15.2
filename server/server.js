@@ -1,12 +1,11 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { initDB } = require('./database');
 const { registerRoutes } = require('./routes');
 
 /* ============================================================
    KANAWA SOFT ERP v15.4 — server.js
-   Express · SQLite local cache · Supabase Cloud · Static · SPA fallback
+   Express · Supabase Auth/PostgreSQL · Static · SPA fallback
    Helmet/rateLimit/morgan (opcionais) · Graceful shutdown
    Contrato: startServer({ dataDir, port }) → { port, server }
    ============================================================ */
@@ -24,7 +23,6 @@ try { morgan = require('morgan'); } catch (e) { /* usa fallback manual */ }
 const APP_VERSION = '15.4.0';
 
 let httpServer = null;
-let dbInstance = null;
 
 /* ============ GRACEFUL SHUTDOWN ============ */
 function setupGracefulShutdown() {
@@ -33,10 +31,6 @@ function setupGracefulShutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log('\n[Kanawa] Recebido ' + signal + ' — encerrando servidor...');
-    try {
-      if (dbInstance && typeof dbInstance.saveNow === 'function') dbInstance.saveNow();
-    } catch (e) { console.warn('[Kanawa] Erro ao gravar DB:', e.message); }
-
     if (httpServer && httpServer.close) {
       httpServer.close(() => {
         console.log('[Kanawa] Servidor HTTP encerrado');
@@ -54,7 +48,6 @@ function setupGracefulShutdown() {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('uncaughtException', (err) => {
     console.error('[Kanawa] uncaughtException:', err);
-    try { if (dbInstance && typeof dbInstance.saveNow === 'function') dbInstance.saveNow(); } catch (e) { }
     process.exit(1);
   });
   process.on('unhandledRejection', (reason) => {
@@ -80,13 +73,6 @@ function manualLogger(req, res, next) {
    ============================================================ */
 async function startServer(options = {}) {
   const port = options.port === undefined ? 3000 : options.port;
-  const dataDir = options.dataDir || path.join(process.cwd(), 'data');
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-  /* ====== BASE DE DADOS ====== */
-  dbInstance = await initDB(path.join(dataDir, 'kanawa.db'));
-  console.log('[Kanawa] Base de dados pronta em', path.join(dataDir, 'kanawa.db'));
-
   /* ====== EXPRESS ====== */
   const app = express();
   app.disable('x-powered-by');
@@ -161,7 +147,7 @@ async function startServer(options = {}) {
   }));
 
   /* ====== ROTAS CRUD ====== */
-  registerRoutes(app, dbInstance);
+  registerRoutes(app);
 
   /* ====== FALLBACK SPA ====== */
   app.get('*', (req, res, next) => {
@@ -204,7 +190,7 @@ async function startServer(options = {}) {
       console.log('  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚══╝╚══╝ ╚═╝  ╚═╝');
       console.log('');
       console.log('[Kanawa] Servidor em http://127.0.0.1:' + actualPort);
-      console.log('[Kanawa] Versão ' + APP_VERSION + ' — SQLite local cache · Supabase Cloud');
+      console.log('[Kanawa] Versão ' + APP_VERSION + ' — Supabase Auth · PostgreSQL Cloud');
       console.log('');
 
       /* ✅ Contrato com main.js: devolve { port, server } */
@@ -235,4 +221,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { startServer, getDB: () => dbInstance };
+module.exports = { startServer };
