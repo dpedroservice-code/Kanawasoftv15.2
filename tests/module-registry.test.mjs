@@ -58,8 +58,9 @@ test('integration diagnostics are registered in the core module system', () => {
   assert.doesNotMatch(integrations, /type=["']password["']|service_role|secret_key/i);
 });
 
-test('manager roles receive technical module access', () => {
-  assert.match(permissions, /role === 'manager' \|\| role === 'gerente'.*grants\.tecnica/);
+test('manager module access is controlled by explicit grants', () => {
+  assert.match(permissions, /Cloud users receive only grants explicitly saved by the company administrator/);
+  assert.doesNotMatch(permissions, /role === 'manager'.*grants\.tecnica/);
 });
  
 test('menu groups display representative icons and accessible item labels', () => {
