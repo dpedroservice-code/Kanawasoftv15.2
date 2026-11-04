@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Kanawa Soft">
-<title>Kanawa Soft ERP v15.3 Cloud</title>
+<title>Kanawa Soft ERP v1.1.0</title>
 <link rel="icon" href="logo.png">
 <link rel="apple-touch-icon" href="logo.png">
 <link rel="manifest" href="manifest.json">
@@ -214,6 +214,36 @@ tr:hover td{background:var(--bg-hover)}
 .sync-indicator.online{background:#d1fae5;color:#065f46}
 .sync-indicator.offline{background:#fee2e2;color:#991b1b}
 .sync-indicator.syncing{background:#fef3c7;color:#92400e}
+
+.sidebar-backdrop{display:none}
+.sidebar-toggle{display:none}
+.kanawa-module-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.kanawa-module-kicker{font-size:.68rem;letter-spacing:.12em;font-weight:800;opacity:.7}
+.kanawa-module-heading h2{font-size:1.35rem;margin-top:5px}
+.kanawa-module-heading p{font-size:.88rem;opacity:.78;margin-top:5px}
+.kanawa-module-count{font-size:.78rem;background:var(--bg-hover);padding:8px 12px;border-radius:999px;white-space:nowrap}
+.kanawa-module-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.kanawa-module-tile{display:flex;align-items:center;gap:12px;width:100%;min-height:82px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);text-align:left;cursor:pointer;transition:transform .15s ease,border-color .15s ease}
+.kanawa-module-tile:hover{transform:translateY(-2px);border-color:var(--primary)}
+.kanawa-module-icon{width:42px;height:42px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--bg-hover);color:var(--primary);font-size:1.1rem;flex:0 0 auto}
+.kanawa-module-tile-copy{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.kanawa-module-tile-copy strong{font-size:.92rem}
+.kanawa-module-tile-copy small{font-size:.75rem;color:var(--text-muted)}
+.kanawa-module-arrow{font-size:.8rem;color:var(--text-muted)}
+@media(max-width:768px){
+  .sidebar-toggle{display:inline-flex;align-items:center;justify-content:center}
+  .sidebar{position:fixed!important;left:0;top:64px;bottom:0;width:min(310px,84vw)!important;z-index:1200;transform:translateX(-110%);transition:transform .22s ease;overflow-y:auto;display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:5px;padding:12px;background:var(--bg-card);box-shadow:var(--shadow-hover)}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-item{width:100%;min-height:46px;display:flex!important;flex-direction:row!important;align-items:center;justify-content:flex-start!important;gap:12px;padding:10px 12px!important}
+  .sidebar-item i{width:22px;font-size:1.05rem!important}
+  .sidebar-item span{font-size:.86rem!important;text-align:left!important;white-space:normal}
+  .sidebar-backdrop{display:block;position:fixed;inset:64px 0 0;background:rgba(15,23,42,.48);z-index:1190;opacity:0;pointer-events:none;transition:opacity .2s ease}
+  .sidebar-backdrop.active{opacity:1;pointer-events:auto}
+  .kanawa-module-grid{grid-template-columns:1fr}
+  .kanawa-module-heading{align-items:flex-start}
+  #frotaGpsMap{height:360px!important}
+}
+
 @media(max-width:900px){.form-grid{grid-template-columns:1fr}.metric-grid{grid-template-columns:1fr 1fr}.pdv-products-grid{grid-template-columns:repeat(2,1fr)}.topbar-title h1{font-size:.95rem}.topbar-title p{display:none}}
 @media(max-width:600px){:root{--sidebar-w:80px}.sidebar-item i{font-size:1.3rem}.sidebar-item span{font-size:.6rem}.topbar-user .info{display:none}.metric-grid{grid-template-columns:1fr}.pdv-products-grid{grid-template-columns:repeat(2,1fr)}.pdv-prod-card .img{height:110px}}
 @media print{body{overflow:visible;height:auto}.sidebar,.topbar,.pdv-breadcrumb,.btn,.no-print{display:none!important}}
@@ -225,7 +255,7 @@ tr:hover td{background:var(--bg-hover)}
 <div id="loadingScreen">
   <div class="loading-logo" id="loadingLogo"><img src="logo.png" alt="Kanawa" onerror="this.parentElement.textContent='K'"></div>
   <h2 style="font-weight:700;font-size:1.5rem">Kanawa Soft</h2>
-  <p style="opacity:.7;font-size:.9rem;margin-top:4px">ERP Multi-Empresa v15.3 Cloud</p>
+  <p style="opacity:.7;font-size:.9rem;margin-top:4px">ERP Multi-Empresa v1.1.0</p>
   <div class="loading-bar"><div></div></div>
 </div>
 
@@ -306,7 +336,7 @@ tr:hover td{background:var(--bg-hover)}
     <div class="auth-logo">
       <div class="logo-circle" id="authLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
       <h1>Kanawa <span>Soft</span></h1>
-      <p style="color:var(--text-muted);font-size:.9rem">ERP Multi-Empresa Angola v15.3 Cloud</p>
+      <p style="color:var(--text-muted);font-size:.9rem">ERP Multi-Empresa Angola v1.1.0</p>
     </div>
     <div id="loginError" class="alert alert-danger"></div>
     <form id="loginForm">
@@ -321,11 +351,11 @@ tr:hover td{background:var(--bg-hover)}
 <!-- APP -->
 <div id="app">
   <div class="topbar">
-    <div class="topbar-left">
+    <div class="topbar-left"><button id="sidebarToggle" class="topbar-btn sidebar-toggle" type="button" aria-label="Abrir menu" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
       <div class="topbar-logo" id="topbarLogo"><img src="logo.png" alt="Logo" onerror="this.parentElement.textContent='K'"></div>
       <div class="topbar-title">
         <h1 id="topbarEmpresa">Kanawa Soft ERP</h1>
-        <p>v15.3 Cloud - Base de dados central</p>
+        <p>v1.1.0 - Base de dados central</p>
       </div>
     </div>
     <div class="topbar-right">
@@ -342,7 +372,7 @@ tr:hover td{background:var(--bg-hover)}
       <button class="topbar-btn" onclick="logout()" title="Sair"><i class="fas fa-sign-out-alt"></i></button>
     </div>
   </div>
-  <div class="main-wrap">
+  <div class="main-wrap"><div id="sidebarBackdrop" class="sidebar-backdrop" onclick="toggleSidebar(false)"></div>
     <aside class="sidebar" id="sidebar"></aside>
     <main class="content" id="content"></main>
   </div>
@@ -379,10 +409,14 @@ tr:hover td{background:var(--bg-hover)}
 
 <!-- App principal -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0"></script>
-<script src="operations-validation.js?v=15.3.20261102.3"></script>
-<script src="sales-money.js?v=15.3.20261102.3"></script>
-<script src="permissions.js?v=15.3.20261102.3"></script>
-<script src="cloud.js?v=15.3.20261102.3"></script>
-<script src="app.js?v=15.3.20261102.3"></script>
+<script src="operations-validation.js?v=1.1.0.1"></script>
+<script src="sales-money.js?v=1.1.0.1"></script>
+<script src="permissions.js?v=1.1.0.1"></script>
+<script src="cloud.js?v=1.1.0.1"></script>
+<script src="app.js?v=1.1.0.1"></script>
+<script src="performance-bridge.js?v=1.1.0.1"></script>
+<script src="module-hub.js?v=1.1.0.1"></script>
+<script src="gps-map.js?v=1.1.0.1"></script>
+<script src="agt-config.js?v=1.1.0.1"></script>
 </body>
 </html>
