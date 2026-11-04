@@ -271,55 +271,64 @@ async function activateCloudSession(ctx, migrateLocal) {
 
   if (previousCompanyId && previousCompanyId !== companyId) {
     for (const store of DB_STORES) await DB.clear(store);
-    localStorage.setItem('kanawa_cloud_company_id', companyId);
+    localStorage.removeItem('kanawa_license');
+    localStorage.removeItem('kanawa_entitlements');
     localStorage.removeItem('kanawa_legacy_company');
+    localStorage.setItem('kanawa_cloud_company_id', companyId);
   } else if (previousCompanyId !== companyId) {
     let remoteRows = null;
-    try { remoteRows = await KanawaCloud.getAllRecords(); }
-    catch (networkError) { console.warn('Base central indisponível; mantém-se o cache local:', networkError); }
+    try {
+      remoteRows = await KanawaCloud.getAllRecords();
+    } catch (networkError) {
+      console.warn('Base central indisponível; por segurança, não será reutilizado o cache de outra empresa:', networkError);
+      throw new Error('Não foi possível confirmar os dados da empresa na base central. Verifique a internet e tente iniciar sessão novamente.');
+    }
+    if (!Array.isArray(remoteRows)) {
+      throw new Error('Não foi possível confirmar a separação dos dados desta empresa. Tente novamente quando houver ligação à base central.');
+    }
 
-    if (remoteRows !== null) {
-      let localCompany = null;
-      try {
-        localCompany = JSON.parse(
-          localStorage.getItem('kanawa_legacy_company') ||
-          localStorage.getItem('kanawa_empresa') || 'null'
-        );
-      } catch (e) { localCompany = null; }
+    let localCompany = null;
+    try {
+      localCompany = JSON.parse(
+        localStorage.getItem('kanawa_legacy_company') ||
+        localStorage.getItem('kanawa_empresa') || 'null'
+      );
+    } catch (e) { localCompany = null; }
 
-      const localNif = String(localCompany && (localCompany.nif || localCompany.tax_id) || '').replace(/\D/g, '');
-      const cloudNif = String(ctx.company.tax_id || '').replace(/\D/g, '');
-      const localName = String(localCompany && (localCompany.nome || localCompany.firma || localCompany.legal_name) || '').trim().toLowerCase();
-      const cloudName = String(ctx.company.legal_name || ctx.company.trade_name || '').trim().toLowerCase();
-      const sameCompany = (!!localNif && !!cloudNif && localNif === cloudNif) ||
-        (!localNif && !cloudNif && !!localName && !!cloudName && localName === cloudName);
+    const localNif = String(localCompany && (localCompany.nif || localCompany.tax_id) || '').replace(/\D/g, '');
+    const cloudNif = String(ctx.company.tax_id || '').replace(/\D/g, '');
+    const localName = String(localCompany && (localCompany.nome || localCompany.firma || localCompany.legal_name) || '').trim().toLowerCase();
+    const cloudName = String(ctx.company.legal_name || ctx.company.trade_name || '').trim().toLowerCase();
+    const sameCompany = (!!localNif && !!cloudNif && localNif === cloudNif) ||
+      (!localNif && !cloudNif && !!localName && !!cloudName && localName === cloudName);
 
-      if (remoteRows.length > 0 && !sameCompany) {
-        for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
-      } else if (migrateLocal && sameCompany) {
-        const remoteKeys = new Set(remoteRows.map(function (row) { return row.store_key + ':' + row.record_id; }));
-        for (const store of DB_STORES) {
-          if (localOnly.has(store) || store.startsWith('_')) continue;
-          const rows = await DB.getAll(store);
-          for (const row of rows) {
-            if (!row || row.id === undefined || row.id === null) continue;
-            const key = store + ':' + String(row.id);
-            if (remoteKeys.has(key)) continue;
-            try {
-              await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true });
-              remoteKeys.add(key);
-            } catch (migrationError) {
-              await queueSync(store, 'create', row, { skipSaleFinalize: true });
-              console.warn('Migração cloud pendente:', store, migrationError);
-            }
+    if (!sameCompany) {
+      // No previous tenant marker means the browser cache cannot be trusted.
+      // Clear every IndexedDB store, including the sync queue, before loading this tenant.
+      for (const store of DB_STORES) await DB.clear(store);
+      localStorage.removeItem('kanawa_license');
+      localStorage.removeItem('kanawa_entitlements');
+    } else if (migrateLocal) {
+      const remoteKeys = new Set(remoteRows.map(function (row) { return row.store_key + ':' + row.record_id; }));
+      for (const store of DB_STORES) {
+        if (localOnly.has(store) || store.startsWith('_')) continue;
+        const rows = await DB.getAll(store);
+        for (const row of rows) {
+          if (!row || row.id === undefined || row.id === null) continue;
+          const key = store + ':' + String(row.id);
+          if (remoteKeys.has(key)) continue;
+          try {
+            await KanawaCloud.upsertRecord(store, row, { skipSaleFinalize: true });
+            remoteKeys.add(key);
+          } catch (migrationError) {
+            await queueSync(store, 'create', row, { skipSaleFinalize: true });
+            console.warn('Migração cloud pendente:', store, migrationError);
           }
         }
-      } else if (remoteRows.length > 0) {
-        for (const store of DB_STORES) if (!localOnly.has(store)) await DB.clear(store);
       }
-      localStorage.setItem('kanawa_cloud_company_id', companyId);
-      localStorage.removeItem('kanawa_legacy_company');
     }
+    localStorage.setItem('kanawa_cloud_company_id', companyId);
+    localStorage.removeItem('kanawa_legacy_company');
   }
 
   const company = {
