@@ -30,6 +30,8 @@ jobs:
           node --check app/permissions.js
           node --check app/cloud.js
           node --check app/payment-methods.js
+          node --check app/hr-attendance.js
+          node --check app/finance-engine.js
           node --check app/map-tracking.js
           node --check app/gps-sync-engine.js
           node --check app/app.js
