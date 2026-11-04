@@ -37,7 +37,7 @@ test('empty POS cart is blocked and scanner accepts repeated reference codes', (
   const app = read('app/app.js');
   assert.match(app, /pdvState\.carrinho\.length === 0/);
   assert.match(app, /Adicione pelo menos um produto antes de avançar/);
-  assert.match(app, /\\$\\$\\('\.pdv-screen'\\)/);
+  assert.match(app, /\$\$\('\.pdv-screen'\)/);
   assert.match(app, /p\.codigoBarras,p\.codigo,p\.referencia,p\.codigoReferencia,p\.sku/);
   assert.match(app, /Pode ler o próximo código/);
   assert.match(app, /lastScannerAt/);
@@ -57,7 +57,7 @@ test('student, lessons, real grades, attendance and certificate requirements are
   assert.match(support, /Registar presença/);
   assert.match(support, /grade\.average < 10/);
   assert.match(support, /attendanceRate < 75/);
-  assert.match(support, /return \\{ total: relevantLessons.length, rate: present \/ relevantLessons.length \\* 100 \\}/);
+  assert.ok(support.includes('return { total: relevantLessons.length, rate: present / relevantLessons.length * 100 };'));
   assert.match(support, /assinaturaProprietario/);
   assert.match(support, /assinaturaDiretor/);
   assert.match(hub, /elearning-alunos/);
