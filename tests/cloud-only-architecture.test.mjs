@@ -39,3 +39,10 @@ test('startup avoids serial Supabase context reads and blocks no login on backgr
   assert.doesNotMatch(html, /<video[^>]+preload="auto"/);
   assert.match(html, /<script defer src="https:\/\/cdn\.jsdelivr\.net\/npm\/@supabase/);
 });
+
+test('team access changes use the server-validated permission RPC', () => {
+  const cloud = read('app/cloud.js');
+  assert.match(cloud, /async updateTeamMemberAccess\(details\)/);
+  assert.match(cloud, /client\.rpc\('ks_update_team_member_access'/);
+  assert.match(cloud, /p_permissions:\s*details\.permissions/);
+});
