@@ -37,6 +37,6 @@ jobs:
       - name: Check Supabase Edge Functions
         run: |
           deno check supabase/functions/ks-invite-member/index.ts
-          deno check supabase/functions/ks-agt-test/index.ts
+          deno check --config supabase/functions/ks-agt-test/deno.json supabase/functions/ks-agt-test/index.ts
       - name: Run unit tests
         run: npm test
