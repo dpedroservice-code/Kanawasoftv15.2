@@ -14,7 +14,10 @@ test('permanent delete removes catalogue data while preserving historical sale s
   assert.ok(wrappers.includes('FUNCTION private.ks_delete_company_product_internal') && wrappers.includes('LANGUAGE plpgsql SECURITY DEFINER'));
   assert.ok(wrappers.includes('FUNCTION public.ks_reset_company_business_data') && wrappers.includes('LANGUAGE sql SECURITY INVOKER'));
   assert.match(migration, /DELETE FROM public\.ks_stock_movements/);
-  assert.match(migration, /DELETE FROM public\.ks_sale_items/);
+  const history = read('supabase/migrations/20261104115000_kanawa_preserve_sale_history_on_product_delete.sql');
+  assert.match(history, /UPDATE public\.ks_sale_items SET product_external_id = NULL/);
+  assert.match(history, /sale_history_preserved/);
+  assert.doesNotMatch(history, /DELETE FROM public\.ks_sale_items/);
   assert.match(migration, /DELETE FROM public\.ks_products/);
   assert.match(migration, /DELETE FROM public\.ks_records/);
   assert.match(cloud, /rpc\('ks_delete_company_product'/);
