@@ -105,25 +105,19 @@ public final class MainActivity extends Activity {
     }
 
     private void installBridgeScript() {
-        String script = "(function(){if(window.KanawaAndroid)return;" +
+        String script = "(function(){if(window.KanawaAndroid||!window.KanawaNative)return;" +
                 "var seq=0,pending={};" +
-                "window.addEventListener('message',function(){});" +
                 "function call(action,payload){return new Promise(function(resolve,reject){" +
                 "var id=String(++seq),timer=setTimeout(function(){delete pending[id];reject(new Error('Tempo esgotado na comunicação Android.'));},12000);" +
                 "pending[id]={resolve:resolve,reject:reject,timer:timer};" +
                 "window.KanawaNative.postMessage(JSON.stringify({id:id,action:action,payload:payload||{}}));" +
                 "});}" +
+                "window.KanawaNative.addEventListener('message',function(event){try{var d=JSON.parse(event.data),p=pending[d.id];if(!p)return;" +
+                "clearTimeout(p.timer);delete pending[d.id];p.resolve(JSON.parse(d.result));}catch(error){}});" +
                 "window.KanawaAndroid={native:true,startTracking:function(config){return call('start',config);}," +
                 "stopTracking:function(){return call('stop',{});},getStatus:function(){return call('status',{});}};" +
-                "window.addEventListener('kanawa-native-result',function(e){var d=e.detail||{},p=pending[d.id];if(!p)return;clearTimeout(p.timer);delete pending[d.id];" +
-                "try{p.resolve(JSON.parse(d.result));}catch(err){p.reject(err);}});" +
-                "window.KanawaNativeResult=function(message){var d=JSON.parse(message);window.dispatchEvent(new CustomEvent('kanawa-native-result',{detail:d}));};" +
                 "})();";
         webView.evaluateJavascript(script, null);
-        // The native listener's reply is delivered to the injected object; forward it to the app bridge.
-        String reply = "(function(){if(window.KanawaNative&&window.KanawaNative.addEventListener)return;" +
-                "})();";
-        webView.evaluateJavascript(reply, null);
     }
 
     private String startTracking(JSONObject config) {
@@ -152,8 +146,14 @@ public final class MainActivity extends Activity {
     private void ensureLocationPermissionAndStart() {
         boolean fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
         if (!fine) {
-            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_LOCATION);
+            if (Build.VERSION.SDK_INT >= 33) {
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                        Manifest.permission.POST_NOTIFICATIONS}, REQUEST_LOCATION);
+            } else {
+                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_LOCATION);
+            }
             return;
         }
         startLocationService();
