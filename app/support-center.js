@@ -178,7 +178,7 @@
       const a = ksStudentAttendance(s.id, lessons, attend, s.cursoId);
       return [escHtml(s.nome), escHtml(s.bi), escHtml(s.classe), escHtml((courses.find(function (c) { return String(c.id) === String(s.cursoId); }) || {}).nome || '—'),
         g.count ? formatNumber(g.average) + '/20' : 'Sem notas', a.total ? formatNumber(a.rate) + '%' : 'Sem presenças',
-        '<button class="btn btn-sm btn-primary" onclick="ksOpenStudent(' + s.id + ')">Editar</button> <button class="btn btn-sm btn-info" onclick="ksIssueCertificate(' + s.id + ')">Certificado</button> <button class="btn btn-sm btn-danger" onclick="ksDeleteStudent(' + s.id + ')">Apagar</button>'];
+        (s.biFrentePath ? '<button class="btn btn-sm btn-secondary" onclick="ksOpenStudentDocument(' + s.id + ',\'frente\')">BI frente</button> ' : '') + (s.biVersoPath ? '<button class="btn btn-sm btn-secondary" onclick="ksOpenStudentDocument(' + s.id + ',\'verso\')">BI verso</button> ' : '') + '<button class="btn btn-sm btn-primary" onclick="ksOpenStudent(' + s.id + ')">Editar</button> <button class="btn btn-sm btn-info" onclick="ksIssueCertificate(' + s.id + ')">Certificado</button> <button class="btn btn-sm btn-danger" onclick="ksDeleteStudent(' + s.id + ')">Apagar</button>'];
     });
     return header('Gestão de Alunos, Aulas e Avaliações', students.length + ' alunos · ' + lessons.length + ' aulas registadas', 'var(--success)', '', 'fa-user-graduate') +
       '<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-success" onclick="ksOpenStudent()"><i class="fas fa-user-plus"></i> Cadastrar aluno</button><button class="btn btn-primary" onclick="ksCreateLesson()"><i class="fas fa-chalkboard-teacher"></i> Registar aula</button><button class="btn btn-info" onclick="ksRecordGrade()"><i class="fas fa-clipboard-check"></i> Lançar nota</button><button class="btn btn-secondary" onclick="ksRecordAttendance()"><i class="fas fa-calendar-check"></i> Presença</button></div></div>' +
@@ -226,6 +226,8 @@
     const courses = await getData('cursos') || [];
     const course = courses.find(function (c) { return String(c.id) === String(cursoId); });
     if (!course) { toast('Selecione um curso existente.', 'warning'); return; }
+    const frontInput = document.getElementById('ksStudentBIFront'), backInput = document.getElementById('ksStudentBIBack');
+    if ((frontInput.files.length || backInput.files.length) && (!window.KanawaCloud || !KanawaCloud.ready)) { toast('Ligue-se à internet e à base central para guardar os documentos de BI em segurança.', 'warning'); return; }
     const existing = (await getData('alunos') || []).find(function (s) { return String(s.id) === String(id); }) || {};
     const student = { id: id || undefined, nome: nome, bi: bi, classe: classe, cursoId: course.id, curso: course.nome,
       telefone: document.getElementById('ksStudentPhone').value.trim(), email: document.getElementById('ksStudentEmail').value.trim(),
@@ -233,8 +235,15 @@
       biFrentePath: existing.biFrentePath || '', biVersoPath: existing.biVersoPath || '',
       inscritoEm: existing.inscritoEm || new Date().toISOString(), estado: 'inscrito' };
     const savedId = await saveData('alunos', student);
-    const frontPath = await uploadPrivateStudentDocument(document.getElementById('ksStudentBIFront'), savedId, 'frente');
-    const backPath = await uploadPrivateStudentDocument(document.getElementById('ksStudentBIBack'), savedId, 'verso');
+    let frontPath = '', backPath = '';
+    try {
+      frontPath = await uploadPrivateStudentDocument(frontInput, savedId, 'frente');
+      backPath = await uploadPrivateStudentDocument(backInput, savedId, 'verso');
+    } catch (uploadError) {
+      const partial = [frontPath, backPath].filter(Boolean);
+      if (partial.length && window.KanawaCloud && KanawaCloud.ready) await KanawaCloud.client.storage.from('kanawa-private-documents').remove(partial);
+      throw uploadError;
+    }
     if (frontPath || backPath) {
       student.id = savedId; student.biFrentePath = frontPath || student.biFrentePath; student.biVersoPath = backPath || student.biVersoPath;
       await saveData('alunos', student);
@@ -253,10 +262,9 @@
     if (!confirm('Apagar o registo deste aluno? As notas e presenças também serão eliminadas?')) return;
     const [grades, attend] = await Promise.all([getData('avaliacoesFormacao'), getData('presencasFormacao')]);
     const student = (await getData('alunos') || []).find(function (x) { return String(x.id) === String(id); });
-    if (student && window.KanawaCloud && KanawaCloud.ready) {
-      const paths = [student.biFrentePath, student.biVersoPath].filter(Boolean);
-      if (paths.length) { const removed = await KanawaCloud.client.storage.from('kanawa-private-documents').remove(paths); if (removed.error) { toast('Não foi possível apagar os documentos privados: ' + removed.error.message, 'error'); return; } }
-    }
+    const studentPaths = student ? [student.biFrentePath, student.biVersoPath].filter(Boolean) : [];
+    if (studentPaths.length && (!window.KanawaCloud || !KanawaCloud.ready)) { toast('Ligue-se à base central para apagar os documentos privados deste aluno.', 'warning'); return; }
+    if (studentPaths.length) { const removed = await KanawaCloud.client.storage.from('kanawa-private-documents').remove(studentPaths); if (removed.error) { toast('Não foi possível apagar os documentos privados: ' + removed.error.message, 'error'); return; } }
     for (const g of grades.filter(function (x) { return String(x.alunoId) === String(id); })) await deleteData('avaliacoesFormacao', g.id);
     for (const a of attend.filter(function (x) { return String(x.alunoId) === String(id); })) await deleteData('presencasFormacao', a.id);
     await deleteData('alunos', id); openModule('elearning-alunos');
