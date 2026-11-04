@@ -325,7 +325,28 @@
           throw new Error('Validador de vendas não carregado. Atualize a aplicação.');
         }
         const normalized = window.KanawaSales.normalizeSale(Object.assign({}, item, { id: id }));
-        normalized.sale.record_payload = Object.assign({}, item, { id: id, status: 'finalizada' });
+        const recordPayload = Object.assign({}, item, {
+          id: id,
+          status: 'finalizada',
+          numeroFatura: normalized.sale.invoice_number,
+          subtotal: normalized.sale.subtotal,
+          descontoValor: normalized.sale.discount_value,
+          iva: normalized.sale.tax_amount,
+          total: normalized.sale.total,
+          valorRecebido: normalized.sale.amount_received,
+          troco: normalized.sale.change_amount,
+          pagamento: normalized.sale.payment_method,
+          itens: normalized.items.map(function (line) {
+            return {
+              id: line.product_external_id,
+              nome: line.product_name,
+              preco: line.unit_price,
+              qty: line.quantity,
+              subtotal: line.line_total
+            };
+          })
+        });
+        normalized.sale.record_payload = recordPayload;
         const sessionResult = await client.auth.getSession();
         if (sessionResult.error) throw sessionResult.error;
         const session = sessionResult.data && sessionResult.data.session;
