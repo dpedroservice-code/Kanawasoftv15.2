@@ -12,6 +12,12 @@
   let currentMarker = null;
   let watchId = null;
 
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>\"']/g, function (character) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[character];
+    });
+  }
+
   function validateCoordinates(latitude, longitude) {
     const lat = Number(String(latitude == null ? '' : latitude).trim().replace(',', '.'));
     const lng = Number(String(longitude == null ? '' : longitude).trim().replace(',', '.'));
@@ -92,9 +98,9 @@
       try {
         const point = validateCoordinates(record.lat, record.lng);
         const marker = root.L.marker([point.lat, point.lng]).bindPopup(
-          String(record.veiculo || record.deviceLabel || 'Dispositivo') +
-          '<br>' + String(record.status === 'active' ? 'Rastreamento ativo' : 'Última posição registada') +
-          '<br>' + String(record.ultimaAtualizacao || '')
+          escapeHtml(record.veiculo || record.deviceLabel || 'Dispositivo') +
+          '<br>' + escapeHtml(record.status === 'active' ? 'Rastreamento ativo' : 'Última posição registada') +
+          '<br>' + escapeHtml(record.ultimaAtualizacao || '')
         );
         marker.addTo(markerLayer);
       } catch (e) { /* Ignora apenas coordenadas inválidas. */ }
@@ -112,7 +118,7 @@
     } else {
       currentMarker = root.L.circleMarker([point.lat, point.lng], {
         radius: 9, color: '#ffffff', weight: 2, fillColor: '#16a34a', fillOpacity: 1
-      }).bindPopup(label || 'Este dispositivo');
+      }).bindPopup(escapeHtml(label || 'Este dispositivo'));
       if (markerLayer) markerLayer.addLayer(currentMarker);
     }
     map.setView([point.lat, point.lng], Math.max(map.getZoom(), 15));
@@ -125,8 +131,8 @@
     routeLayer = root.L.geoJSON(route.geometry, { style: { color: '#2563eb', weight: 5, opacity: 0.85 } }).addTo(map);
     const bounds = routeLayer.getBounds();
     if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] });
-    root.L.marker([route.origin.lat, route.origin.lng]).addTo(map).bindPopup('Origem: ' + route.origin.label);
-    root.L.marker([route.destination.lat, route.destination.lng]).addTo(map).bindPopup('Destino: ' + route.destination.label);
+    root.L.marker([route.origin.lat, route.origin.lng]).addTo(map).bindPopup('Origem: ' + escapeHtml(route.origin.label));
+    root.L.marker([route.destination.lat, route.destination.lng]).addTo(map).bindPopup('Destino: ' + escapeHtml(route.destination.label));
   }
 
   function startWatch(onPosition, onError) {
