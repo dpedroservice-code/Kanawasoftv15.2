@@ -3122,10 +3122,16 @@ const PAYMENT_METHOD_ICONS = {
 function renderPaymentMethodSettings(methods, canConfigure) {
   const rows = methods.map(method => {
     const code = esc(method.method_code);
+    const bankFields = method.method_code === 'transferencia'
+      ? '<div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+        [['bank_name','Banco',method.bank_name],['account_holder','Titular da conta',method.account_holder],['account_number','Número da conta',method.account_number],['iban','IBAN',method.iban],['bank_branch','Agência / balcão',method.bank_branch],['account_currency','Moeda (ISO)',method.account_currency || 'AOA']].map(([field,label,value]) =>
+          '<div><label style="display:block;font-size:.75rem;color:var(--text-muted);margin-bottom:4px">' + label + '</label><input data-payment-bank-field="' + field + '" maxlength="120" value="' + esc(value || '') + '" placeholder="' + label + '"' + (canConfigure ? '' : ' disabled') + ' style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)"></div>'
+        ).join('') + '</div>'
+      : '';
     return '<div class="card" style="margin:0;padding:14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center">' +
       '<div style="display:flex;gap:12px;align-items:center;min-width:0"><i class="fas ' + (PAYMENT_METHOD_ICONS[method.method_code] || 'fa-credit-card') + '" style="font-size:1.35rem;color:var(--primary);width:28px;text-align:center"></i><div style="min-width:0"><strong>' + esc(method.display_name) + '</strong><div style="font-size:.75rem;color:var(--text-muted)">' + code + '</div></div></div>' +
       '<label style="display:flex;align-items:center;gap:8px;white-space:nowrap"><input type="checkbox" data-payment-enabled="' + code + '" ' + (method.enabled ? 'checked' : '') + (canConfigure ? '' : ' disabled') + '> Aceitar</label>' +
-      '<div style="grid-column:1/-1"><label style="display:block;font-size:.78rem;color:var(--text-muted);margin-bottom:4px">Instruções para o operador/cliente</label><input data-payment-instructions="' + code + '" maxlength="300" value="' + esc(method.instructions || '') + '" placeholder="Ex.: apresentar comprovativo da transferência" ' + (canConfigure ? '' : 'disabled') + ' style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)"></div></div>';
+      '<div style="grid-column:1/-1"><label style="display:block;font-size:.78rem;color:var(--text-muted);margin-bottom:4px">Instruções para o operador/cliente</label><input data-payment-instructions="' + code + '" maxlength="300" value="' + esc(method.instructions || '') + '" placeholder="Ex.: apresentar comprovativo da transferência" ' + (canConfigure ? '' : 'disabled') + ' style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)"></div>' + bankFields + '</div>';
   }).join('');
   return '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-sliders-h"></i> Formas de pagamento aceites</h3>' +
     (canConfigure ? '<button class="btn btn-success" onclick="guardarMetodosPagamento()"><i class="fas fa-save"></i> Guardar configuração</button>' : '<span class="badge badge-warning">Só leitura</span>') + '</div>' +
@@ -3143,7 +3149,13 @@ async function guardarMetodosPagamento() {
       display_name: method.display_name,
       enabled: !!(enabled && enabled.checked),
       sort_order: (index + 1) * 10,
-      instructions: instructions ? instructions.value.trim().slice(0,300) : ''
+      instructions: instructions ? instructions.value.trim().slice(0,300) : '',
+      bank_name: document.querySelector('[data-payment-bank-field="bank_name"]')?.value || '',
+      account_holder: document.querySelector('[data-payment-bank-field="account_holder"]')?.value || '',
+      account_number: document.querySelector('[data-payment-bank-field="account_number"]')?.value || '',
+      iban: document.querySelector('[data-payment-bank-field="iban"]')?.value || '',
+      bank_branch: document.querySelector('[data-payment-bank-field="bank_branch"]')?.value || '',
+      account_currency: document.querySelector('[data-payment-bank-field="account_currency"]')?.value || 'AOA'
     };
   });
   try {
