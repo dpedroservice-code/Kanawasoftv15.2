@@ -162,7 +162,7 @@ BEGIN
   SELECT p_company_id,x->>'method_code',trim(x->>'display_name'),
     (x->>'enabled')::boolean,coalesce((x->>'sort_order')::integer,100),
     coalesce(x->>'instructions',''),coalesce(x->>'bank_name',''),coalesce(x->>'account_holder',''),
-    coalesce(x->>'account_number',''),upper(regexp_replace(coalesce(x->>'iban',''),'\\s','','g')),
+    coalesce(x->>'account_number',''),upper(regexp_replace(coalesce(x->>'iban',''),'[[:space:]]','','g')),
     coalesce(x->>'bank_branch',''),coalesce(nullif(x->>'account_currency',''),'AOA'),auth.uid()
   FROM jsonb_array_elements(p_methods) x;
 
