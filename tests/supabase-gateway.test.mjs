@@ -43,7 +43,7 @@ test('forwards the bearer JWT once to the transactional RPC for PostgREST verifi
   assert.equal(result.status, 200);
   assert.equal(result.body.history_atomic, true);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /\\/rest\\/v1\\/rpc\\/ks_finalize_sale$/);
+  assert.ok(calls[0].url.endsWith('/rest/v1/rpc/ks_finalize_sale'));
   assert.equal(calls[0].options.headers.Authorization, 'Bearer test-user-token');
   const forwarded = JSON.parse(calls[0].options.body);
   assert.equal(forwarded.p_company_id, request.body.company_id);
