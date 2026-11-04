@@ -42,7 +42,7 @@ O CI executa:
 
 A migração SQL está apenas no branch/PR. **Não foi aplicada ao projeto Supabase existente**, porque o preview atualmente reutiliza esse projeto e uma migração de schema altera o banco partilhado, mesmo com dados de teste isolados por empresa. Para provar a nova escrita atómica de `ks_records`, é necessário aplicar esta migração num projeto/branch Supabase de teste separado e configurar o preview para apontar para ele.
 
-Até a migração ser aplicada no ambiente de teste, o gateway continua compatível com a função antiga: a venda normalizada, o stock, os pagamentos e os movimentos são transacionais, mas o espelho `ks_records` usa o caminho legado separado. Não declarar o teste completo de atomicidade do histórico antes de validar a migração no banco de teste.
+Até a migração ser aplicada no ambiente de teste, o gateway continua compatível com a função antiga para vendas novas: venda normalizada, stock, pagamentos e movimentos usam a transação antiga, mas o espelho `ks_records` usa o caminho legado separado. Se a função antiga devolver uma repetição (`duplicate=true`) sem declarar `idempotency_enforced=true`, o cliente bloqueia a repetição e restaura o snapshot local para impedir que um histórico antigo seja sobrescrito sem verificação. Não testar reenvios/duplicações no preview até a migração estar aplicada num banco de teste. Não declarar o teste completo de atomicidade do histórico antes de validar a migração no banco de teste.
 
 ## Limites de validação
 
