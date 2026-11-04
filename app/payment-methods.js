@@ -30,7 +30,7 @@
         bank_name:String(item.bank_name || '').trim(),
         account_holder:String(item.account_holder || '').trim(),
         account_number:String(item.account_number || '').trim(),
-        iban:String(item.iban || '').replace(/\\s+/g,'').toUpperCase(),
+        iban:String(item.iban || '').replace(/\s+/g,'').toUpperCase(),
         bank_branch:String(item.bank_branch || '').trim(),
         account_currency:String(item.account_currency || 'AOA').trim().toUpperCase()
       };
