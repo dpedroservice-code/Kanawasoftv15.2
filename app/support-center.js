@@ -197,7 +197,10 @@
       '<div class="form-group"><label>Telefone</label><input id="ksStudentPhone" value="' + escHtml(student.telefone || '') + '"></div>' +
       '<div class="form-group"><label>E-mail</label><input id="ksStudentEmail" type="email" value="' + escHtml(student.email || '') + '"></div>' +
       '<div class="form-group"><label>Data de nascimento</label><input id="ksStudentBirth" type="date" value="' + escHtml(student.dataNascimento || '') + '"></div>' +
-      '<div class="form-group"><label>Morada</label><input id="ksStudentAddress" value="' + escHtml(student.morada || '') + '"></div></div>' +
+      '<div class="form-group"><label>Morada</label><input id="ksStudentAddress" value="' + escHtml(student.morada || '') + '"></div>' +
+      '<div class="form-group"><label>BI — frente (imagem/PDF)</label><input id="ksStudentBIFront" type="file" accept="image/*,.pdf"></div>' +
+      '<div class="form-group"><label>BI — verso (imagem/PDF)</label><input id="ksStudentBIBack" type="file" accept="image/*,.pdf"></div></div>' +
+      '<p style="font-size:.78rem;color:var(--text-muted)">Os documentos são dados pessoais: carregue apenas com autorização e mantenha o acesso limitado aos responsáveis da formação.</p>' +
       '<button class="btn btn-success" onclick="ksSaveStudent(' + (student && student.id ? student.id : 'null') + ')">Guardar aluno</button>');
   }
   async function ksSaveStudent(id) {
@@ -209,10 +212,13 @@
     const courses = await getData('cursos') || [];
     const course = courses.find(function (c) { return String(c.id) === String(cursoId); });
     if (!course) { toast('Selecione um curso existente.', 'warning'); return; }
+    const existing = (await getData('alunos') || []).find(function (s) { return String(s.id) === String(id); }) || {};
+    const documents = await Promise.all(['ksStudentBIFront','ksStudentBIBack'].map(function (field) { return fileAsDataUrl(document.getElementById(field)); }));
     const student = { id: id || undefined, nome: nome, bi: bi, classe: classe, cursoId: course.id, curso: course.nome,
       telefone: document.getElementById('ksStudentPhone').value.trim(), email: document.getElementById('ksStudentEmail').value.trim(),
       dataNascimento: document.getElementById('ksStudentBirth').value, morada: document.getElementById('ksStudentAddress').value.trim(),
-      inscritoEm: new Date().toISOString(), estado: 'inscrito' };
+      biFrente: documents[0] || existing.biFrente || '', biVerso: documents[1] || existing.biVerso || '',
+      inscritoEm: existing.inscritoEm || new Date().toISOString(), estado: 'inscrito' };
     await saveData('alunos', student); closeModal(); toast('Aluno guardado.', 'success'); openModule('elearning-alunos');
   }
   async function ksDeleteStudent(id) {
@@ -312,7 +318,7 @@
       await saveData('modelosCertificado', model); closeModal(); toast('Modelo guardado para utilização offline.', 'success'); openModule('elearning-modelos');
     } catch (e) { toast(e.message, 'error'); }
   }
-  async function ksIssueCertificate(studentId) {
+  async function ksIssueCertificate(studentId, modelId) {
     const students = await getData('alunos') || [], lessons = await getData('aulasFormacao') || [], grades = await getData('avaliacoesFormacao') || [], attendance = await getData('presencasFormacao') || [], models = await getData('modelosCertificado') || [];
     const s = students.find(function (x) { return String(x.id) === String(studentId); });
     if (!s) { toast('Aluno não encontrado.', 'error'); return; }
@@ -324,7 +330,13 @@
     if (!courseLessons.length || courseAttendance.length < courseLessons.length || !grade.count || grade.average < 10 || attendanceRate < 75) {
       toast('Certificado bloqueado: registe todas as aulas/presenças e avaliações. Requisitos: média mínima 10/20 e presença mínima 75%.', 'warning'); return;
     }
-    const model = models.find(function (m) { return m.ativo !== false; }) || { nome:'Clássico Branco e Dourado',primary:'#17395b',accent:'#c99a36',titulo:'CERTIFICADO DE CONCLUSÃO',texto:'Certificamos que',rodape:'Concluiu com aproveitamento o curso' };
+    const availableModels = models.filter(function (m) { return m.ativo !== false; });
+    if (!modelId) {
+      if (!availableModels.length) { toast('Crie ou ative um modelo de certificado primeiro.', 'warning'); return; }
+      openModal('Escolher modelo de certificado', '<div class="form-group"><label>Modelo *</label><select id="ksIssueModel">' + availableModels.map(function (m) { return '<option value="' + m.id + '">' + escHtml(m.nome) + '</option>'; }).join('') + '</select></div><p>Aluno: <b>' + escHtml(s.nome) + '</b><br>Curso: ' + escHtml(s.curso) + '<br>Média: ' + formatNumber(grade.average) + '/20 · Presença: ' + formatNumber(attendanceRate) + '%</p><button class="btn btn-success" onclick="ksIssueCertificate(' + s.id + ',document.getElementById(\'ksIssueModel\').value)">Emitir com este modelo</button>');
+      return;
+    }
+    const model = availableModels.find(function (m) { return String(m.id) === String(modelId); }) || availableModels[0] || { nome:'Clássico Branco e Dourado',primary:'#17395b',accent:'#c99a36',titulo:'CERTIFICADO DE CONCLUSÃO',texto:'Certificamos que',rodape:'Concluiu com aproveitamento o curso' };
     const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
     const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
     const cert = { alunoId:s.id, aluno:s.nome, bi:s.bi, curso:s.curso, cursoId:s.cursoId, data:new Date().toISOString(), notaFinal:grade.average, presenca:attendanceRate, modelo:model.nome, numero:'CERT-' + Date.now() };
