@@ -3259,7 +3259,7 @@ async function renderRHPonto() {
         const close = record.saida ? '' : '<button class="btn btn-sm btn-success" onclick="registarSaidaPonto(' + Number(record.id) + ')"><i class="fas fa-sign-out-alt"></i> Saída</button> ';
         return [esc(record.funcionario || '-'),fmtD(record.data),esc(record.entrada || '-'),esc(record.saida || '-'),
           hours === null ? '-' : hours.toFixed(2) + ' h',state,
-          close + '<button class="btn btn-sm btn-danger" onclick="excluirItem(\\'pontoDigital\\',' + Number(record.id) + ')"><i class="fas fa-trash"></i></button>'];
+          close + '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'pontoDigital\',' + Number(record.id) + ')"><i class="fas fa-trash"></i></button>'];
       })) + '</div>';
 }
 async function registrarPonto() {
