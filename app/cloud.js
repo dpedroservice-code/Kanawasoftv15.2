@@ -308,8 +308,9 @@
 
     async resetCompanyBusinessData() {
       if (!this.ready) throw new Error('Sessão central não está ativa.');
-      const result = await client.rpc('ks_reset_company_business_data', { p_company_id: context.company.id });
+      const result = await client.functions.invoke('ks-company-reset', { body: { company_id: context.company.id } });
       if (result.error) throw result.error;
+      if (!result.data || result.data.ok !== true) throw new Error(result.data && result.data.error ? result.data.error : 'A reposição central não foi confirmada.');
       return result.data;
     },
 
