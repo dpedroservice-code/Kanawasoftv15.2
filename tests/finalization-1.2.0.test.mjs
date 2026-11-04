@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 
-test('permanent delete removes normalized product, product record, movements and sale lines', () => {
+test('permanent delete removes catalogue data while preserving historical sale snapshots', () => {
   const migration = read('supabase/migrations/20261104101500_kanawa_finalization_api_and_data_controls.sql');
   const cloud = read('app/cloud.js');
   const app = read('app/app.js');
