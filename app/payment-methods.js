@@ -9,7 +9,7 @@
   const DEFAULTS = [
     { method_code:'dinheiro', display_name:'Dinheiro', enabled:true, sort_order:10, instructions:'' },
     { method_code:'cartao', display_name:'Cartão bancário', enabled:true, sort_order:20, instructions:'' },
-    { method_code:'transferencia', display_name:'Transferência bancária', enabled:true, sort_order:30, instructions:'', bank_name:'', account_holder:'', account_number:'', iban:'', bank_branch:'', account_currency:'AOA' },
+    { method_code:'transferencia', display_name:'Transferência bancária', enabled:false, sort_order:30, instructions:'', bank_name:'', account_holder:'', account_number:'', iban:'', bank_branch:'', account_currency:'AOA' },
     { method_code:'multicaixa', display_name:'Multicaixa (TPA)', enabled:true, sort_order:40, instructions:'' },
     { method_code:'misto', display_name:'Pagamento misto', enabled:true, sort_order:50, instructions:'' },
     { method_code:'credito', display_name:'Crédito / a prazo', enabled:true, sort_order:60, instructions:'' },
