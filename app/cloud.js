@@ -227,7 +227,7 @@
       if (!id || id.length > 120) throw new Error('Identificador de registo inválido para sincronização.');
 
       // Mirror products into the normalized table so stock and plan quotas are enforced centrally.
-      if (store === 'produtos') {
+      if (store === 'produtos' && !(options && options.skipStockSync)) {
         const stock = Math.max(0, Number(item.estoque) || 0);
         const product = {
           external_id: id,
@@ -270,6 +270,7 @@
         });
         if (finalizeSale.error) throw finalizeSale.error;
         saleFinalized = true;
+        if (options && options.deferMirror) return { saleFinalized: true, external_id: id };
       }
 
       const result = await client
@@ -348,6 +349,108 @@
       if (result.error) throw result.error;
       if (!result.data) throw new Error('A empresa não foi atualizada. Verifique a permissão do proprietário.');
       context.company = Object.assign({}, context.company, result.data);
+      return result.data;
+    },
+
+    async listBranches() {
+      if (!this.ready || !context || !context.company) return [];
+      const companyId = context.company.id;
+      const result = await client.from('ks_company_branches')
+        .select('id,parent_company_id,branch_company_id,status,created_at')
+        .or('parent_company_id.eq.' + companyId + ',branch_company_id.eq.' + companyId)
+        .in('status', ['pending','active'])
+        .order('created_at', { ascending: true });
+      if (result.error) throw result.error;
+      const rows = result.data || [];
+      if (!rows.length) return [];
+      const relatedIds = rows.map(function (row) {
+        return row.parent_company_id === companyId ? row.branch_company_id : row.parent_company_id;
+      });
+      const companies = await client.from('ks_companies').select('id,name,nif').in('id', relatedIds);
+      if (companies.error) throw companies.error;
+      const byId = new Map((companies.data || []).map(function (company) { return [company.id, company]; }));
+      return rows.map(function (row) {
+        const otherId = row.parent_company_id === companyId ? row.branch_company_id : row.parent_company_id;
+        return Object.assign({}, row, {
+          side: row.parent_company_id === companyId ? 'parent' : 'branch',
+          company: byId.get(otherId) || null
+        });
+      });
+    },
+
+    async linkBranch(branchCompanyId) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_link_company_branch', {
+        p_parent_company_id: context.company.id,
+        p_branch_company_id: branchCompanyId
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async acceptBranch(parentCompanyId, branchCompanyId) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_accept_company_branch', {
+        p_parent_company_id: parentCompanyId,
+        p_branch_company_id: branchCompanyId
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async unlinkBranch(parentCompanyId, branchCompanyId) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_unlink_company_branch', {
+        p_parent_company_id: parentCompanyId,
+        p_branch_company_id: branchCompanyId
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async getAgtSettings() {
+      if (!this.ready || !context || !context.company) return null;
+      const result = await client.from('ks_fiscal_integrations')
+        .select('environment,tax_registration_number,product_id,product_version,software_validation_number,signature_version,establishment_number,status,last_tested_at,last_test_message')
+        .eq('company_id', context.company.id)
+        .maybeSingle();
+      if (result.error) throw result.error;
+      return result.data || null;
+    },
+
+    async saveAgtConfig(config) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_save_agt_config', {
+        p_company_id: context.company.id,
+        p_environment: config.environment,
+        p_tax_registration_number: config.taxRegistrationNumber,
+        p_product_id: config.productId,
+        p_product_version: config.productVersion,
+        p_software_validation_number: config.softwareValidationNumber,
+        p_signature_version: config.signatureVersion,
+        p_establishment_number: config.establishmentNumber,
+        p_username: config.username,
+        p_password: config.password,
+        p_software_private_key_pem: config.softwarePrivateKeyPem,
+        p_taxpayer_private_key_pem: config.taxpayerPrivateKeyPem
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async testAgtConfig() {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.functions.invoke('ks-agt-test', {
+        body: { company_id: context.company.id }
+      });
+      if (result.error) {
+        const response = result.error.context;
+        if (response && typeof response.clone === 'function') {
+          const payload = await response.clone().json().catch(function () { return null; });
+          if (payload) return payload;
+        }
+        throw result.error;
+      }
       return result.data;
     },
 
