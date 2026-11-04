@@ -488,6 +488,25 @@
       return result.data;
     },
 
+    async updateTeamMemberAccess(details) {
+      if (!this.ready) throw new Error('Sessão da empresa não está ativa.');
+      if (context.role !== 'admin') throw new Error('Apenas o proprietário ou administrador pode alterar permissões.');
+      if (!details || !details.user_id || !['manager','operator','cashier','accountant','viewer'].includes(details.role)) {
+        throw new Error('Utilizador ou perfil inválido.');
+      }
+      if (!details.permissions || typeof details.permissions !== 'object' || Array.isArray(details.permissions)) {
+        throw new Error('Matriz de permissões inválida.');
+      }
+      const result = await client.rpc('ks_update_team_member_access', {
+        p_user_id: details.user_id,
+        p_role: details.role,
+        p_permissions: details.permissions,
+        p_status: details.status || 'active'
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
     async listPaymentProviderStatus() {
       if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
       return failIfError(await client.rpc('ks_list_payment_provider_status')) || [];
