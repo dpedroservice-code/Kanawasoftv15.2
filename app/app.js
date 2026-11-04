@@ -2247,9 +2247,9 @@ async function renderUsuarios() {
         badge(roleLabels[member.role] || member.role, 'primary'),
         badge(statusLabel, statusColor),
         '<small>' + Object.keys(member.permissions || {}).length + ' módulos autorizados</small>',
-        (member.role !== 'owner' && member.role !== 'admin')
+        (member.role !== 'owner' && member.role !== 'admin' && member.status !== 'invited')
           ? '<button class="btn btn-sm btn-primary" onclick="editarPermissoesUsuario(\'' + esc(member.user_id) + '\')"><i class="fas fa-user-shield"></i> Acessos</button>'
-          : '<span class="badge badge-secondary">Protegido</span>'
+          : (member.status === 'invited' ? '<span class="badge badge-warning">Aguardando convite</span>' : '<span class="badge badge-secondary">Protegido</span>')
       ];
     });
     return header('Equipa e permissões', members.length + ' membros', 'var(--danger)',
