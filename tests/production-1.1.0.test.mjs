@@ -53,6 +53,19 @@ test('AGT private keys are stored in Vault and never persisted in browser storag
   assert.doesNotMatch(edge, /console\.log\(secrets/);
 });
 
+test('branch relationships grant explicit cross-company access through RLS', () => {
+  const sql = read('supabase/migrations/20261104081050_kanawa_company_branch_access.sql');
+  const cloud = read('app/cloud.js');
+  const ui = read('app/agt-config.js');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\\.ks_company_branches/);
+  assert.match(sql, /private\\.ks_has_company_permission/);
+  assert.match(sql, /private\\.ks_has_company_role/);
+  assert.match(sql, /ks_link_company_branch/);
+  assert.match(sql, /ks_unlink_company_branch/);
+  assert.match(cloud, /async linkBranch/);
+  assert.match(ui, /Associar filial/);
+});
+
 test('invoice template does not claim AGT software certification', () => {
   const app = read('app/app.js');
   assert.doesNotMatch(app, /Programa certificado Kanawa Soft ERP/);
