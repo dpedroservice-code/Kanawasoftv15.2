@@ -69,6 +69,7 @@ test('API keys are one-time secrets with read-only catalogue scope and revocatio
   const support = read('app/support-center.js');
   assert.match(migration, /secret_hash text NOT NULL UNIQUE/);
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(read('supabase/migrations/20261104103000_kanawa_lock_api_tables_to_server.sql'), /USING \\(false\\)/);
   assert.match(edge, /catalog:read/);
   assert.match(edge, /sha256\(apiKey\)/);
   assert.match(edge, /revoked_at/);
