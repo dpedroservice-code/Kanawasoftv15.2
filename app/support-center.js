@@ -397,4 +397,7 @@
   Object.assign(window, { ksCreateStoreApiKey, ksLoadStoreApiKeys, ksRevokeStoreApiKey, ksTestStoreApi, ksSavePaymentIntegration, ksTestPaymentIntegration, ksLoadPaymentIntegrations,
     ksOpenStudent, ksSaveStudent, ksDeleteStudent, ksOpenStudentDocument, ksCreateLesson, ksSaveLesson, ksRecordGrade, ksSaveGrade, ksRecordAttendance, ksSaveAttendance,
     ksEditCertificateModel, ksSaveCertificateModel, ksIssueCertificate });
+  document.addEventListener('DOMContentLoaded', function () {
+    try { const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}'); const phone = document.getElementById('kanawaSupportPhone'); if (phone && company.telefone) phone.textContent = company.telefone; } catch (e) { }
+  });
 })();
