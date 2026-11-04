@@ -174,20 +174,38 @@ async function saveData(store, item, options) {
 }
 
 async function deleteData(store, id) {
+  const relatedEcommerce = store === 'produtos'
+    ? (await DB.getAll('ecommerceProdutos')).filter(function (p) {
+        return [p.produtoId,p.produto_id,p.productId,p.product_id,p.produto && p.produto.id].some(function (v) { return String(v || '') === String(id); });
+      })
+    : [];
   const pending = await DB.getAll('_sync_queue');
-  for (const item of pending) if (item.entity === store && String(item.payload && item.payload.id) === String(id)) await DB.del('_sync_queue', item.id);
+  for (const item of pending) {
+    const sameMain = item.entity === store && String(item.payload && item.payload.id) === String(id);
+    const sameShop = relatedEcommerce.some(function (p) { return item.entity === 'ecommerceProdutos' && String(item.payload && item.payload.id) === String(p.id); });
+    if (sameMain || sameShop) await DB.del('_sync_queue', item.id);
+  }
   await DB.del(store, id);
+  for (const item of relatedEcommerce) await DB.del('ecommerceProdutos', item.id);
   if (window.KanawaCloud && !KanawaCloud.isLocalOnly(store)) {
     if (KanawaCloud.ready) {
       try {
         await KanawaCloud.deleteRecord(store, id);
         const after = await DB.getAll('_sync_queue');
-        for (const item of after) if (item.entity === store && String(item.payload && item.payload.id) === String(id)) await DB.del('_sync_queue', item.id);
+        for (const item of after) {
+          const sameMain = item.entity === store && String(item.payload && item.payload.id) === String(id);
+          const sameShop = relatedEcommerce.some(function (p) { return item.entity === 'ecommerceProdutos' && String(item.payload && item.payload.id) === String(p.id); });
+          if (sameMain || sameShop) await DB.del('_sync_queue', item.id);
+        }
       } catch (e) {
         await queueSync(store, 'delete', { id: id });
+        for (const item of relatedEcommerce) await queueSync('ecommerceProdutos', 'delete', { id: item.id });
         throw new Error('Eliminação local feita; confirmação no servidor pendente: ' + (e.message || 'erro de ligação'));
       }
-    } else await queueSync(store, 'delete', { id: id });
+    } else {
+      await queueSync(store, 'delete', { id: id });
+      for (const item of relatedEcommerce) await queueSync('ecommerceProdutos', 'delete', { id: item.id });
+    }
   }
 }
 
