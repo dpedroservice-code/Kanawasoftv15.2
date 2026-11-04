@@ -6,7 +6,17 @@
  * The previous generic SQLite CRUD endpoints had no verified bearer token,
  * tenant isolation or server-side role checks. They must not be exposed.
  */
+const { handleFinalizeSale } = require('./supabase-gateway');
+
 function registerRoutes(app) {
+  app.post('/api/sales/finalize', async (req, res) => {
+    const result = await handleFinalizeSale({
+      authorization: req.headers.authorization,
+      body: req.body
+    });
+    res.status(result.status).json(result.body);
+  });
+
   app.get('/api/health', (_req, res) => res.json({
     status: 'ok',
     version: '15.4.0',
