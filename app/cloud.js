@@ -512,6 +512,34 @@
       return failIfError(await client.rpc('ks_list_payment_provider_status')) || [];
     },
 
+    async listCompanyProviderCredentials() {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está ativa.');
+      if (!['owner','admin'].includes(context.role)) throw new Error('Apenas o administrador pode consultar integrações.');
+      return failIfError(await client.rpc('ks_list_company_provider_credentials', { p_company_id: context.company.id })) || [];
+    },
+
+    async saveProviderCredential(details) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está ativa.');
+      if (!['owner','admin'].includes(context.role)) throw new Error('Apenas o administrador pode guardar credenciais.');
+      const result = await client.functions.invoke('ks-save-provider-credential', {
+        body: Object.assign({}, details, { company_id: context.company.id, action:'save' })
+      });
+      if (result.error) throw result.error;
+      if (result.data && result.data.error) throw new Error(result.data.error);
+      return result.data;
+    },
+
+    async deleteProviderCredential(providerCode) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está ativa.');
+      if (!['owner','admin'].includes(context.role)) throw new Error('Apenas o administrador pode remover credenciais.');
+      const result = await client.functions.invoke('ks-save-provider-credential', {
+        body: { company_id:context.company.id, provider_code:providerCode, action:'delete' }
+      });
+      if (result.error) throw result.error;
+      if (result.data && result.data.error) throw new Error(result.data.error);
+      return result.data;
+    },
+
     async listCompanyPaymentMethods() {
       if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está ativa.');
       return failIfError(await client.rpc('ks_list_company_payment_methods', {
