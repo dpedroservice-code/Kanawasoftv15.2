@@ -64,6 +64,9 @@ test('branch relationships grant explicit cross-company access through RLS', () 
   assert.match(sql, /ks_accept_company_branch/);
   assert.match(sql, /ks_unlink_company_branch/);
   assert.match(sql, /status='pending'/);
+  const approval = read('supabase/migrations/20261104081231_kanawa_branch_data_access_without_admin_escalation.sql');
+  const roleFunction = approval.split('CREATE OR REPLACE FUNCTION private.ks_has_company_permission')[0];
+  assert.doesNotMatch(roleFunction, /ks_company_branches/);
   assert.match(cloud, /async linkBranch/);
   assert.match(ui, /Enviar pedido de associação/);
   assert.match(ui, /Aceitar pedido/);
