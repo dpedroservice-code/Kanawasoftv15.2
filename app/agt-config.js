@@ -41,10 +41,63 @@
       (meta && meta.last_tested_at ? ' — Último teste: ' + esc(fmtDT(meta.last_tested_at)) : '') + '</p></div>';
   }
 
+  async function renderBranchCard() {
+    const context = window.KanawaCloud && KanawaCloud.context;
+    if (!context || !context.company || !['owner','admin'].includes(context.membership && context.membership.role)) return '';
+    let branches = [];
+    try { branches = await KanawaCloud.listBranches(); } catch (error) { console.warn('Filiais:', error); }
+    const rows = branches.map(function (branch) {
+      const company = branch.company || {};
+      return '<tr><td><strong>' + esc(company.name || 'Empresa filial') + '</strong><br><small>' + esc(company.nif || '') + '</small></td>' +
+        '<td><code>' + esc(branch.branch_company_id) + '</code></td>' +
+        '<td><button class="btn btn-sm btn-danger" onclick="desassociarFilial(\\'' + esc(branch.branch_company_id) + '\\')"><i class="fas fa-unlink"></i> Remover</button></td></tr>';
+    });
+    return '<div class="card" id="kanawaBranchConfig"><div class="card-header"><h3 class="card-title"><i class="fas fa-code-branch"></i> Empresas e filiais</h3>' +
+      '<span class="badge badge-info">' + branches.length + ' filial(is)</span></div>' +
+      '<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px">A empresa-mãe e as filiais associadas podem partilhar os dados permitidos pelas permissões de cada utilizador. Empresas sem associação continuam isoladas.</p>' +
+      '<div class="form-group"><label>ID da empresa principal</label><div style="display:flex;gap:8px"><input readonly value="' + esc(context.company.id) + '"><button class="btn btn-secondary" type="button" onclick="copiarIdEmpresa()"><i class="fas fa-copy"></i> Copiar</button></div></div>' +
+      '<div class="form-group"><label>ID da empresa filial a associar</label><input id="branchCompanyId" placeholder="Cole o UUID da empresa filial"></div>' +
+      '<button class="btn btn-primary" type="button" onclick="associarFilial()"><i class="fas fa-link"></i> Associar filial</button>' +
+      '<div style="overflow-x:auto;margin-top:14px"><table class="data-table"><thead><tr><th>Filial</th><th>ID da empresa</th><th>Acção</th></tr></thead><tbody>' +
+      (rows.length ? rows.join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">Ainda não existem filiais associadas.</td></tr>') +
+      '</tbody></table></div><p style="font-size:.76rem;color:var(--text-muted);margin-top:10px">Para associar, a filial deve primeiro criar a sua empresa e partilhar o UUID com o administrador da empresa principal.</p></div>';
+  }
+
   window.renderConfig = async function () {
     const base = typeof originalRenderConfig === 'function' ? await originalRenderConfig() : '';
     if (typeof window.podeAcessar === 'function' && !window.podeAcessar('config')) return base;
-    return base + await renderCard();
+    return base + await renderCard() + await renderBranchCard();
+  };
+
+  window.copiarIdEmpresa = async function () {
+    const context = window.KanawaCloud && KanawaCloud.context;
+    if (!context || !context.company) return;
+    try { await navigator.clipboard.writeText(context.company.id); toast('ID da empresa copiado.', 'success'); }
+    catch (error) { toast('Não foi possível copiar o ID neste dispositivo.', 'warning'); }
+  };
+
+  window.associarFilial = async function () {
+    const field = document.getElementById('branchCompanyId');
+    const id = field ? field.value.trim() : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      toast('Introduza um UUID válido da empresa filial.', 'warning'); return;
+    }
+    try {
+      await KanawaCloud.linkBranch(id);
+      toast('Filial associada. As permissões de acesso entre as duas empresas foram activadas.', 'success');
+      const content = document.getElementById('content');
+      if (content) content.innerHTML = await window.renderConfig();
+    } catch (error) { toast(error.message || 'Não foi possível associar a filial.', 'error'); }
+  };
+
+  window.desassociarFilial = async function (id) {
+    if (!confirm('Remover a associação desta filial? O acesso cruzado entre as empresas será bloqueado.')) return;
+    try {
+      await KanawaCloud.unlinkBranch(id);
+      toast('Associação removida. As empresas voltaram a ficar isoladas.', 'success');
+      const content = document.getElementById('content');
+      if (content) content.innerHTML = await window.renderConfig();
+    } catch (error) { toast(error.message || 'Não foi possível remover a filial.', 'error'); }
   };
 
   window.lerChaveAGT = function (input, targetId) {
