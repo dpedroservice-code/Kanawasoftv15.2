@@ -114,7 +114,7 @@
     const point = validateCoordinates(position.latitude, position.longitude);
     if (currentMarker && map.hasLayer(currentMarker)) {
       currentMarker.setLatLng([point.lat, point.lng]);
-      currentMarker.setPopupContent(label || 'Este dispositivo');
+      currentMarker.setPopupContent(escapeHtml(label || 'Este dispositivo'));
     } else {
       currentMarker = root.L.circleMarker([point.lat, point.lng], {
         radius: 9, color: '#ffffff', weight: 2, fillColor: '#16a34a', fillOpacity: 1
