@@ -3109,8 +3109,8 @@ async function exportarPedidosEcommerce() {
     return;
   }
   const headers = Object.keys(rows[0]);
-  const csv = [headers.join(','),...rows.map(row => headers.map(key => '"' + String(row[key] == null ? '' : row[key]).replace(/"/g,'""') + '"').join(','))].join('\\n');
-  const url = URL.createObjectURL(new Blob(['\\uFEFF' + csv],{type:'text/csv;charset=utf-8'}));
+  const csv = [headers.join(','),...rows.map(row => headers.map(key => '"' + String(row[key] == null ? '' : row[key]).replace(/"/g,'""') + '"').join(','))].join('\n');
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + csv],{type:'text/csv;charset=utf-8'}));
   const link = document.createElement('a'); link.href=url; link.download=filename + '.csv'; link.click(); URL.revokeObjectURL(url);
   toast(orders.length + ' pedidos exportados para CSV.', 'success');
 }
@@ -3325,8 +3325,8 @@ async function exportarRelatorioPonto() {
     return;
   }
   const headers = ['funcionario','registos','fechados','emAberto','horas'];
-  const csv = [headers.join(','),...rows.map(row => headers.map(key => '"' + String(row[key] == null ? '' : row[key]).replace(/"/g,'""') + '"').join(','))].join('\\n');
-  const url = URL.createObjectURL(new Blob(['\\uFEFF' + csv],{type:'text/csv;charset=utf-8'}));
+  const csv = [headers.join(','),...rows.map(row => headers.map(key => '"' + String(row[key] == null ? '' : row[key]).replace(/"/g,'""') + '"').join(','))].join('\n');
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + csv],{type:'text/csv;charset=utf-8'}));
   const link = document.createElement('a'); link.href=url; link.download='kanawa_assiduidade.csv'; link.click(); URL.revokeObjectURL(url);
   toast('Relatório CSV exportado.', 'success');
 }
