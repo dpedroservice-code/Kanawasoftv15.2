@@ -34,3 +34,13 @@
   for = "/cloud.js"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/sales/finalize"
+  to = "/.netlify/functions/sales-finalize"
+  status = 200
+  force = true
