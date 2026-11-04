@@ -279,6 +279,7 @@ public final class GpsTrackingService extends Service implements LocationListene
                 snapshot = new JSONObject(config.toString());
             }
         } catch (Exception error) {
+            SecureStore.clear(this);
             stopForeground(true);
             stopSelf(startId);
             return;
