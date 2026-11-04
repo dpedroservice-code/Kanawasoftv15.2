@@ -32,3 +32,8 @@ test('sale totals and line precision are exact; no cent tolerance remains', () =
 test('POS create permission is allowed to atomically write its own sales mirror', () => {
   assert.match(sql, /store_key = 'vendas' AND private\.ks_has_company_permission\(company_id, 'pdv', 'criar'\)/);
 });
+
+test('cashier create permission can only update a draft sales mirror, not a finalized one', () => {
+  assert.match(sql, /coalesce\(payload->>'status',''\) <> 'finalizada'/);
+  assert.match(sql, /WITH CHECK \([\s\S]*private\.ks_has_company_permission\(company_id, 'pdv', 'criar'\)/);
+});
