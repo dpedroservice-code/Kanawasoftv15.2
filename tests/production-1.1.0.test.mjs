@@ -55,19 +55,21 @@ test('AGT private keys are stored in Vault and never persisted in browser storag
 
 test('branch relationships grant explicit cross-company access through RLS', () => {
   const sql = read('supabase/migrations/20261104081050_kanawa_company_branch_access.sql');
+  const approval = read('supabase/migrations/20261104081143_kanawa_branch_approval_workflow.sql');
+  const roleFix = read('supabase/migrations/20261104081231_kanawa_branch_data_access_without_admin_escalation.sql');
   const cloud = read('app/cloud.js');
   const ui = read('app/agt-config.js');
-  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\\.ks_company_branches/);
-  assert.match(sql, /private\\.ks_has_company_permission/);
-  assert.match(sql, /private\\.ks_has_company_role/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.ks_company_branches/);
+  assert.match(sql, /private\.ks_has_company_permission/);
+  assert.match(sql, /private\.ks_has_company_role/);
   assert.match(sql, /ks_link_company_branch/);
-  assert.match(sql, /ks_accept_company_branch/);
-  assert.match(sql, /ks_unlink_company_branch/);
-  assert.match(sql, /status='pending'/);
-  const approval = read('supabase/migrations/20261104081231_kanawa_branch_data_access_without_admin_escalation.sql');
-  const roleFunction = approval.split('CREATE OR REPLACE FUNCTION private.ks_has_company_permission')[0];
+  assert.match(approval, /status='pending'/);
+  assert.match(approval, /ks_accept_company_branch/);
+  assert.match(approval, /ks_unlink_company_branch/);
+  const roleFunction = roleFix.split('CREATE OR REPLACE FUNCTION private.ks_has_company_permission')[0];
   assert.doesNotMatch(roleFunction, /ks_company_branches/);
   assert.match(cloud, /async linkBranch/);
+  assert.match(cloud, /async acceptBranch/);
   assert.match(ui, /Enviar pedido de associação/);
   assert.match(ui, /Aceitar pedido/);
 });
