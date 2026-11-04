@@ -37,3 +37,9 @@ test('cashier create permission can only update a draft sales mirror, not a fina
   assert.match(sql, /coalesce\(payload->>'status',''\) <> 'finalizada'/);
   assert.match(sql, /WITH CHECK \([\s\S]*private\.ks_has_company_permission\(company_id, 'pdv', 'criar'\)/);
 });
+
+test('migration advertises idempotency enforcement so clients can reject legacy duplicate responses', () => {
+  assert.match(sql, /'idempotency_enforced',true/);
+  const cloud = readFileSync(new URL('../app/cloud.js', import.meta.url), 'utf8');
+  assert.match(cloud, /duplicate === true[\\s\\S]*idempotency_enforced !== true/);
+});
