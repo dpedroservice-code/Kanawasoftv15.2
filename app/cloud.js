@@ -443,7 +443,14 @@
       const result = await client.functions.invoke('ks-agt-test', {
         body: { company_id: context.company.id }
       });
-      if (result.error) throw result.error;
+      if (result.error) {
+        const response = result.error.context;
+        if (response && typeof response.clone === 'function') {
+          const payload = await response.clone().json().catch(function () { return null; });
+          if (payload) return payload;
+        }
+        throw result.error;
+      }
       return result.data;
     },
 
