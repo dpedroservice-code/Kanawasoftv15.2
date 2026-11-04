@@ -6,6 +6,7 @@
 - Cálculo de rota rodoviária, distância e duração estimada via OSRM.
 - Geolocalização do navegador via `watchPosition`, iniciada apenas por ação explícita do utilizador.
 - Persistência do último ponto e trilho limitado às últimas 100 posições no registo `gpsTracking`, usando o armazenamento local e o mecanismo cloud existente.
+- Identificador estável por dispositivo (`trackingKey`) usado como chave do registo GPS na nuvem, evitando colisões de IDs auto-incrementais entre telemóveis.
 - Mapa da frota com marcadores e planeador de rota.
 - Validação de coordenadas e cálculo de distância Haversine.
 
