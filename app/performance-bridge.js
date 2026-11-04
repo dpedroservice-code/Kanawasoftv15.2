@@ -19,6 +19,8 @@
             if (pending.some(function (item) { return !item.synced && item.entity === store; })) return;
             const remote = await cloud.getStore(store);
             if (!Array.isArray(remote)) return;
+            const latestPending = await DB.getAll('_sync_queue');
+            if (latestPending.some(function (item) { return !item.synced && item.entity === store; })) return;
             await DB.clear(store);
             for (const item of remote) await DB.put(store, item);
           }).catch(function (error) { console.warn('Atualização de cache em segundo plano:', store, error); });
@@ -65,7 +67,8 @@
     if (store === 'vendas' && record.status === 'finalizada' && !opts.skipSaleFinalize) {
       try {
         await cloud.upsertRecord(store, record, { deferMirror: true });
-        await queue(Object.assign({}, opts, { skipSaleFinalize: true }));
+        try { await queue(Object.assign({}, opts, { skipSaleFinalize: true })); }
+        catch (queueError) { console.warn('Venda confirmada; espelho histórico aguarda sincronização:', queueError); }
         return id;
       } catch (error) {
         if (previous) await DB.put(store, previous); else await DB.del(store, id);
