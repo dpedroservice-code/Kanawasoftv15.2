@@ -27,7 +27,8 @@
   const getSessionCompany = function () {
     const user = JSON.parse(localStorage.getItem('kanawa_user') || '{}');
     if (!companyId()) throw new Error('Empresa central não identificada.');
-    if (user.role && !['admin'].includes(user.role) && !user.cloudUser) throw new Error('Apenas administradores podem gerir estas integrações.');
+    const membershipRole = window.KanawaCloud && KanawaCloud.context && KanawaCloud.context.membership ? KanawaCloud.context.membership.role : '';
+    if (!['owner','admin'].includes(membershipRole) && user.role !== 'admin') throw new Error('Apenas o proprietário ou administrador da empresa pode gerir estas integrações.');
   };
   const fileAsDataUrl = function (input) {
     return new Promise(function (resolve, reject) {
