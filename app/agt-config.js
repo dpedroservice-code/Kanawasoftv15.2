@@ -57,7 +57,8 @@
       } else {
         action = '<button class="btn btn-sm btn-danger" onclick="desassociarFilial(\\'' + esc(branch.parent_company_id) + '\\',\\'' + esc(branch.branch_company_id) + '\\')"><i class="fas fa-unlink"></i> Remover</button>';
       }
-      return '<tr><td><strong>' + esc(company.name || 'Empresa associada') + '</strong><br><small>' + esc(company.nif || '') + '</small></td>' +
+      const otherCompanyId = branch.side === 'parent' ? branch.branch_company_id : branch.parent_company_id;
+      return '<tr><td><strong>' + esc(company.name || 'Empresa associada') + '</strong><br><small>' + esc(company.nif || '') + '</small><br><code>' + esc(otherCompanyId) + '</code></td>' +
         '<td>' + esc(state) + '</td><td>' + action + '</td></tr>';
     });
     return '<div class="card" id="kanawaBranchConfig"><div class="card-header"><h3 class="card-title"><i class="fas fa-code-branch"></i> Empresas e filiais</h3>' +
