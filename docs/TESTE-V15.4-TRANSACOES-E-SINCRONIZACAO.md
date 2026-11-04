@@ -4,7 +4,7 @@
 
 1. A interface e o cache usam IndexedDB. A fila offline tem índice único por entidade + identificador, para não acumular pedidos repetidos do mesmo registo.
 2. A finalização passa por `POST /api/sales/finalize`. No Electron/servidor local, a rota é servida pelo Express. No Netlify Deploy Preview, o mesmo caminho é encaminhado para `/.netlify/functions/sales-finalize`.
-3. O gateway valida o bearer token através do Supabase Auth e encaminha a chamada para `public.ks_finalize_sale` com o mesmo JWT do utilizador. Não usa service-role key.
+3. O gateway encaminha o bearer JWT para `public.ks_finalize_sale` com a chave pública. O PostgREST valida assinatura/expiração do JWT e a função SQL verifica `auth.uid()`, empresa e permissões. Não há uma chamada Auth adicional nem service-role key, reduzindo uma viagem de rede.
 4. A função PostgreSQL valida permissões, empresa, limites de desconto, precisão decimal, pagamento e stock. O decremento de stock é condicional e transacional.
 5. A migração `20261104100000_kanawa_v154_atomic_sales_idempotency.sql` adiciona fingerprint de idempotência e grava o registo `ks_records/vendas` na mesma transação que venda, linhas, pagamento, movimentos de stock e evento de utilização.
 
