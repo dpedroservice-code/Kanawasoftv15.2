@@ -38,7 +38,7 @@ public final class GpsTrackingService extends Service implements LocationListene
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private LocationManager locationManager;
     private JSONObject config;
-    private String lastMessage = "A aguardar posição GPS";
+    private volatile String lastMessage = "A aguardar posição GPS";
 
     @Override
     public void onCreate() {
@@ -108,8 +108,7 @@ public final class GpsTrackingService extends Service implements LocationListene
             point.put("accuracy", location.hasAccuracy() ? location.getAccuracy() : JSONObject.NULL);
             point.put("speed", location.hasSpeed() ? location.getSpeed() : JSONObject.NULL);
             point.put("heading", location.hasBearing() ? location.getBearing() : JSONObject.NULL);
-            point.put("timestamp", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
-                    .format(new java.util.Date(location.getTime())));
+            point.put("timestamp", java.time.Instant.ofEpochMilli(location.getTime()).toString());
 
             JSONArray trail = config.optJSONArray("trail");
             if (trail == null) trail = new JSONArray();
@@ -144,9 +143,16 @@ public final class GpsTrackingService extends Service implements LocationListene
             payload.put("trackingKey", session.getString("deviceKey"));
             payload.put("deviceLabel", session.optString("deviceLabel", "Dispositivo Android"));
             payload.put("veiculo", session.optString("vehicleLabel", "Dispositivo móvel"));
-            payload.put("lat", point.optDouble("lat"));
-            payload.put("lng", point.optDouble("lng"));
-            payload.put("coordinates_valid", true);
+            boolean hasCoordinates = point.has("lat") && point.has("lng") &&
+                    !point.isNull("lat") && !point.isNull("lng");
+            if (hasCoordinates) {
+                payload.put("lat", point.getDouble("lat"));
+                payload.put("lng", point.getDouble("lng"));
+            } else {
+                payload.put("lat", JSONObject.NULL);
+                payload.put("lng", JSONObject.NULL);
+            }
+            payload.put("coordinates_valid", hasCoordinates);
             payload.put("location_source", "gps");
             payload.put("tracking_mode", "android-foreground-service");
             payload.put("status", status);
@@ -166,6 +172,7 @@ public final class GpsTrackingService extends Service implements LocationListene
             if (response == 401) {
                 JSONObject refreshed = refreshSession(session);
                 if (refreshed != null) {
+                    config = refreshed;
                     SecureStore.saveSession(this, refreshed.toString());
                     response = sendUpsert(refreshed, row);
                 }
@@ -254,13 +261,13 @@ public final class GpsTrackingService extends Service implements LocationListene
                 if (saved != null) config = new JSONObject(saved);
             } catch (Exception ignored) {}
         }
-        if (config == null || !config.has("lastPoint")) {
+        if (config == null) {
             stopForeground(true);
             stopSelf(startId);
             return;
         }
         try {
-            JSONObject point = config.getJSONObject("lastPoint");
+            JSONObject point = config.has("lastPoint") ? config.getJSONObject("lastPoint") : new JSONObject();
             JSONObject snapshot = new JSONObject(config.toString());
             network.execute(() -> {
                 uploadPosition(snapshot, point, "stopped");
