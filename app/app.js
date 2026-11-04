@@ -3380,6 +3380,7 @@ async function iniciarRastreamentoGPS() {
         toast('O seu perfil não tem permissão para registar um novo dispositivo GPS.', 'error'); return;
       }
       existing = {
+        id: deviceKey,
         trackingKey: deviceKey,
         veiculo: 'Dispositivo móvel',
         deviceLabel: (navigator.userAgent || 'Dispositivo Android').slice(0, 120),
