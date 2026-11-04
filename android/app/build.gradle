@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.application'
+}
+
+def webAppUrl = project.findProperty("KANAWA_WEB_URL") ?: "https://deploy-preview-13--kanawa-soft.netlify.app"
+
+android {
+    namespace 'com.kanawa.erp'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.kanawa.erp'
+        minSdk 26
+        targetSdk 35
+        versionCode 15401
+        versionName '15.4.1-test'
+        buildConfigField 'String', 'WEB_APP_URL', "\"" + webAppUrl + "\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+}
