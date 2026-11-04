@@ -191,7 +191,7 @@ BEGIN
       VALUES(p_company_id,'vendas',v_external_id,v_record)
       ON CONFLICT(company_id,store_key,record_id) DO UPDATE
         SET payload=EXCLUDED.payload,updated_at=now()
-        WHERE coalesce(public.ks_records.payload->>'status','')<>'finalizada';
+        WHERE coalesce(ks_records.payload->>'status','')<>'finalizada';
     END IF;
     RETURN jsonb_build_object(
       'ok',true,'duplicate',true,'external_id',v_external_id,
