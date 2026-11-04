@@ -53,10 +53,10 @@
       ['contratos','Contratos','fa-file-contract'],['documentos','Documentos','fa-folder-open']
     ]},
     { id: 'formacao-hub', label: 'Formação e Cursos', icon: 'fa-graduation-cap', description: 'Cursos, certificações e progresso.', children: [
-      ['elearning-cursos','Cursos','fa-graduation-cap'],['elearning-certificacoes','Certificações','fa-certificate'],['elearning-quizzes','Questionários','fa-question-circle'],['elearning-progresso','Progresso','fa-chart-line'],['elearning-relatorios','Relatórios de formação','fa-file-alt']
+      ['elearning-cursos','Cursos','fa-graduation-cap'],['elearning-alunos','Alunos, aulas e notas','fa-user-graduate'],['elearning-modelos','Modelos de certificado','fa-certificate'],['elearning-certificacoes','Certificações','fa-award'],['elearning-quizzes','Questionários','fa-question-circle'],['elearning-progresso','Progresso','fa-chart-line'],['elearning-relatorios','Relatórios de formação','fa-file-alt']
     ]},
     { id: 'administracao-hub', label: 'Administração', icon: 'fa-cog', description: 'Utilizadores, permissões, auditoria e sistema.', children: [
-      ['usuarios','Utilizadores e permissões','fa-user-shield'],['auditoria','Auditoria','fa-history'],['dispositivos','Dispositivos e impressão','fa-print'],['config','Configurações','fa-cog'],['modulos','Gestão de módulos','fa-code'],['perfil','Meu perfil','fa-user-circle'],['notificacoes','Notificações','fa-bell']
+      ['usuarios','Utilizadores e permissões','fa-user-shield'],['integracoes-api','Chaves de API / Loja','fa-key'],['pagamentos-integracoes','Métodos de pagamento','fa-credit-card'],['auditoria','Auditoria','fa-history'],['dispositivos','Dispositivos e impressão','fa-print'],['config','Configurações','fa-cog'],['modulos','Gestão de módulos','fa-code'],['perfil','Meu perfil','fa-user-circle'],['notificacoes','Notificações','fa-bell']
     ]},
     { id: 'relatorios-hub', label: 'Relatórios', icon: 'fa-chart-bar', description: 'Indicadores e relatórios de gestão.', children: [
       ['relatorios','Relatórios gerais','fa-chart-bar']
