@@ -4,7 +4,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ENCRYPTION_KEY = Deno.env.get("KANAWA_CREDENTIALS_ENCRYPTION_KEY") || "";
 const SITE_URL = "https://kanawasoft.shop";
-const ALLOWED_ORIGINS = new Set([SITE_URL,"http://localhost:3000","http://localhost:5173"]);
+const ALLOWED_ORIGINS = new Set([SITE_URL,"https://kanawa-soft.netlify.app","http://localhost:3000","http://localhost:5173"]);
 const PROVIDERS = new Set([
   "bank_api","card_gateway","multicaixa_express","whatsapp_cloud","smtp_gmail",
   "agt","maps","carrier_macon","carrier_cfl","carrier_cfb","ncarga"
@@ -63,7 +63,9 @@ async function encryptSecret(secret: Record<string,unknown>) {
   if (keyBytes.length !== 32) throw new Error("A chave de cifragem do servidor deve conter 32 bytes em Base64.");
   const serialized = JSON.stringify(secret);
   if (serialized.length < 2 || serialized.length > 32768) throw new Error("O conteúdo das credenciais deve ter até 32 KB.");
-  const key = await crypto.subtle.importKey("raw",keyBytes,{name:"AES-GCM"},false,["encrypt"]);
+  const keyBuffer = new ArrayBuffer(32);
+  new Uint8Array(keyBuffer).set(keyBytes);
+  const key = await crypto.subtle.importKey("raw",keyBuffer,{name:"AES-GCM"},false,["encrypt"]);
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt({name:"AES-GCM",iv:nonce},key,new TextEncoder().encode(serialized));
   return { ciphertext:encodeBase64(new Uint8Array(encrypted)), nonce:encodeBase64(nonce) };
