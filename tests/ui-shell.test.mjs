@@ -45,3 +45,12 @@ test('administrator can open a per-module permission editor for non-admin member
   assert.match(app, /TEAM_RESERVED_MODULES/);
   assert.match(app, /updateTeamMemberAccess/);
 });
+
+test('HR attendance, label preview and ecommerce export are connected to real actions', () => {
+  const app = require('node:fs').readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
+  assert.match(html, /hr-attendance\.js/);
+  assert.match(app, /async function registarSaidaPonto\(id\)/);
+  assert.match(app, /async function relatorioPonto\(\)/);
+  assert.match(app, /async function exportarPedidosEcommerce\(\)/);
+  assert.match(app, /async function visualizarEtiqueta\(id\)/);
+});
