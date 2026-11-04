@@ -154,18 +154,21 @@ BEGIN
                 nullif(v_record->>'amount_received','')::numeric,-1)<>v_received
     OR coalesce(nullif(v_record->>'troco','')::numeric,
                 nullif(v_record->>'change_amount','')::numeric,-1)<>v_change
-    OR coalesce(jsonb_typeof(v_record->'itens'),'')<>'array'
-    OR jsonb_array_length(v_record->'itens')<>jsonb_array_length(p_items)
-    OR EXISTS (
-      SELECT 1
-      FROM jsonb_array_elements(p_items) WITH ORDINALITY AS p(value,ord)
-      JOIN jsonb_array_elements(v_record->'itens') WITH ORDINALITY AS r(value,ord) USING(ord)
-      WHERE coalesce(r.value->>'id','')<>coalesce(p.value->>'product_external_id','')
-        OR coalesce(r.value->>'nome','')<>coalesce(p.value->>'product_name','')
-        OR coalesce(nullif(r.value->>'preco','')::numeric,-1)<>coalesce(nullif(p.value->>'unit_price','')::numeric,-1)
-        OR coalesce(nullif(r.value->>'qty','')::numeric,-1)<>coalesce(nullif(p.value->>'quantity','')::numeric,-1)
-        OR coalesce(nullif(r.value->>'subtotal','')::numeric,-1)<>coalesce(nullif(p.value->>'line_total','')::numeric,-1)
-    )
+    OR CASE
+      WHEN jsonb_typeof(v_record->'itens')='array' THEN
+        jsonb_array_length(v_record->'itens')<>jsonb_array_length(p_items)
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(p_items) WITH ORDINALITY AS p(value,ord)
+          JOIN jsonb_array_elements(v_record->'itens') WITH ORDINALITY AS r(value,ord) USING(ord)
+          WHERE coalesce(r.value->>'id','')<>coalesce(p.value->>'product_external_id','')
+            OR coalesce(r.value->>'nome','')<>coalesce(p.value->>'product_name','')
+            OR coalesce(nullif(r.value->>'preco','')::numeric,-1)<>coalesce(nullif(p.value->>'unit_price','')::numeric,-1)
+            OR coalesce(nullif(r.value->>'qty','')::numeric,-1)<>coalesce(nullif(p.value->>'quantity','')::numeric,-1)
+            OR coalesce(nullif(r.value->>'subtotal','')::numeric,-1)<>coalesce(nullif(p.value->>'line_total','')::numeric,-1)
+        )
+      ELSE true
+    END
   ) THEN
     RAISE EXCEPTION 'O histórico da venda não corresponde aos valores validados.' USING ERRCODE='23514';
   END IF;
