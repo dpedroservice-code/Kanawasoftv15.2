@@ -41,7 +41,10 @@
     if (!perms) return false;
     if (perms.modulos === '*') return true;
     if (perms.permissions) return (perms.permissions[moduleName] || []).includes(action);
-    return Array.isArray(perms.acoes) && perms.acoes.includes(action);
+    // Legacy permission objects must grant BOTH the module and the action.
+    // A global action list alone must never authorize another module.
+    return Array.isArray(perms.modulos) && perms.modulos.includes(moduleName)
+      && Array.isArray(perms.acoes) && perms.acoes.includes(action);
   }
   return { fromMembership, canAccess, canDo };
 });
