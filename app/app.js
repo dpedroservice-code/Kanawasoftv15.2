@@ -1840,45 +1840,104 @@ async function salvarLead() { const n = $('lNome').value.trim(); if (!n) { toast
 
 /* ====== FINANCEIRO ====== */
 async function renderFinanceiro() {
-  const [rec, pag] = await Promise.all([getData('contasReceber'), getData('contasPagar')]);
-  const tR = rec.reduce((s, c) => s + (c.valor || 0), 0);
-  const tP = pag.reduce((s, c) => s + (c.valor || 0), 0);
-  const recRows = rec.slice().reverse().map(c => [esc(c.cliente), '<strong>' + fmt(c.valor) + '</strong>', fmtD(c.vencimento), badge(c.status, c.status === 'pago' ? 'success' : 'warning'),
-    (c.status !== 'pago' ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + c.id + ',\'receber\')"><i class="fas fa-check"></i></button> ' : '') +
-    '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'contasReceber\',' + c.id + ')"><i class="fas fa-trash"></i></button>']);
-  const pagRows = pag.slice().reverse().map(c => [esc(c.fornecedor), '<strong>' + fmt(c.valor) + '</strong>', fmtD(c.vencimento), badge(c.status, c.status === 'pago' ? 'success' : 'warning'),
-    (c.status !== 'pago' ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + c.id + ',\'pagar\')"><i class="fas fa-check"></i></button> ' : '') +
-    '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'contasPagar\',' + c.id + ')"><i class="fas fa-trash"></i></button>']);
-  return header('Financeiro', 'Contas a receber e a pagar', 'var(--success)', '', 'fa-coins') +
+  const [rec,pag] = await Promise.all([getData('contasReceber'),getData('contasPagar')]);
+  const summary = window.KanawaFinance ? KanawaFinance.summarize(rec,pag) : { receberPendente:0,receberVencido:0,receberPago:0,pagarPendente:0,pagarVencido:0,pagarPago:0,saldoPendente:0,contasVencidas:0 };
+  const canCreate = podeFazer('criar','financeiro');
+  const canApprove = podeFazer('aprovar','financeiro') || podeFazer('editar','financeiro');
+  const renderStatus = item => {
+    const state = window.KanawaFinance ? KanawaFinance.status(item) : (item.status || 'pendente');
+    return badge(state === 'vencido' ? 'Vencido' : state === 'pago' ? 'Pago' : state === 'cancelado' ? 'Cancelado' : 'Pendente',
+      state === 'vencido' ? 'danger' : state === 'pago' ? 'success' : state === 'cancelado' ? 'secondary' : 'warning');
+  };
+  const recRows = rec.slice().reverse().map(item => [
+    esc(item.cliente || '-'),esc(item.descricao || '-'),'<strong>' + fmt(item.valor) + '</strong>',fmtD(item.vencimento),renderStatus(item),
+    (canApprove && !['pago','paga','cancelado','cancelada'].includes(String(item.status||'').toLowerCase())
+      ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + Number(item.id) + ',\\'receber\\')"><i class="fas fa-check"></i> Liquidar</button> ' : '') +
+      (podeFazer('excluir','financeiro') ? '<button class="btn btn-sm btn-danger" onclick="excluirItem(\\'contasReceber\\',' + Number(item.id) + ')"><i class="fas fa-trash"></i></button>' : '')
+  ]);
+  const pagRows = pag.slice().reverse().map(item => [
+    esc(item.fornecedor || '-'),esc(item.descricao || '-'),'<strong>' + fmt(item.valor) + '</strong>',fmtD(item.vencimento),renderStatus(item),
+    (canApprove && !['pago','paga','cancelado','cancelada'].includes(String(item.status||'').toLowerCase())
+      ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + Number(item.id) + ',\\'pagar\\')"><i class="fas fa-check"></i> Liquidar</button> ' : '') +
+      (podeFazer('excluir','financeiro') ? '<button class="btn btn-sm btn-danger" onclick="excluirItem(\\'contasPagar\\',' + Number(item.id) + ')"><i class="fas fa-trash"></i></button>' : '')
+  ]);
+  return header('Financeiro','Contas a receber, pagar e liquidação','var(--success)','', 'fa-coins') +
     '<div class="metric-grid">' +
-    '<div class="metric-card" style="border-left-color:var(--success)"><div class="label">📥 A Receber</div><div class="value" style="color:var(--success)">' + fmt(tR) + '</div><div class="sub">' + rec.length + ' contas</div></div>' +
-    '<div class="metric-card" style="border-left-color:var(--danger)"><div class="label">📤 A Pagar</div><div class="value" style="color:var(--danger)">' + fmt(tP) + '</div><div class="sub">' + pag.length + ' contas</div></div>' +
-    '<div class="metric-card"><div class="label">📊 Saldo</div><div class="value">' + fmt(tR - tP) + '</div></div></div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-hand-holding-heart"></i> A Receber</h3><button class="btn btn-sm btn-success" onclick="abrirModalConta(\'receber\')"><i class="fas fa-plus"></i> Nova</button></div>' + table(['Cliente', 'Valor', 'Vencimento', 'Status', 'Ações'], recRows) + '</div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-file-invoice-dollar"></i> A Pagar</h3><button class="btn btn-sm btn-success" onclick="abrirModalConta(\'pagar\')"><i class="fas fa-plus"></i> Nova</button></div>' + table(['Fornecedor', 'Valor', 'Vencimento', 'Status', 'Ações'], pagRows) + '</div>';
+    '<div class="metric-card" style="border-left-color:var(--success)"><div class="label">A receber (pendente)</div><div class="value">' + fmt(summary.receberPendente) + '</div><div class="sub">' + rec.length + ' contas</div></div>' +
+    '<div class="metric-card" style="border-left-color:var(--danger)"><div class="label">A pagar (pendente)</div><div class="value">' + fmt(summary.pagarPendente) + '</div><div class="sub">' + pag.length + ' contas</div></div>' +
+    '<div class="metric-card" style="border-left-color:var(--danger)"><div class="label">Contas vencidas</div><div class="value">' + summary.contasVencidas + '</div><div class="sub">Receber e pagar</div></div>' +
+    '<div class="metric-card"><div class="label">Saldo pendente</div><div class="value">' + fmt(summary.saldoPendente) + '</div><div class="sub">Sem incluir contas já liquidadas</div></div></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-hand-holding-heart"></i> Contas a receber</h3>' +
+    (canCreate ? '<button class="btn btn-sm btn-success" onclick="abrirModalConta(\\'receber\\')"><i class="fas fa-plus"></i> Nova</button>' : '') + '</div>' +
+    table(['Cliente','Descrição','Valor','Vencimento','Estado','Ações'],recRows) + '</div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-file-invoice-dollar"></i> Contas a pagar</h3>' +
+    (canCreate ? '<button class="btn btn-sm btn-success" onclick="abrirModalConta(\\'pagar\\')"><i class="fas fa-plus"></i> Nova</button>' : '') + '</div>' +
+    table(['Fornecedor','Descrição','Valor','Vencimento','Estado','Ações'],pagRows) + '</div>';
 }
 function abrirModalConta(tipo) {
-  const isR = tipo === 'receber';
-  openModal(isR ? 'Nova Conta a Receber' : 'Nova Conta a Pagar',
-    '<div class="form-group"><label>' + (isR ? 'Cliente' : 'Fornecedor') + ' *</label><input id="ctNome"></div>' +
-    '<div class="form-group"><label>Descrição</label><input id="ctDesc"></div>' +
-    '<div class="form-group"><label>Valor *</label><input id="ctValor" type="number" value="0"></div>' +
-    '<div class="form-group"><label>Vencimento</label><input id="ctVenc" type="date" value="' + new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10) + '"></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarConta(\'' + tipo + '\')">Salvar</button>');
+  if (!podeFazer('criar','financeiro')) return toast('Sem permissão para criar contas financeiras.','error');
+  const isReceivable = tipo === 'receber';
+  openModal(isReceivable ? 'Nova conta a receber' : 'Nova conta a pagar',
+    '<div class="form-grid"><div class="form-group"><label>' + (isReceivable ? 'Cliente' : 'Fornecedor') + ' *</label><input id="ctNome" required maxlength="120"></div>' +
+    '<div class="form-group"><label>Descrição *</label><input id="ctDesc" required maxlength="180"></div>' +
+    '<div class="form-group"><label>Categoria</label><select id="ctCategoria"><option value="operacional">Operacional</option><option value="servicos">Serviços</option><option value="mercadorias">Mercadorias</option><option value="salarios">Salários</option><option value="impostos">Impostos</option><option value="outros">Outros</option></select></div>' +
+    '<div class="form-group"><label>Valor (AOA) *</label><input id="ctValor" type="number" min="0.01" step="0.01" value="0" required></div>' +
+    '<div class="form-group"><label>Vencimento *</label><input id="ctVenc" type="date" min="' + new Date().toISOString().slice(0,10) + '" value="' + new Date(Date.now()+30*86400000).toISOString().slice(0,10) + '" required></div>' +
+    '<div class="form-group"><label>Referência / documento</label><input id="ctReferencia" maxlength="80"></div></div>' +
+    '<button class="btn btn-primary btn-block" onclick="salvarConta(\\'' + tipo + '\\')">Guardar conta</button>');
 }
 async function salvarConta(tipo) {
-  const n = $('ctNome').value.trim(); if (!n) { toast('Informe nome', 'warning'); return; }
-  const d = { valor: num($('ctValor').value, 0), descricao: $('ctDesc').value, vencimento: $('ctVenc').value, status: 'pendente', data: now() };
-  if (tipo === 'receber') { d.cliente = n; await saveData('contasReceber', d); } else { d.fornecedor = n; await saveData('contasPagar', d); }
-  toast('Conta registrada', 'success'); closeModal(); openModule('financeiro');
+  if (!podeFazer('criar','financeiro')) return toast('Sem permissão para criar contas financeiras.','error');
+  const name = $('ctNome').value.trim();
+  const description = $('ctDesc').value.trim();
+  const value = num($('ctValor').value,0);
+  const due = $('ctVenc').value;
+  if (!name || !description || !Number.isFinite(value) || value <= 0 || !due) {
+    toast('Preencha nome, descrição, valor positivo e vencimento.','warning');
+    return;
+  }
+  const record = {
+    valor:value,descricao:description,categoria:$('ctCategoria').value,
+    referencia:$('ctReferencia').value.trim(),vencimento:due,status:'pendente',
+    data:now(),moeda:'AOA',criadoPor:(JSON.parse(localStorage.getItem('kanawa_user')||'{}').nome || 'Utilizador')
+  };
+  if (tipo === 'receber') record.cliente = name;
+  else record.fornecedor = name;
+  await saveData(tipo === 'receber' ? 'contasReceber' : 'contasPagar',record);
+  toast('Conta registada e sincronizada quando online.','success');
+  closeModal(); openModule('financeiro');
 }
-async function marcarPago(id, tipo) {
-  const s = tipo === 'receber' ? 'contasReceber' : 'contasPagar';
-  const c = await DB.get(s, id); c.status = 'pago'; c.dataPagamento = now(); await saveData(s, c);
-  toast('Marcado pago', 'success'); openModule('financeiro');
+async function marcarPago(id,tipo) {
+  if (!podeFazer('aprovar','financeiro') && !podeFazer('editar','financeiro')) {
+    toast('Sem permissão para liquidar contas.','error'); return;
+  }
+  const store = tipo === 'receber' ? 'contasReceber' : 'contasPagar';
+  const record = await DB.get(store,id);
+  if (!record) return toast('Conta não encontrada.','error');
+  if (['pago','paga','cancelado','cancelada'].includes(String(record.status||'').toLowerCase())) {
+    return toast('Esta conta já está liquidada ou cancelada.','warning');
+  }
+  openModal('Confirmar liquidação',
+    '<p>Confirme a liquidação de <strong>' + esc(record.descricao || (record.cliente || record.fornecedor)) + '</strong> no valor de <strong>' + fmt(record.valor) + '</strong>.</p>' +
+    '<div class="form-group"><label>Forma de pagamento</label><select id="ctMetodoPagamento"><option value="transferencia">Transferência bancária</option><option value="multicaixa">Multicaixa / TPA</option><option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="outro">Outro</option></select></div>' +
+    '<div class="form-group"><label>Referência / comprovativo</label><input id="ctPagamentoRef" maxlength="100"></div>' +
+    '<button class="btn btn-success btn-block" onclick="confirmarLiquidacao(' + Number(id) + ',\\'' + tipo + '\\')">Confirmar liquidação</button>');
+}
+async function confirmarLiquidacao(id,tipo) {
+  if (!podeFazer('aprovar','financeiro') && !podeFazer('editar','financeiro')) return toast('Sem permissão para liquidar contas.','error');
+  const store = tipo === 'receber' ? 'contasReceber' : 'contasPagar';
+  const record = await DB.get(store,id);
+  if (!record || ['pago','paga','cancelado','cancelada'].includes(String(record.status||'').toLowerCase())) return toast('Estado da conta já foi alterado. Actualize o módulo.','warning');
+  record.status = 'pago';
+  record.dataPagamento = now();
+  record.metodoPagamento = $('ctMetodoPagamento').value;
+  record.referenciaPagamento = $('ctPagamentoRef').value.trim();
+  await saveData(store,record);
+  toast('Liquidação registada.','success');
+  closeModal(); openModule('financeiro');
 }
 
-/* ====== FISCAL ====== */
+/* ====== FISCAL ====== *//* ====== FISCAL ====== */
 async function renderFiscal() {
   const vendas = await getData('vendas'); const compras = await getData('compras');
   const tV = vendas.reduce((s, v) => s + (v.total || 0), 0);
