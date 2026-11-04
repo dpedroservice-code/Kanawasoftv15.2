@@ -26,6 +26,15 @@ test('permissions do not leak actions across modules', () => {
   assert.equal(canDo(p, 'editar', 'produtos'), true);
   assert.equal(canDo(p, 'editar', 'clientes'), false);
 });
+test('legacy permissions require both module and action grants', () => {
+  const legacy = { modulos: ['produtos'], acoes: ['ver','criar','editar'] };
+  assert.equal(canDo(legacy, 'editar', 'produtos'), true);
+  assert.equal(canDo(legacy, 'editar', 'financeiro'), false);
+  assert.equal(canDo(legacy, 'excluir', 'produtos'), false);
+});
+test('legacy permissions without module list fail closed', () => {
+  assert.equal(canDo({ acoes: ['ver','criar'] }, 'criar', 'pdv'), false);
+});
 test('unknown actions are ignored', () => {
   const p = fromMembership('visualizador', { dashboard: ['ver','superuser'] });
   assert.equal(canAccess(p, 'dashboard'), true);
