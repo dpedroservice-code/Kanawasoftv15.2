@@ -54,7 +54,7 @@
       '<div class="card"><div class="card-header"><h3 class="card-title">Chaves emitidas</h3><button class="btn btn-secondary btn-sm" onclick="ksLoadStoreApiKeys()">Atualizar</button></div><div id="storeApiKeysList">A carregar…</div></div>' +
       '<div class="card"><h3 class="card-title">Ligação da loja</h3><p>Endpoint de catálogo:</p><code style="display:block;overflow-wrap:anywhere;padding:12px;background:var(--bg)">' + API_URL + '/catalog/products</code>' +
       '<p style="margin-top:10px">Cabeçalho: <code>Authorization: Bearer SUA_CHAVE</code></p><div class="note" style="border-left:4px solid var(--warning);padding:12px;margin-top:10px">A chave secreta deve ser guardada no servidor da loja, nunca em JavaScript público, HTML, repositórios ou aplicações móveis. O catálogo é apenas de leitura.</div>' +
-      '<button class="btn btn-info" onclick="ksTestStoreApi()"><i class="fas fa-plug"></i> Testar ligação e catálogo</button><div id="storeApiTestResult" style="margin-top:10px"></div></div>';
+      '<button class="btn btn-info" onclick="ksTestStoreApi()"><i class="fas fa-plug"></i> Testar serviço de integrações</button><div id="storeApiTestResult" style="margin-top:10px"></div></div>';
   }
   async function ksCreateStoreApiKey() {
     try {
@@ -161,7 +161,7 @@
     const attend = await getData('presencasFormacao') || [];
     const rows = students.map(function (s) {
       const g = ksStudentGrade(s.id, grades);
-      const a = ksStudentAttendance(s.id, lessons, attend);
+      const a = ksStudentAttendance(s.id, lessons, attend, s.cursoId);
       return [escHtml(s.nome), escHtml(s.bi), escHtml(s.classe), escHtml((courses.find(function (c) { return String(c.id) === String(s.cursoId); }) || {}).nome || '—'),
         g.count ? formatNumber(g.average) + '/20' : 'Sem notas', a.total ? formatNumber(a.rate) + '%' : 'Sem presenças',
         '<button class="btn btn-sm btn-primary" onclick="ksOpenStudent(' + s.id + ')">Editar</button> <button class="btn btn-sm btn-info" onclick="ksIssueCertificate(' + s.id + ')">Certificado</button> <button class="btn btn-sm btn-danger" onclick="ksDeleteStudent(' + s.id + ')">Apagar</button>'];
@@ -176,8 +176,8 @@
     if (!items.length) return { count: 0, average: 0 };
     return { count: items.length, average: items.reduce(function (sum, g) { return sum + (Number(g.nota) / Number(g.maximo) * 20); }, 0) / items.length };
   }
-  function ksStudentAttendance(id, lessons, attend) {
-    const relevantLessons = (lessons || []).filter(function (l) { return true; });
+  function ksStudentAttendance(id, lessons, attend, courseId) {
+    const relevantLessons = (lessons || []).filter(function (l) { return courseId === undefined || String(l.cursoId) === String(courseId); });
     const entries = (attend || []).filter(function (a) { return String(a.alunoId) === String(id); });
     if (!entries.length) return { total: 0, rate: 0 };
     const present = entries.filter(function (a) { return a.estado === 'presente'; }).length;
@@ -344,12 +344,4 @@
   Object.assign(window, { ksCreateStoreApiKey, ksLoadStoreApiKeys, ksRevokeStoreApiKey, ksTestStoreApi, ksSavePaymentIntegration, ksTestPaymentIntegration, ksLoadPaymentIntegrations,
     ksOpenStudent, ksSaveStudent, ksDeleteStudent, ksCreateLesson, ksSaveLesson, ksRecordGrade, ksSaveGrade, ksRecordAttendance, ksSaveAttendance,
     ksEditCertificateModel, ksSaveCertificateModel, ksIssueCertificate });
-  document.addEventListener('DOMContentLoaded', function () {
-    const login = document.getElementById('authScreen');
-    if (login && !document.getElementById('manualSupportLink')) {
-      const link = document.createElement('a'); link.id = 'manualSupportLink'; link.href = 'manual.html'; link.target = '_blank';
-      link.className = 'btn btn-secondary'; link.textContent = 'Manual de Apoio'; link.style.cssText = 'display:block;margin:12px auto 0;width:100%';
-      login.querySelector('.auth-box')?.appendChild(link);
-    }
-  });
 })();
