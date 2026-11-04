@@ -170,7 +170,7 @@
       if (!session || !session.access_token || !session.refresh_token) {
         throw new Error('Sessão segura incompleta. Termine sessão e volte a entrar.');
       }
-      return {
+      const config = {
         supabaseUrl: SUPABASE_URL,
         publishableKey: SUPABASE_PUBLISHABLE_KEY,
         accessToken: session.access_token,
@@ -194,7 +194,6 @@
         };
       }
       return config;
-      //
     },
 
     async signOut() {
