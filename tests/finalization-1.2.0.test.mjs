@@ -33,6 +33,10 @@ test('company reset is server-side, owner-protected and preserves company/auth s
   assert.match(migration, /DELETE FROM public\.ks_sales/);
   assert.match(migration, /DELETE FROM public\.ks_products/);
   assert.match(cloud, /resetCompanyBusinessData/);
+  assert.match(cloud, /functions\\.invoke\\('ks-company-reset'/);
+  const resetEdge = read('supabase/functions/ks-company-reset/index.ts');
+  assert.match(resetEdge, /kanawa-private-documents/);
+  assert.match(resetEdge, /listFilesRecursively/);
   assert.match(app, /await KanawaCloud\.resetCompanyBusinessData\(\)/);
   assert.match(app, /Reposição bloqueada: ligue a conta à base central/);
 });
