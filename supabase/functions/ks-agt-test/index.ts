@@ -148,9 +148,10 @@ Deno.serve(async (request: Request) => {
       environment: meta.environment
     });
   } catch (error) {
-    const message = error && error.name === "AbortError"
+    const safeError = error instanceof Error ? error : new Error("Falha desconhecida no teste AGT.");
+    const message = safeError.name === "AbortError"
       ? "Tempo limite excedido ao contactar a AGT."
-      : (error instanceof Error ? error.message : "Falha desconhecida no teste AGT.");
+      : (safeError.message || "Falha desconhecida no teste AGT.");
     return json(502, { success: false, message });
   }
 });
