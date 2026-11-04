@@ -37,3 +37,7 @@ O serviço é iniciado enquanto a Activity está visível, conforme as restriç�
 - A API REST continua protegida pelas políticas RLS de `ks_records` e pelas permissões `frota-gps`.
 - A versão Android de teste usa o domínio Deploy Preview; não é uma versão Play Store assinada.
 - Testes de GPS físico, consumo de bateria, Xiaomi/MIUI, sessão expirada, ausência de rede e sincronização entre duas contas/dispositivos continuam a exigir validação de campo.
+
+
+## Ambiente de teste isolado
+O Deploy Preview Netlify exige que a empresa autenticada tenha nome legal/comercial iniciado por `TESTE`. Esta verificação impede a utilização acidental da empresa de produção no ambiente de pré-visualização. Crie uma conta/empresa de teste com um endereço de email diferente e nome, por exemplo, `TESTE Kanawa GPS`. O projeto Supabase continua a ser o mesmo projeto central, mas os dados ficam separados pelo `company_id` e protegidos pelas políticas RLS existentes. Não execute testes com a empresa real.
