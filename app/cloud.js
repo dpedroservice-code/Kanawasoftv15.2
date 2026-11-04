@@ -148,8 +148,32 @@
       return true;
     },
 
+    async getNativeTrackingConfig(details) {
+      if (!this.ready) throw new Error('Sessão da nuvem não está ativa.');
+      if (!details || !details.recordId || !details.deviceKey) throw new Error('Identificação do dispositivo GPS inválida.');
+      const sessionResult = await client.auth.getSession();
+      if (sessionResult.error) throw sessionResult.error;
+      const session = sessionResult.data && sessionResult.data.session;
+      if (!session || !session.access_token || !session.refresh_token) {
+        throw new Error('Sessão segura incompleta. Termine sessão e volte a entrar.');
+      }
+      return {
+        supabaseUrl: SUPABASE_URL,
+        publishableKey: SUPABASE_PUBLISHABLE_KEY,
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        companyId: context.company.id,
+        userId: context.user.id,
+        recordId: String(details.recordId),
+        deviceKey: String(details.deviceKey),
+        deviceLabel: String(details.deviceLabel || 'Dispositivo Android').slice(0, 120),
+        vehicleLabel: String(details.vehicleLabel || 'Dispositivo móvel').slice(0, 120)
+      };
+    },
+
     async signOut() {
       if (!client) return;
+      try { if (window.KanawaAndroid && window.KanawaAndroid.stopTracking) window.KanawaAndroid.stopTracking(); } catch (e) { }
       const result = await client.auth.signOut();
       if (result.error) throw result.error;
       context = null;
