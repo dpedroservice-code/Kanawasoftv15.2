@@ -93,6 +93,14 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
     markerLayer = root.L.layerGroup().addTo(map);
+    refreshMarkers(records);
+    root.setTimeout(function () { if (map) map.invalidateSize(); }, 100);
+    return true;
+  }
+
+  function refreshMarkers(records) {
+    if (!map || !markerLayer) return false;
+    markerLayer.clearLayers();
     (Array.isArray(records) ? records : []).forEach(function (record) {
       if (record.coordinates_valid !== true) return;
       try {
@@ -103,9 +111,8 @@
           '<br>' + escapeHtml(record.ultimaAtualizacao || '')
         );
         marker.addTo(markerLayer);
-      } catch (e) { /* Ignora apenas coordenadas inválidas. */ }
+      } catch (e) { /* Ignora coordenadas inválidas. */ }
     });
-    root.setTimeout(function () { if (map) map.invalidateSize(); }, 100);
     return true;
   }
 
@@ -172,6 +179,7 @@
     geocode: geocode,
     calculateRoute: calculateRoute,
     mountMap: mountMap,
+    refreshMarkers: refreshMarkers,
     updateCurrentPosition: updateCurrentPosition,
     showRoute: showRoute,
     startWatch: startWatch,
