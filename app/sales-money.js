@@ -14,7 +14,7 @@
 
   function scaledInteger(value, scale, label) {
     const text = String(value).trim();
-    const match = /^([+-]?)(\d+)(?:\\.(\d+))?$/.exec(text);
+    const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(text);
     if (!match) throw new Error((label || 'Valor') + ' inválido.');
     const fraction = match[3] || '';
     if (fraction.length > scale) throw new Error((label || 'Valor') + ' deve ter no máximo ' + scale + ' casas decimais.');
