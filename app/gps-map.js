@@ -42,10 +42,17 @@
     }
   }
 
+  function coordinates(item) {
+    const lat = Number(item.lat !== undefined ? item.lat : item.latitude);
+    const lng = Number(item.lng !== undefined ? item.lng : (item.longitude !== undefined ? item.longitude : item.lon));
+    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+  }
+
   function addVehicleMarker(item) {
-    if (!map || !window.L || !Number.isFinite(Number(item.lat)) || !Number.isFinite(Number(item.lng))) return;
-    const key = String(item.id || item.veiculo || (item.lat + ':' + item.lng));
-    const latlng = [Number(item.lat), Number(item.lng)];
+    const point = coordinates(item);
+    if (!map || !window.L || !point) return;
+    const key = String(item.id || item.veiculo || (point[0] + ':' + point[1]));
+    const latlng = point;
     const label = String(item.veiculo || 'Dispositivo');
     let marker = vehicleMarkers.get(key);
     if (marker) marker.setLatLng(latlng);
@@ -64,10 +71,10 @@
   window.renderFrotaGPS = async function () {
     const rows = await getData('gpsTracking') || [];
     const valid = rows.filter(function (item) {
-      return item.coordinates_valid === true && Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng));
+      return item.coordinates_valid !== false && coordinates(item) !== null;
     });
     const tableRows = rows.map(function (item) {
-      return ['<strong>' + esc(item.veiculo || 'Dispositivo') + '</strong>', esc(item.lat || '—'), esc(item.lng || '—'),
+      return ['<strong>' + esc(item.veiculo || 'Dispositivo') + '</strong>', esc(item.lat !== undefined ? item.lat : (item.latitude || '—')), esc(item.lng !== undefined ? item.lng : (item.longitude || item.lon || '—')),
         esc(item.location_source === 'device' ? 'GPS do dispositivo' : 'Manual'), fmtDT(item.ultimaAtualizacao),
         item.coordinates_valid === true ? '<span class="badge badge-success">Válida</span>' : '<span class="badge badge-warning">A verificar</span>'];
     });
@@ -95,6 +102,14 @@
       const streets = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap contributors'
+      });
+      let satelliteFailed = false;
+      satellite.on('tileerror', function () {
+        if (satelliteFailed) return;
+        satelliteFailed = true;
+        if (map && map.hasLayer(satellite)) map.removeLayer(satellite);
+        streets.addTo(map);
+        mapStatus('A camada de satélite não respondeu; foi activado o mapa de ruas.', true);
       });
       window.L.control.layers({ 'Satélite': satellite, 'Mapa de ruas': streets }).addTo(map);
     } else {
