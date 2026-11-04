@@ -3360,8 +3360,8 @@ async function persistirPontoGPS(position) {
 }
 
 async function iniciarRastreamentoGPS() {
-  if (!podeFazer('editar', 'frota-gps') && !podeFazer('criar', 'frota-gps')) {
-    toast('Sem permissão para criar ou atualizar posições da frota.', 'error'); return;
+  if (!podeFazer('editar', 'frota-gps')) {
+    toast('É necessária a permissão de edição do módulo Frota GPS para iniciar e atualizar o rastreamento.', 'error'); return;
   }
   if (!window.KanawaMaps) { toast('Motor de mapas não carregado.', 'error'); return; }
   if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
@@ -3429,6 +3429,7 @@ async function iniciarRastreamentoGPS() {
   } catch (error) { toast(error.message, 'warning'); }
 }
 async function pararRastreamentoGPS() {
+  if (!podeFazer('editar', 'frota-gps')) { toast('Sem permissão para parar o rastreamento da frota.', 'error'); return; }
   if (window.KanawaAndroid && typeof window.KanawaAndroid.stopTracking === 'function') {
     try {
       const response = await window.KanawaAndroid.stopTracking();
