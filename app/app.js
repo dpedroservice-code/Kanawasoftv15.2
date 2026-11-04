@@ -2246,16 +2246,78 @@ async function renderUsuarios() {
         esc(member.email || '-'),
         badge(roleLabels[member.role] || member.role, 'primary'),
         badge(statusLabel, statusColor),
-        '<small>' + Object.keys(member.permissions || {}).length + ' módulos autorizados</small>'
+        '<small>' + Object.keys(member.permissions || {}).length + ' módulos autorizados</small>',
+        (member.role !== 'owner' && member.role !== 'admin')
+          ? '<button class="btn btn-sm btn-primary" onclick="editarPermissoesUsuario(\'' + esc(member.user_id) + '\')"><i class="fas fa-user-shield"></i> Acessos</button>'
+          : '<span class="badge badge-secondary">Protegido</span>'
       ];
     });
     return header('Equipa e permissões', members.length + ' membros', 'var(--danger)',
       '<button class="btn btn-success" onclick="abrirModalUsuario()"><i class="fas fa-envelope"></i> Convidar utilizador</button>', 'fa-user-shield') +
       '<div class="card"><p style="margin-bottom:12px;color:var(--text-muted)">As permissões são aplicadas no servidor por empresa e por módulo. Os utilizadores recebem um convite por email; não crie nem guarde senhas neste dispositivo.</p>' +
-      table(['Nome', 'Email', 'Perfil', 'Estado', 'Permissões'], rows) + '</div>';
+      table(['Nome', 'Email', 'Perfil', 'Estado', 'Permissões', 'Ações'], rows) + '</div>';
   } catch (error) {
     return header('Equipa e permissões', 'Não foi possível carregar os membros', 'var(--danger)', '', 'fa-user-shield') +
       '<div class="card"><p>' + esc(error.message || 'Erro ao consultar a equipa.') + '</p></div>';
+  }
+}
+const TEAM_PERMISSION_ACTIONS = [
+  ['ver','Ver'],['criar','Criar'],['editar','Editar'],['excluir','Excluir'],
+  ['aprovar','Aprovar'],['cancelar','Cancelar'],['exportar','Exportar'],['importar','Importar'],['configurar','Configurar']
+];
+const TEAM_RESERVED_MODULES = new Set(['usuarios','auditoria','config','modulos','licencas','integracoes']);
+async function editarPermissoesUsuario(userId) {
+  if (!window.KanawaCloud || !KanawaCloud.ready || !podeAcessar('usuarios')) {
+    toast('Apenas o administrador pode configurar acessos.', 'error');
+    return;
+  }
+  try {
+    const members = await KanawaCloud.listCompanyMembers();
+    const member = members.find(item => item.user_id === userId);
+    if (!member || ['owner','admin'].includes(member.role)) {
+      toast('Este acesso está protegido ou o utilizador não foi encontrado.', 'warning');
+      return;
+    }
+    const grants = member.permissions || {};
+    const modules = MENU.filter(module => !TEAM_RESERVED_MODULES.has(module.id));
+    const roleOptions = [['manager','Gerente'],['operator','Operador'],['cashier','Caixa'],['accountant','Contabilista'],['viewer','Visualizador']];
+    const roleSelect = roleOptions.map(([value,label]) => '<option value="' + value + '"' + (member.role === value ? ' selected' : '') + '>' + label + '</option>').join('');
+    const moduleControls = modules.map(module => {
+      const current = new Set(Array.isArray(grants[module.id]) ? grants[module.id] : []);
+      const controls = TEAM_PERMISSION_ACTIONS.map(([action,label]) =>
+        '<label class="team-permission-action"><input type="checkbox" data-access-module="' + esc(module.id) + '" data-access-action="' + action + '"' + (current.has(action) ? ' checked' : '') + '> ' + label + '</label>'
+      ).join('');
+      return '<details class="team-permission-module"><summary><strong>' + esc(module.label) + '</strong><span>' + current.size + ' ações</span></summary><div class="team-permission-actions">' + controls + '</div></details>';
+    }).join('');
+    openModal('Permissões de ' + (member.full_name || member.email || 'utilizador'),
+      '<div class="form-grid"><div class="form-group"><label>Perfil</label><select id="teamAccessRole">' + roleSelect + '</select></div>' +
+      '<div class="form-group"><label>Estado da conta</label><select id="teamAccessStatus"><option value="active"' + (member.status === 'active' ? ' selected' : '') + '>Ativo</option><option value="suspended"' + (member.status === 'suspended' ? ' selected' : '') + '>Suspenso</option></select></div></div>' +
+      '<div class="card"><div class="card-header"><strong>Módulos e ações autorizadas</strong><span class="badge badge-info">' + modules.length + ' módulos</span></div>' +
+      '<p style="color:var(--text-muted);font-size:.82rem;margin-bottom:10px">Marque apenas as ações necessárias. Os módulos administrativos e as integrações são reservados ao administrador.</p>' +
+      '<div class="team-permission-list">' + moduleControls + '</div></div>' +
+      '<button class="btn btn-primary btn-block" onclick="guardarPermissoesUsuario(\'' + esc(userId) + '\')"><i class="fas fa-save"></i> Guardar permissões</button>');
+  } catch (error) {
+    toast(error.message || 'Não foi possível carregar as permissões.', 'error');
+  }
+}
+async function guardarPermissoesUsuario(userId) {
+  const role = $('teamAccessRole') && $('teamAccessRole').value;
+  const status = $('teamAccessStatus') && $('teamAccessStatus').value;
+  if (!role || !status) return toast('Confirme o perfil e o estado.', 'warning');
+  const permissions = {};
+  document.querySelectorAll('[data-access-module][data-access-action]:checked').forEach(input => {
+    const moduleId = input.dataset.accessModule;
+    const action = input.dataset.accessAction;
+    if (!permissions[moduleId]) permissions[moduleId] = [];
+    if (!permissions[moduleId].includes(action)) permissions[moduleId].push(action);
+  });
+  try {
+    await KanawaCloud.updateTeamMemberAccess({ user_id: userId, role, status, permissions });
+    toast('Permissões guardadas no PostgreSQL. O utilizador recebe as alterações na próxima atualização da sessão.', 'success');
+    closeModal();
+    openModule('usuarios');
+  } catch (error) {
+    toast(error.message || 'Não foi possível guardar as permissões.', 'error');
   }
 }
 function abrirModalUsuario() {
