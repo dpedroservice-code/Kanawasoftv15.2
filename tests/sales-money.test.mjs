@@ -84,3 +84,34 @@ test('rejects products marked inactive even when stock is positive', () => {
   const { validateCartStock } = require('../app/sales-money.js');
   assert.throws(() => validateCartStock([{ id: 7, qty: 1 }], [{ id: 7, nome: 'Produto', estoque: 4, ativo: false }]), /não existe, está inativo/);
 });
+
+test('uses integer minor units for fractional quantities without floating point drift', () => {
+  const { normalizeSale } = require('../app/sales-money.js');
+  const result = normalizeSale(sale({
+    itens: [{ id: 7, nome: 'Produto', preco: 100.01, qty: 0.333, subtotal: 33.30 }],
+    subtotal: 33.30,
+    descontoValor: 0,
+    iva: 0,
+    total: 33.30,
+    valorRecebido: 33.30
+  }));
+  assert.equal(result.items[0].line_total, 33.30);
+  assert.equal(result.sale.total, 33.30);
+  assert.equal(result.sale.change_amount, 0);
+});
+
+test('rejects monetary values with more than two decimal places instead of silently changing them', () => {
+  assert.throws(() => normalizeSale(sale({ total: 216.825 })), /Total deve ter no máximo 2 casas decimais/);
+});
+
+test('rejects quantities with more than three decimal places', () => {
+  assert.throws(() => normalizeSale(sale({
+    itens: [{ id: 7, nome: 'Produto', preco: 100.10, qty: 2.0001, subtotal: 200.20 }]
+  })), /Quantidade deve ter no máximo 3 casas decimais/);
+});
+
+test('rejects a line subtotal that differs by one cent', () => {
+  assert.throws(() => normalizeSale(sale({
+    itens: [{ id: 7, nome: 'Produto', preco: 100.10, qty: 2, subtotal: 200.19 }]
+  })), /Artigo inválido/);
+});
