@@ -26,3 +26,13 @@ test('merge preserva posições com envio offline pendente', () => {
   assert.equal(result.changedCount, 0);
   assert.equal(result.records[0].lat, -8.7);
 });
+
+test('mantém IDs únicos por dispositivo mesmo com contadores locais iguais', () => {
+  const remote = [
+    { id: 'gps-device-a', lat: -8.8, lng: 13.2, ultimaAtualizacao: '2026-11-04T10:00:00Z' },
+    { id: 'gps-device-b', lat: -8.9, lng: 13.3, ultimaAtualizacao: '2026-11-04T10:00:00Z' }
+  ];
+  const result = sync.merge([], remote, []);
+  assert.equal(result.changedCount, 2);
+  assert.equal(result.records.length, 2);
+});
