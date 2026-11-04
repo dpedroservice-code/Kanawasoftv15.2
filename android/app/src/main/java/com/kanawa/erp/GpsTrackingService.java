@@ -36,6 +36,7 @@ public final class GpsTrackingService extends Service implements LocationListene
     private static final String CHANNEL_ID = "kanawa_gps_tracking";
     private static final int NOTIFICATION_ID = 1541;
     private final ExecutorService network = Executors.newSingleThreadExecutor();
+    private final Object configLock = new Object();
     private LocationManager locationManager;
     private JSONObject config;
     private volatile String lastMessage = "A aguardar posição GPS";
@@ -56,7 +57,7 @@ public final class GpsTrackingService extends Service implements LocationListene
         try {
             String saved = SecureStore.loadSession(this);
             if (saved == null) throw new IllegalStateException("Sessão GPS segura não encontrada.");
-            config = new JSONObject(saved);
+            synchronized (configLock) { config = new JSONObject(saved); }
             if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 stopSelf(startId);
                 return START_NOT_STICKY;
@@ -110,23 +111,28 @@ public final class GpsTrackingService extends Service implements LocationListene
             point.put("heading", location.hasBearing() ? location.getBearing() : JSONObject.NULL);
             point.put("timestamp", java.time.Instant.ofEpochMilli(location.getTime()).toString());
 
-            JSONArray trail = config.optJSONArray("trail");
-            if (trail == null) trail = new JSONArray();
-            trail.put(new JSONObject().put("lat", point.getDouble("lat"))
-                    .put("lng", point.getDouble("lng"))
-                    .put("accuracy", point.opt("accuracy"))
-                    .put("timestamp", point.getString("timestamp")));
-            while (trail.length() > 100) {
-                JSONArray trimmed = new JSONArray();
-                for (int i = 1; i < trail.length(); i++) trimmed.put(trail.get(i));
-                trail = trimmed;
+            final JSONObject snapshot;
+            synchronized (configLock) {
+                JSONObject next = new JSONObject(config.toString());
+                JSONArray trail = next.optJSONArray("trail");
+                if (trail == null) trail = new JSONArray();
+                trail.put(new JSONObject().put("lat", point.getDouble("lat"))
+                        .put("lng", point.getDouble("lng"))
+                        .put("accuracy", point.opt("accuracy"))
+                        .put("timestamp", point.getString("timestamp")));
+                while (trail.length() > 100) {
+                    JSONArray trimmed = new JSONArray();
+                    for (int i = 1; i < trail.length(); i++) trimmed.put(trail.get(i));
+                    trail = trimmed;
+                }
+                next.put("trail", trail);
+                next.put("lastPoint", point);
+                config = next;
+                SecureStore.saveSession(this, next.toString());
+                snapshot = new JSONObject(next.toString());
             }
-            config.put("trail", trail);
-            config.put("lastPoint", point);
-            SecureStore.saveSession(this, config.toString());
             lastMessage = "Última posição " + point.getString("timestamp");
             updateNotification();
-            final JSONObject snapshot = new JSONObject(config.toString());
             final JSONObject position = new JSONObject(point.toString());
             network.execute(() -> uploadPosition(snapshot, position, "active"));
         } catch (Exception error) {
@@ -172,8 +178,10 @@ public final class GpsTrackingService extends Service implements LocationListene
             if (response == 401) {
                 JSONObject refreshed = refreshSession(session);
                 if (refreshed != null) {
-                    config = refreshed;
-                    SecureStore.saveSession(this, refreshed.toString());
+                    synchronized (configLock) {
+                        config = refreshed;
+                        SecureStore.saveSession(this, refreshed.toString());
+                    }
                     response = sendUpsert(refreshed, row);
                 }
             }
@@ -255,20 +263,28 @@ public final class GpsTrackingService extends Service implements LocationListene
     private void stopAndSync(int startId) {
         try { if (locationManager != null) locationManager.removeUpdates(this); } catch (SecurityException ignored) {}
         SecureStore.setActive(this, false);
-        if (config == null) {
-            try {
-                String saved = SecureStore.loadSession(this);
-                if (saved != null) config = new JSONObject(saved);
-            } catch (Exception ignored) {}
-        }
-        if (config == null) {
+        JSONObject snapshot;
+        try {
+            synchronized (configLock) {
+                if (config == null) {
+                    String saved = SecureStore.loadSession(this);
+                    if (saved != null) config = new JSONObject(saved);
+                }
+                if (config == null) {
+                    stopForeground(true);
+                    stopSelf(startId);
+                    return;
+                }
+                snapshot = new JSONObject(config.toString());
+            }
+        } catch (Exception error) {
             stopForeground(true);
             stopSelf(startId);
             return;
         }
         try {
-            JSONObject point = config.has("lastPoint") ? config.getJSONObject("lastPoint") : new JSONObject();
-            JSONObject snapshot = new JSONObject(config.toString());
+            JSONObject point = snapshot.has("lastPoint") ? snapshot.getJSONObject("lastPoint") : new JSONObject();
+            point.put("timestamp", java.time.Instant.now().toString());
             network.execute(() -> {
                 uploadPosition(snapshot, point, "stopped");
                 stopForeground(true);
