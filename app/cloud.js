@@ -316,13 +316,16 @@
         }
       }
 
-      // Finalized POS sales use a shared cent-accurate contract before the atomic database transaction.
+      // A finalização da venda e o espelho do módulo são gravados numa única
+      // transação PostgreSQL quando a migração v15.4.3 está instalada.
       let saleFinalized = false;
+      let saleHistoryAtomic = false;
       if (store === 'vendas' && item.status === 'finalizada' && !(options && options.skipSaleFinalize)) {
         if (!window.KanawaSales || typeof window.KanawaSales.normalizeSale !== 'function') {
           throw new Error('Validador de vendas não carregado. Atualize a aplicação.');
         }
         const normalized = window.KanawaSales.normalizeSale(Object.assign({}, item, { id: id }));
+        normalized.sale.record_payload = Object.assign({}, item, { id: id, status: 'finalizada' });
         const finalizeSale = await client.rpc('ks_finalize_sale', {
           p_company_id: context.company.id,
           p_sale: normalized.sale,
@@ -330,6 +333,11 @@
         });
         if (finalizeSale.error) throw finalizeSale.error;
         saleFinalized = true;
+        saleHistoryAtomic = !!(finalizeSale.data && finalizeSale.data.history_atomic === true);
+        // The RPC already persisted the finalized sale record, payment, stock
+        // decrement, movement ledger and usage event atomically. Do not issue a
+        // second write that could overwrite the committed financial snapshot.
+        if (saleHistoryAtomic) return true;
       }
 
       const result = await client
