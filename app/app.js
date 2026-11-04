@@ -7,6 +7,7 @@ let API_ONLINE = false;
 let setupStep = 1;
 let currentModule = 'dashboard';
 let scanner = null, scannerActive = false, scannerCallback = null;
+let lastScannerValue = '', lastScannerAt = 0;
 let syncTimer = null;
 let pdvState = { screen: 1, carrinho: [], cliente: { nome: 'Cliente Anônimo', nif: '', telefone: '' }, pagamento: 'dinheiro', desconto: 0, valorRecebido: 0, aplicarIVA: true, regime: 'geral', observacoes: '' };
 let pdvCache = { produtos: [], favoritos: JSON.parse(localStorage.getItem('kanawa_favoritos') || '[]'), ts: 0 };
@@ -81,7 +82,7 @@ function gerarAssinatura(v) { const d = (v.numeroFatura || '') + '|' + (v.total 
 
 /* ====== INDEXEDDB ====== */
 const DB_STORES = [
-  'produtos','clientes','fornecedores','vendas','compras','estoque','contasReceber','contasPagar','funcionarios','categorias','projetos','tarefas','ativos','frotas','ordensServico','notificacoes','documentos','mensagens','cursos','leads','campanhas','eventos','devolucoes','faturas','pagamentos','empresas','usuarios','movimentacoesEstoque','promocoes','ecommerce','auditoria','orcamentos','transportadoras','contratos','aprovacoes','sincronizacao','tickets','dispositivos','_sync_queue',
+  'produtos','clientes','fornecedores','vendas','compras','estoque','contasReceber','contasPagar','funcionarios','categorias','projetos','tarefas','ativos','frotas','ordensServico','notificacoes','documentos','mensagens','cursos','alunos','aulasFormacao','avaliacoesFormacao','presencasFormacao','modelosCertificado','leads','campanhas','eventos','devolucoes','faturas','pagamentos','empresas','usuarios','movimentacoesEstoque','promocoes','ecommerce','auditoria','orcamentos','transportadoras','contratos','aprovacoes','sincronizacao','tickets','dispositivos','_sync_queue',
   'producao','ordensProducao','mrp','boms','custosProducao','controleQualidade','planosProducao','planoContas','budgets','forecasts','conciliacoes','transacoesBancarias','previsoesVendas','tendencias','folhasPagamento','turnos','ferias','vagas','candidatos','desempenhoRH','beneficios','planosCarreira','onboarding','pontoDigital','rescisoes','automacoes','scoreLeads','campanhasMarketing','segmentacoes','cupons','fidelidade','ganttProjetos','timesheets','manutencoes','ordensManutencao','garantias','pecasEstoque','checklistsInspecao','calendarioManutencoes','gpsTracking','abastecimentos','multas','tecnicos','roteirizacao','etiquetas','transferencias','inventarios','lotes','rastreios','recebimentos','ecommerceProdutos','ecommerceCarrinhos','ecommercePedidos','avaliacoes','pagamentosEcommerce','vendasConsignadas','tabelasPrecos','assinaturasDigitais','documentosFiscais','certificacoes','quizzes','mensagensChat','mensagensWhatsApp','eventosCalendar','unidades','servicos','clientesPortal','acessos','politicasSenha','tentativasLogin','sessoes','sms2FA','integracoesAGT','ivas','irts','backups','backupsAgendados','backupsNuvem','audiobooks','ddgHistorico','bingHistorico','dashboardsCustom','modulosPersonalizados','departamentos','frequencias','feriasFuncionarios','pagamentosFuncionarios','motoristas','manutencoesAtivos','depreciacoes','historicoOS','contatosWhatsApp','templatesWhatsApp','carrinhosSalvos','feedbacks','logsSeguranca','seguranca','migracoes','tarefasProjetos','membrosProjetos','atividadesProjetos','gruposUsuarios','config','armazens'
 ];
 let lastGeneratedRecordId = 0;
@@ -91,7 +92,7 @@ function nextGeneratedRecordId() {
   return lastGeneratedRecordId;
 }
 const DB = {
-  name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES,
+  name: 'kanawa_erp_v15', version: 9, db: null, stores: DB_STORES,
   init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; res(this.db); }; req.onerror = e => rej(e.target.error); }); },
   _tx(s, m) { return this.db.transaction(s, m || 'readonly').objectStore(s); },
   add(s, i) { if (s !== '_sync_queue' && i && (i.id === undefined || i.id === null)) i.id = nextGeneratedRecordId(); return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
@@ -173,14 +174,20 @@ async function saveData(store, item, options) {
 }
 
 async function deleteData(store, id) {
+  const pending = await DB.getAll('_sync_queue');
+  for (const item of pending) if (item.entity === store && String(item.payload && item.payload.id) === String(id)) await DB.del('_sync_queue', item.id);
   await DB.del(store, id);
   if (window.KanawaCloud && !KanawaCloud.isLocalOnly(store)) {
     if (KanawaCloud.ready) {
-      try { await KanawaCloud.deleteRecord(store, id); }
-      catch (e) { await queueSync(store, 'delete', { id: id }); }
-    } else {
-      await queueSync(store, 'delete', { id: id });
-    }
+      try {
+        await KanawaCloud.deleteRecord(store, id);
+        const after = await DB.getAll('_sync_queue');
+        for (const item of after) if (item.entity === store && String(item.payload && item.payload.id) === String(id)) await DB.del('_sync_queue', item.id);
+      } catch (e) {
+        await queueSync(store, 'delete', { id: id });
+        throw new Error('Eliminação local feita; confirmação no servidor pendente: ' + (e.message || 'erro de ligação'));
+      }
+    } else await queueSync(store, 'delete', { id: id });
   }
 }
 
@@ -407,7 +414,7 @@ async function abrirCadastroEmpresa() {
 /* ====== PERMISSÕES ====== */
 const PERMISSOES = {
   admin: { modulos: '*', acoes: ['criar','editar','excluir','ver','configurar','aprovar','cancelar','exportar','importar'], verFinanceiro: true, excluir: true, configurar: true, descontoMax: 100 },
-  gerente: { modulos: ['dashboard','pdv','vendas','produtos','categorias','ecommerce','estoque','compras','clientes','fornecedores','crm','financeiro','fiscal','rh','projetos','tarefas','ativos','frota','os','documentos','relatorios','notificacoes','orcamentos','transportadoras','contratos','tickets','perfil','dispositivos','producao','ordens-producao','mrp','bom','custos-producao','controle-qualidade','planos-producao','logistica-roteirizacao','logistica-etiquetas','logistica-picking','logistica-armazens','logistica-crossdocking','logistica-rastreio','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos','ecommerce-produtos','ecommerce-pagamento','ecommerce-rastreio','rh-recrutamento','rh-desempenho','rh-beneficios','rh-onboarding','rh-ponto','rh-rescisao','rh-plano-carreira','projetos-tarefas','projetos-kanban','projetos-gantt','projetos-recursos','projetos-timesheet','projetos-custos','projetos-riscos','ativos-depreciacao','ativos-manutencao','ativos-garantia','frota-manutencao','frota-rotas','frota-gps','frota-combustivel','frota-documentos','frota-multas','frota-desempenho','os-manutencao','os-checklist','os-calendario','os-tecnicos','produtos-avaliacoes','tabelas-precos','vendas-consignadas','vendas-promocoes','clientes-fidelidade','clientes-cupons','portal-cliente','clientes-segmentacao','crm-pipeline','crm-automacao','crm-score','crm-remarketing','marketing-campanhas','marketing-analise','elearning-cursos','elearning-certificacoes','elearning-quizzes','elearning-progresso','elearning-relatorios','servicos'], acoes: ['criar','editar','ver','aprovar','cancelar','exportar'], verFinanceiro: true, excluir: false, configurar: false, descontoMax: 30 },
+  gerente: { modulos: ['dashboard','pdv','vendas','produtos','categorias','ecommerce','estoque','compras','clientes','fornecedores','crm','financeiro','fiscal','rh','projetos','tarefas','ativos','frota','os','documentos','relatorios','notificacoes','orcamentos','transportadoras','contratos','tickets','perfil','dispositivos','producao','ordens-producao','mrp','bom','custos-producao','controle-qualidade','planos-producao','logistica-roteirizacao','logistica-etiquetas','logistica-picking','logistica-armazens','logistica-crossdocking','logistica-rastreio','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos','ecommerce-produtos','ecommerce-pagamento','ecommerce-rastreio','rh-recrutamento','rh-desempenho','rh-beneficios','rh-onboarding','rh-ponto','rh-rescisao','rh-plano-carreira','projetos-tarefas','projetos-kanban','projetos-gantt','projetos-recursos','projetos-timesheet','projetos-custos','projetos-riscos','ativos-depreciacao','ativos-manutencao','ativos-garantia','frota-manutencao','frota-rotas','frota-gps','frota-combustivel','frota-documentos','frota-multas','frota-desempenho','os-manutencao','os-checklist','os-calendario','os-tecnicos','produtos-avaliacoes','tabelas-precos','vendas-consignadas','vendas-promocoes','clientes-fidelidade','clientes-cupons','portal-cliente','clientes-segmentacao','crm-pipeline','crm-automacao','crm-score','crm-remarketing','marketing-campanhas','marketing-analise','elearning-cursos','elearning-alunos','elearning-modelos','integracoes-api','pagamentos-integracoes','elearning-certificacoes','elearning-quizzes','elearning-progresso','elearning-relatorios','servicos'], acoes: ['criar','editar','ver','aprovar','cancelar','exportar'], verFinanceiro: true, excluir: false, configurar: false, descontoMax: 30 },
   operador: { modulos: ['dashboard','pdv','vendas','produtos','clientes','estoque','notificacoes','perfil','producao','ordens-producao','controle-qualidade','os','os-manutencao','os-checklist','os-calendario','projetos-tarefas','projetos-kanban','tarefas'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 10 },
   caixa: { modulos: ['pdv','vendas','clientes','notificacoes','perfil','ecommerce-vitrine','ecommerce-carrinho','ecommerce-pedidos'], acoes: ['criar','ver'], verFinanceiro: false, excluir: false, configurar: false, descontoMax: 5 },
   contabilista: { modulos: ['dashboard','vendas','compras','clientes','fornecedores','financeiro','fiscal','relatorios','perfil','notificacoes'], acoes: ['ver'], verFinanceiro: true, excluir: false, configurar: false, descontoMax: 0 },
@@ -575,7 +582,7 @@ async function openModule(id) {
     'portal-cliente': renderPortalCliente, 'clientes-segmentacao': renderClientesSegmentacao,
     'crm-pipeline': renderCRMPipeline, 'crm-automacao': renderCRMAutomacao, 'crm-score': renderCRMScore, 'crm-remarketing': renderCRMRemarketing,
     'marketing-campanhas': renderMarketingCampanhas, 'marketing-analise': renderMarketingAnalise,
-    'elearning-cursos': renderElearningCursos, 'elearning-certificacoes': renderElearningCertificacoes,
+    'elearning-cursos': renderElearningCursos, 'elearning-alunos': renderElearningAlunos, 'elearning-modelos': renderElearningModelos, 'integracoes-api': renderIntegracoesApi, 'pagamentos-integracoes': renderPagamentosIntegracoes, 'elearning-certificacoes': renderElearningCertificacoes,
     'elearning-quizzes': renderElearningQuizzes, 'elearning-progresso': renderElearningProgresso, 'elearning-relatorios': renderElearningRelatorios,
     servicos: renderServicos
   };
@@ -1037,7 +1044,8 @@ async function renderPDV() {
 }
 
 function pdvIrParaTela(n) {
-  $$('.pdv-screen').forEach(el => el.classList.remove('active'));
+  if (n >= 2 && (!Array.isArray(pdvState.carrinho) || pdvState.carrinho.length === 0)) { toast('Adicione pelo menos um produto antes de avançar para o carrinho.', 'warning'); return; }
+  $('.pdv-screen').forEach(el => el.classList.remove('active'));
   const t = $('pdvScreen' + n); if (t) t.classList.add('active');
   $$('.pdv-breadcrumb .step').forEach(el => { const s = parseInt(el.dataset.step); el.classList.toggle('active', s === n); el.classList.toggle('done', s < n); });
   pdvState.screen = n;
@@ -1174,13 +1182,17 @@ async function abrirScanner(cb) {
   } catch (err) { if (el) el.innerHTML = '<div style="text-align:center;padding:30px;color:#fff"><i class="fas fa-exclamation-triangle" style="font-size:2.5rem;color:#f59e0b"></i><p style="margin-top:12px">Câmera indisponível</p></div>'; }
 }
 async function processarCodigoLido(codigo) {
+  codigo = String(codigo || '').trim();
   if (!codigo) return;
+  const scanNow = Date.now();
+  if (codigo === lastScannerValue && scanNow - lastScannerAt < 1100) return;
+  lastScannerValue = codigo; lastScannerAt = scanNow;
   try { const c = new (window.AudioContext || window.webkitAudioContext)(); const o = c.createOscillator(); const g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = 1200; g.gain.value = 0.1; o.start(); setTimeout(() => { o.stop(); c.close(); }, 100); } catch (e) { }
   if (navigator.vibrate) navigator.vibrate(100);
   const produtos = await carregarCachePDV();
-  const prod = produtos.find(p => p.codigoBarras === codigo || p.codigo === codigo);
-  if (prod) { if (scannerCallback) { scannerCallback(prod); fecharScanner(); return; } pdvSelecionarProduto(prod.id); setTimeout(fecharScanner, 1200); }
-  else { toast('⚠️ Não cadastrado: ' + codigo, 'warning'); setTimeout(() => { fecharScanner(); cadastroRapidoProduto(codigo); }, 800); }
+  const prod = produtos.find(p => [p.codigoBarras,p.codigo,p.referencia,p.codigoReferencia,p.sku].some(v => String(v || '').trim().toLowerCase() === codigo.toLowerCase()));
+  if (prod) { if (scannerCallback) { scannerCallback(prod); fecharScanner(); return; } await pdvSelecionarProduto(prod.id); toast('Produto adicionado. Pode ler o próximo código.', 'success'); }
+  else { toast('Código/referência não cadastrado: ' + codigo + '. Cadastre o produto antes de vender.', 'warning'); }
 }
 function fecharScanner() { const modal = $('scannerModal'); if (modal) modal.classList.remove('active'); if (scanner && scannerActive) { scanner.stop().then(() => { scannerActive = false; scanner = null; scannerCallback = null; }).catch(() => { scannerActive = false; scanner = null; }); } }
 async function buscarPorCodigo(c) { if (c) await processarCodigoLido(c); }
@@ -1892,7 +1904,8 @@ async function renderConfig() {
     '<span style="font-size:.8rem;color:var(--text-muted);padding:10px">Ligação configurada pela D.PEDRO SOLUÇÕES</span>' +
     '<button class="btn btn-primary" onclick="testarAPI()"><i class="fas fa-check"></i> Testar</button>' +
     '<button class="btn btn-info" onclick="syncNow(true)"><i class="fas fa-sync"></i> Sincronizar Agora</button></div></div>' +
-    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-database"></i> Cache local (IndexedDB) + PostgreSQL central</h3></div>' + table(['Coleção', 'Registros', 'Ações'], countRows) + '</div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-plug"></i> Integrações e apoio</h3></div><p style="color:var(--text-muted);margin-bottom:12px">Configure as ligações externas e consulte o manual de utilização.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" onclick="openModule(\'integracoes-api\')">Chaves de API / Loja</button><button class="btn btn-info" onclick="openModule(\'pagamentos-integracoes\')">Métodos de pagamento</button><a class="btn btn-secondary" href="manual.html" target="_blank">Manual de Apoio</a></div></div>' +
+     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-database"></i> Cache local (IndexedDB) + PostgreSQL central</h3></div>' + table(['Coleção', 'Registros', 'Ações'], countRows) + '</div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-tools"></i> Ferramentas</h3></div>' +
     '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
     '<button class="btn btn-warning" onclick="recarregarDemo()"><i class="fas fa-seedling"></i> Dados Demo</button>' +
@@ -1953,11 +1966,15 @@ async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? '✅
 async function limparColecao(s) { if (!confirm('Limpar ' + s + '?')) return; await DB.clear(s); toast('Limpo', 'info'); openModule('config'); }
 async function recarregarDemo() { if (!confirm('Carregar demo?')) return; await seedDemo(); pdvCache.ts = 0; toast('Demo carregado', 'success'); openModule('config'); }
 async function resetTotal() {
-  if (!confirm('⚠️ APAGAR TODOS OS DADOS?')) return;
-  if (!confirm('Confirme novamente')) return;
-  for (const s of DB.stores) { try { await DB.clear(s); } catch (e) { } }
-  localStorage.clear();
-  location.reload();
+  if (!confirm('⚠️ REPOR TODOS OS DADOS DE NEGÓCIO DA EMPRESA? Produtos, stock, vendas, clientes, registos e formação serão eliminados definitivamente da nuvem e deste dispositivo. A conta, empresa principal, utilizadores, licença e configurações fiscais serão mantidos.')) return;
+  if (!confirm('ÚLTIMA CONFIRMAÇÃO: exportou um backup e quer mesmo apagar os dados de negócio da empresa em todos os dispositivos?')) return;
+  if (!window.KanawaCloud || !KanawaCloud.ready || typeof KanawaCloud.resetCompanyBusinessData !== 'function') { toast('Reposição bloqueada: ligue a conta à base central antes de apagar dados.', 'error'); return; }
+  try {
+    await KanawaCloud.resetCompanyBusinessData();
+    for (const s of DB.stores) { try { await DB.clear(s); } catch (e) { } }
+    localStorage.removeItem('kanawa_logo_temp'); localStorage.removeItem('kanawa_favoritos');
+    location.reload();
+  } catch (error) { toast('A reposição não foi concluída: ' + (error.message || 'erro no servidor'), 'error'); }
 }
 
 /* ====== SETUP / AUTH ====== */
