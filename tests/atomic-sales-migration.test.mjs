@@ -43,3 +43,8 @@ test('migration advertises idempotency enforcement so clients can reject legacy 
   const cloud = readFileSync(new URL('../app/cloud.js', import.meta.url), 'utf8');
   assert.ok(cloud.includes('duplicate === true') && cloud.includes('idempotency_enforced !== true'));
 });
+
+test('sync status cannot report success while an item remains pending after an error', () => {
+  const app = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
+  assert.ok(app.includes("console.warn('Fila de sincronização aguardando:', item.entity, e);\n      throw e;"));
+});
