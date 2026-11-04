@@ -12,9 +12,9 @@ test('release metadata is standardized on 15.3.0', () => {
   assert.equal(pkg.version, '15.3.0');
   assert.equal(lock.version, '15.3.0');
   assert.equal(lock.packages[''].version, '15.3.0');
-  assert.match(html, /Kanawa Soft ERP v1\.2\.1/);
-  assert.match(app, /APP_VERSION = '1\.2\.1'/);
-  assert.doesNotMatch(html, /v15\.(?:2|3|4|12)/);
+  assert.match(html, /Kanawa Soft ERP v15\.3/);
+  assert.match(app, /APP_VERSION = '15\.3\.0'/);
+  assert.doesNotMatch(html, /v1\.2\.1/);
 });
 
 test('tenant switch fails closed and clears stale IndexedDB data and sync queue', () => {
