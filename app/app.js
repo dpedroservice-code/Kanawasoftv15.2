@@ -3407,7 +3407,7 @@ async function iniciarRastreamentoGPS() {
         deviceLabel: existing.deviceLabel || 'Dispositivo Android',
         vehicleLabel: existing.veiculo || 'Dispositivo móvel'
       });
-      const response = JSON.parse(window.KanawaAndroid.startTracking(JSON.stringify(config)) || '{}');
+      const response = await window.KanawaAndroid.startTracking(config);
       if (!response.accepted) throw new Error(response.message || 'O Android não aceitou o pedido de rastreamento.');
       const status = $('kanawaGpsStatus');
       if (status) status.textContent = 'Aguardando autorização de localização do Android. O serviço nativo mantém uma notificação enquanto rastreia.';
@@ -3431,7 +3431,7 @@ async function iniciarRastreamentoGPS() {
 async function pararRastreamentoGPS() {
   if (window.KanawaAndroid && typeof window.KanawaAndroid.stopTracking === 'function') {
     try {
-      const response = JSON.parse(window.KanawaAndroid.stopTracking() || '{}');
+      const response = await window.KanawaAndroid.stopTracking();
       if (!response.accepted) throw new Error(response.message || 'Não foi possível parar o serviço Android.');
       kanawaGpsWatchActive = false;
       const status = $('kanawaGpsStatus');
