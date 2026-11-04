@@ -1,46 +1,40 @@
-# Kanawa Soft ERP
+# Kanawa Soft ERP — versão de produção 1.1.0
 
-Aplicação web Kanawa Soft. A interface publicada é servida a partir da pasta `app/`.
+Aplicação web Kanawa Soft. A interface publicada é servida a partir da pasta \`app/\`.
 
-## Base de dados central
+## Arquitectura e dados
 
-A versão Cloud utiliza Supabase Auth e PostgreSQL:
+- IndexedDB mantém a cache local e a fila de sincronização.
+- Supabase Auth autentica os utilizadores.
+- PostgreSQL guarda os dados centrais.
+- As tabelas de negócio usam \`company_id\` e Row Level Security (RLS), com verificação de associação e permissões no servidor.
+- Cada empresa fica isolada das restantes. O acesso entre empresas só deve existir através de uma associação de filial e permissões explícitas; não se deve confiar apenas em filtros do frontend.
+- A arquitectura usa tabelas partilhadas com isolamento por empresa, em vez de criar tabelas físicas ou bases de dados independentes para cada registo. Isso mantém as migrações, backups e regras de segurança consistentes.
 
-- Autenticação de utilizadores através de Supabase Auth.
-- Registos dos módulos guardados em `public.ks_records`, isolados por empresa através de Row Level Security (RLS).
-- Produtos e vendas finalizadas também são refletidos nas tabelas normalizadas, para aplicar regras de stock e quotas.
-- Empresas, membros, licenças, instalações e pedidos de demonstração são mantidos nas tabelas `ks_*`.
-- Cache IndexedDB e fila local para permitir trabalho temporário sem ligação.
-- A primeira autenticação migra os registos locais para a empresa cloud quando ainda não existem registos remotos.
+## Fluxo de vendas e sincronização
 
-O browser utiliza apenas a publishable key. Nunca colocar `service_role`, secret keys, JWT secrets ou credenciais de servidor no código público.
+- Leituras comuns usam primeiro a cache local.
+- Gravações não críticas entram na fila de sincronização em segundo plano.
+- A finalização de uma venda continua a exigir validação transaccional no PostgreSQL.
+- A transacção do servidor controla valores, permissões e stock; o espelho histórico é sincronizado depois.
+- Não se deve repetir a finalização de uma venda já confirmada.
 
-## Primeiro acesso
+## Integração AGT
 
-1. Abrir o domínio Kanawa Soft.
-2. Selecionar **Criar conta e configurar empresa**.
-3. Preencher os dados da empresa e do administrador.
-4. Confirmar o endereço de email, se o projeto exigir confirmação.
-5. Entrar com o email e a senha criados.
-6. Verificar o indicador de ligação e criar um produto de teste.
-7. Abrir o mesmo domínio noutro dispositivo, entrar com a mesma conta e confirmar que o produto aparece.
+A configuração por empresa fica protegida no Supabase Vault. A interface não guarda palavras-passe nem chaves privadas no IndexedDB ou no armazenamento local do navegador. O botão de teste consulta as séries no serviço oficial da AGT, em homologação ou produção.
 
-O trigger de onboarding existente cria a empresa, a associação de proprietário e uma licença de avaliação de 14 dias. Os limites e o estado da licença são mantidos no PostgreSQL.
+O número de validação do software e as chaves devem ser emitidos/registados pelos canais oficiais. A presença de campos ou um teste de autenticação não significa que o Kanawa Soft esteja certificado pela AGT nem que uma factura tenha sido aceite.
+
+## GPS e mapas
+
+O módulo de frota inclui mapa com camada de satélite e mapa de ruas. A localização do Android só é partilhada depois de o utilizador autorizar o acesso à localização. As posições são associadas à empresa autenticada.
 
 ## Publicação Netlify
 
-A configuração em `netlify.toml` publica a pasta `app/`.
+A configuração em \`netlify.toml\` publica a pasta \`app/\`. O domínio \`kanawasoft.shop\` deve permanecer associado ao projecto Netlify existente. Não criar um segundo site nem alterar os registos DNS sem necessidade.
 
-A publicação atual do projeto Netlify foi criada por API/manual; a ligação de Git contínuo não está confirmada. Foi incluído `.github/workflows/netlify-deploy.yml` para permitir previews e produção:
+A branch de finalização é \`feat/kanawa-erp-1.1.0-finalization\`. O preview deve ser testado antes de integrar as alterações na branch principal e publicar em produção.
 
-1. No Netlify, abrir User settings → Applications → Personal access tokens e criar um token.
-2. No GitHub, abrir Settings → Secrets and variables → Actions do repositório `dpedroservice-code/Kanawasoftv15.2`.
-3. Criar o secret `NETLIFY_AUTH_TOKEN` e guardar o token diretamente no GitHub. Não o enviar por chat nem o colocar no código.
-4. Reexecutar o workflow **Netlify deploy** na branch `feat/cloud-postgres-auth-sync` para criar um preview; o URL aparece nos logs da execução.
-5. Testar o preview antes de integrar a branch na `main`. Só um push na `main` faz o workflow publicar em produção.
+## Testes
 
-Em alternativa, pode-se ligar o repositório diretamente ao projeto Netlify e ativar Deploy Previews. O domínio `kanawasoft.shop` deve permanecer associado ao projeto Netlify existente. Não criar um segundo site nem alterar os registos DNS.
-
-## Limites desta entrega
-
-A ligação cloud e o fluxo de autenticação são a primeira etapa da migração. A gestão completa de utilizadores/equipas, painel institucional D.PEDRO SOLUÇÕES, alertas por email, integração fiscal e motor de rotas de entregas devem ser validados e concluídos nas etapas seguintes. O sistema não deve ser apresentado como certificado pela AGT.
+Executar \`npm test\` para validar as regras de vendas, validações operacionais e verificações de versão/integração.
