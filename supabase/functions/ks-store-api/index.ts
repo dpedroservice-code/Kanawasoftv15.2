@@ -108,6 +108,14 @@ Deno.serve(async (req: Request) => {
       return json(200, { success: true, message: "Chave revogada." });
     }
 
+    if (body.action === "list-payments") {
+      const { data, error } = await admin.from("ks_company_payment_integrations")
+        .select("provider_code,display_name,purpose,enabled,mode,status,last_tested_at,last_test_message,updated_at")
+        .eq("company_id", companyId).order("updated_at", { ascending: false });
+      if (error) return json(500, { error: "Não foi possível listar os métodos de pagamento." });
+      return json(200, { success: true, payments: data || [] });
+    }
+
     if (body.action === "save-payment") {
       const provider = String(body.provider_code || "").trim().toLowerCase();
       const display = String(body.display_name || "").trim();
