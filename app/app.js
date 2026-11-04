@@ -639,6 +639,7 @@ async function openModule(id) {
   if (!podeAcessar(id)) { toast('🔒 Sem permissão', 'error'); return; }
   toggleMobileMenu(false);
   currentModule = id;
+  if (id !== 'frota-gps') pararSincronizacaoGPSRemota();
   document.querySelectorAll('.sidebar-group').forEach(group => { group.open = !!group.querySelector('[data-id="' + id + '"]'); });
   $$('.sidebar-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   const c = $('content');
@@ -694,6 +695,7 @@ async function openModule(id) {
     if (id === 'frota-gps' && window.KanawaMaps) {
       const gpsRecords = await getData('gpsTracking');
       window.KanawaMaps.mountMap('kanawaFleetMap', gpsRecords);
+      iniciarSincronizacaoGPSRemota();
       if (kanawaGpsWatchActive) { const status = $('kanawaGpsStatus'); if (status) status.textContent = 'GPS ativo neste dispositivo.'; }
     }
     if (id === 'config') aplicarPreferenciasConfigNaTela();
@@ -3232,6 +3234,50 @@ let kanawaGpsSaving = false;
 let kanawaGpsLastSavedAt = 0;
 let kanawaGpsLastPoint = null;
 
+let kanawaGpsRemoteSyncTimer = null;
+let kanawaGpsRemoteSyncBusy = false;
+
+async function sincronizarPosicoesGPSRemotas() {
+  if (kanawaGpsRemoteSyncBusy || currentModule !== 'frota-gps' ||
+      document.visibilityState === 'hidden' || !window.KanawaCloud || !KanawaCloud.ready) return;
+  kanawaGpsRemoteSyncBusy = true;
+  try {
+    const remote = await KanawaCloud.getStore('gpsTracking');
+    if (!Array.isArray(remote)) return;
+    const local = await DB.getAll('gpsTracking');
+    const queue = await DB.getAll('_sync_queue');
+    const pendingIds = queue.filter(item => !item.synced && item.entity === 'gpsTracking')
+      .map(item => item.payload && item.payload.id).filter(id => id !== undefined && id !== null);
+    const merged = window.KanawaGpsSync.merge(local, remote, pendingIds);
+    for (const record of merged.changedRecords) await DB.put('gpsTracking', record);
+    if (merged.changedCount) {
+      const all = await DB.getAll('gpsTracking');
+      if (window.KanawaMaps && typeof window.KanawaMaps.refreshMarkers === 'function') {
+        window.KanawaMaps.refreshMarkers(all);
+      }
+      const count = $('gpsRemoteSyncCount');
+      if (count) count.textContent = all.filter(x => x.coordinates_valid === true).length + ' dispositivos/posições';
+    }
+    const label = $('gpsRemoteSyncStatus');
+    if (label) label.textContent = 'Sincronizado com a empresa · ' + new Date().toLocaleTimeString('pt-AO');
+  } catch (error) {
+    const label = $('gpsRemoteSyncStatus');
+    if (label) label.textContent = 'Sincronização pendente: ' + (error.message || 'sem ligação');
+    console.warn('Sincronização GPS entre dispositivos:', error);
+  } finally { kanawaGpsRemoteSyncBusy = false; }
+}
+
+function iniciarSincronizacaoGPSRemota() {
+  if (kanawaGpsRemoteSyncTimer) clearInterval(kanawaGpsRemoteSyncTimer);
+  sincronizarPosicoesGPSRemotas();
+  kanawaGpsRemoteSyncTimer = setInterval(sincronizarPosicoesGPSRemotas, 15000);
+}
+
+function pararSincronizacaoGPSRemota() {
+  if (kanawaGpsRemoteSyncTimer) clearInterval(kanawaGpsRemoteSyncTimer);
+  kanawaGpsRemoteSyncTimer = null;
+}
+
 async function renderFrotaGPS() {
   const g = await getData('gpsTracking') || [];
   const valid = g.filter(x => x.coordinates_valid === true && Number.isFinite(Number(x.lat)) && Number.isFinite(Number(x.lng)));
@@ -3250,9 +3296,9 @@ async function renderFrotaGPS() {
     '<div class="metric-grid"><div class="metric-card"><div class="label">Dispositivos ativos</div><div class="value">' + active.length + '</div></div>' +
     '<div class="metric-card"><div class="label">Posições registadas</div><div class="value">' + valid.length + '</div></div>' +
     '<div class="metric-card"><div class="label">Última atualização</div><div class="value" style="font-size:1rem">' + (latest ? esc(fmtDT(latest.ultimaAtualizacao)) : 'Sem dados') + '</div></div></div>' +
-    '<div class="card"><div class="alert alert-info" style="display:block">O GPS só inicia depois de clicar em “Iniciar GPS” e autorizar a localização. O rastreamento depende de HTTPS, permissão do dispositivo, ligação à Internet e de a aplicação permanecer ativa. Não substitui um rastreador GPS veicular dedicado.</div>' +
+    '<div class="card"><div class="alert alert-info" style="display:block">O GPS só inicia após autorização. Na aplicação Android nativa, um serviço em primeiro plano mantém a recolha com notificação visível; na versão web, o navegador pode suspender a recolha quando fica em segundo plano. Não substitui um rastreador GPS/OBD 4G dedicado.</div>' +
     '<div id="kanawaFleetMap" class="kanawa-map-canvas" role="region" aria-label="Mapa de localização da frota"></div>' +
-    '<div id="kanawaGpsStatus" style="margin-top:10px;color:var(--text-muted)">GPS desligado neste dispositivo.</div></div>' +
+    '<div id="kanawaGpsStatus" style="margin-top:10px;color:var(--text-muted)">GPS desligado neste dispositivo.</div><div id="gpsRemoteSyncStatus" style="margin-top:6px;color:var(--text-muted)">Sincronização entre dispositivos aguarda ligação.</div><div id="gpsRemoteSyncCount" style="margin-top:4px;color:var(--text-muted)">' + valid.length + ' posições</div></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-route"></i> Calcular rota e distância</h3></div>' +
     '<div class="form-grid"><div class="form-group"><label>Origem (Angola)</label><input id="mapRouteOrigin" placeholder="Ex.: Kilamba, Luanda"></div>' +
     '<div class="form-group"><label>Destino (Angola)</label><input id="mapRouteDestination" placeholder="Ex.: Talatona, Luanda"></div></div>' +
@@ -3314,34 +3360,86 @@ async function persistirPontoGPS(position) {
 }
 
 async function iniciarRastreamentoGPS() {
-  if (!podeFazer('editar', 'frota-gps')) { toast('Sem permissão para iniciar rastreamento.', 'error'); return; }
+  if (!podeFazer('editar', 'frota-gps') && !podeFazer('criar', 'frota-gps')) {
+    toast('Sem permissão para criar ou atualizar posições da frota.', 'error'); return;
+  }
   if (!window.KanawaMaps) { toast('Motor de mapas não carregado.', 'error'); return; }
   if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
     toast('O GPS exige uma ligação HTTPS segura.', 'warning'); return;
   }
   try {
-    await getData('gpsTracking');
     const deviceKey = obterChaveDispositivoGPS();
     const records = await getData('gpsTracking');
-    const existing = records.find(x => x.trackingKey === deviceKey);
-    kanawaGpsRecordId = existing ? existing.id : null;
+    let existing = records.find(x => x.trackingKey === deviceKey);
+    if (!existing) {
+      if (!podeFazer('criar', 'frota-gps')) {
+        toast('O seu perfil não tem permissão para registar um novo dispositivo GPS.', 'error'); return;
+      }
+      existing = {
+        trackingKey: deviceKey,
+        veiculo: 'Dispositivo móvel',
+        deviceLabel: (navigator.userAgent || 'Dispositivo Android').slice(0, 120),
+        status: 'starting',
+        location_source: 'gps',
+        tracking_mode: window.KanawaAndroid ? 'android-foreground-service' : 'browser-geolocation',
+        coordinates_valid: false,
+        ultimaAtualizacao: now()
+      };
+      existing.id = await saveData('gpsTracking', existing);
+    } else {
+      existing.status = 'starting';
+      existing.location_source = 'gps';
+      existing.tracking_mode = window.KanawaAndroid ? 'android-foreground-service' : 'browser-geolocation';
+      await saveData('gpsTracking', existing);
+    }
+    kanawaGpsRecordId = existing.id;
     kanawaGpsLastSavedAt = 0;
     kanawaGpsLastPoint = null;
+
+    if (window.KanawaAndroid && typeof window.KanawaAndroid.startTracking === 'function') {
+      if (!window.KanawaCloud || !KanawaCloud.ready ||
+          typeof KanawaCloud.getNativeTrackingConfig !== 'function') {
+        throw new Error('Inicie sessão na nuvem antes de ativar o GPS Android.');
+      }
+      const config = await KanawaCloud.getNativeTrackingConfig({
+        recordId: String(existing.id),
+        deviceKey: deviceKey,
+        deviceLabel: existing.deviceLabel || 'Dispositivo Android',
+        vehicleLabel: existing.veiculo || 'Dispositivo móvel'
+      });
+      const response = JSON.parse(window.KanawaAndroid.startTracking(JSON.stringify(config)) || '{}');
+      if (!response.accepted) throw new Error(response.message || 'O Android não aceitou o pedido de rastreamento.');
+      const status = $('kanawaGpsStatus');
+      if (status) status.textContent = 'Aguardando autorização de localização do Android. O serviço nativo mantém uma notificação enquanto rastreia.';
+      toast('Pedido de GPS Android enviado. Autorize a localização e mantenha a notificação ativa.', 'info');
+      return;
+    }
+
     window.KanawaMaps.startWatch(async function (position) {
       kanawaGpsWatchActive = true;
       const status = $('kanawaGpsStatus');
-      if (status) status.textContent = 'GPS ativo · precisão aproximada: ' + Math.round(position.accuracy || 0) + ' m · ' + fmtDT(position.timestamp);
+      if (status) status.textContent = 'GPS do navegador ativo · precisão aproximada: ' + Math.round(position.accuracy || 0) + ' m · ' + fmtDT(position.timestamp);
       window.KanawaMaps.updateCurrentPosition(position, 'Este dispositivo · GPS ativo');
       await persistirPontoGPS(position);
     }, function (error) {
       const messages = { 1: 'Permissão de localização recusada.', 2: 'Posição GPS indisponível.', 3: 'Tempo de espera do GPS esgotado.' };
       toast(messages[error.code] || 'Falha ao obter GPS.', 'warning');
     });
-    toast('Pedido de localização iniciado. Autorize o acesso GPS no dispositivo.', 'info');
+    toast('GPS do navegador iniciado. Para continuar com o ecrã desligado, instale a aplicação Android Kanawa.', 'info');
   } catch (error) { toast(error.message, 'warning'); }
 }
-
 async function pararRastreamentoGPS() {
+  if (window.KanawaAndroid && typeof window.KanawaAndroid.stopTracking === 'function') {
+    try {
+      const response = JSON.parse(window.KanawaAndroid.stopTracking() || '{}');
+      if (!response.accepted) throw new Error(response.message || 'Não foi possível parar o serviço Android.');
+      kanawaGpsWatchActive = false;
+      const status = $('kanawaGpsStatus');
+      if (status) status.textContent = 'Pedido para parar o serviço GPS Android enviado.';
+      toast('Rastreamento Android a parar e a sincronizar o estado final.', 'info');
+      return;
+    } catch (error) { toast(error.message, 'warning'); return; }
+  }
   if (!window.KanawaMaps) return;
   window.KanawaMaps.stopWatch();
   kanawaGpsWatchActive = false;
