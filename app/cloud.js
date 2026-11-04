@@ -39,8 +39,9 @@
     const hostname = String(window.location && window.location.hostname || '').toLowerCase();
     const isDeployPreview = /^deploy-preview-\d+--kanawa-soft\.netlify\.app$/.test(hostname);
     if (!isDeployPreview) return;
-    const companyName = String(company && (company.trade_name || company.legal_name) || '').trim();
-    if (!/^TESTE(?:\b|[-_ ])/i.test(companyName)) {
+    const companyNames = [company && company.trade_name, company && company.legal_name]
+      .map(value => String(value || '').trim()).filter(Boolean);
+    if (!companyNames.some(name => /^TESTE(?:\b|[-_ ])/i.test(name))) {
       throw new Error('Este ambiente de teste só aceita uma empresa isolada cujo nome comece por “TESTE”. Crie uma conta/empresa de teste; a conta de produção não pode entrar neste Deploy Preview.');
     }
   }
