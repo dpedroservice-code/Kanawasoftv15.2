@@ -68,7 +68,8 @@
       const box = document.getElementById('storeApiNewSecret');
       if (box) {
         box.style.display = 'block';
-        box.innerHTML = '<div class="alert alert-success show">Chave criada. Copie o segredo agora; não será apresentado novamente.</div><textarea id="storeApiSecretOnce" rows="3" readonly style="width:100%;font-family:monospace"></textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary" onclick="navigator.clipboard.writeText(document.getElementById(\'storeApiSecretOnce\').value).then(function(){toast(\'Chave copiada\',\'success\')})">Copiar chave</button><button class="btn btn-secondary" onclick="document.getElementById(\'storeApiNewSecret\').style.display=\'none\'">Ocultar segredo</button></div>';
+        box.innerHTML = '<div class="alert alert-success show">Chave criada. Guarde o identificador e o segredo; o segredo só é apresentado agora.</div><label>API Key (identificador)</label><input id="storeApiPublicKey" readonly style="width:100%;font-family:monospace"><label style="display:block;margin-top:8px">API Secret (segredo único)</label><textarea id="storeApiSecretOnce" rows="3" readonly style="width:100%;font-family:monospace"></textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary" onclick="navigator.clipboard.writeText(document.getElementById(\'storeApiSecretOnce\').value).then(function(){toast(\'Chave copiada\',\'success\')})">Copiar chave</button><button class="btn btn-secondary" onclick="document.getElementById(\'storeApiNewSecret\').style.display=\'none\'">Ocultar segredo</button></div>';
+        document.getElementById('storeApiPublicKey').value = result.key.key_prefix;
         document.getElementById('storeApiSecretOnce').value = result.secret;
       }
       await ksLoadStoreApiKeys();
