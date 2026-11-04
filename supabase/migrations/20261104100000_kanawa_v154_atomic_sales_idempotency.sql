@@ -189,11 +189,15 @@ BEGIN
     -- Recover a missing legacy mirror without creating another financial or
     -- stock event. A finalized mirror is never overwritten on a retry.
     IF v_record IS NOT NULL THEN
-      INSERT INTO public.ks_records(company_id,store_key,record_id,payload)
-      VALUES(p_company_id,'vendas',v_external_id,v_record)
-      ON CONFLICT(company_id,store_key,record_id) DO UPDATE
-        SET payload=EXCLUDED.payload,updated_at=now()
-        WHERE coalesce(ks_records.payload->>'status','')<>'finalizada';
+      UPDATE public.ks_records
+      SET payload=v_record,updated_at=now()
+      WHERE company_id=p_company_id AND store_key='vendas' AND record_id=v_external_id
+        AND coalesce(payload->>'status','')<>'finalizada';
+      IF NOT FOUND THEN
+        INSERT INTO public.ks_records(company_id,store_key,record_id,payload)
+        VALUES(p_company_id,'vendas',v_external_id,v_record)
+        ON CONFLICT(company_id,store_key,record_id) DO NOTHING;
+      END IF;
     END IF;
     RETURN jsonb_build_object(
       'ok',true,'duplicate',true,'external_id',v_external_id,
@@ -265,10 +269,19 @@ BEGIN
   -- Persist the module record in the SAME PostgreSQL transaction as the sale,
   -- payments, stock decrement, movement ledger and usage event.
   IF v_record IS NOT NULL THEN
-    INSERT INTO public.ks_records(company_id,store_key,record_id,payload)
-    VALUES(p_company_id,'vendas',v_external_id,v_record)
-    ON CONFLICT(company_id,store_key,record_id) DO UPDATE
-      SET payload=EXCLUDED.payload,updated_at=now();
+    UPDATE public.ks_records
+    SET payload=v_record,updated_at=now()
+    WHERE company_id=p_company_id AND store_key='vendas' AND record_id=v_external_id
+      AND coalesce(payload->>'status','')<>'finalizada';
+    IF NOT FOUND THEN
+      INSERT INTO public.ks_records(company_id,store_key,record_id,payload)
+      VALUES(p_company_id,'vendas',v_external_id,v_record)
+      ON CONFLICT(company_id,store_key,record_id) DO NOTHING;
+      GET DIAGNOSTICS v_rows=ROW_COUNT;
+      IF v_rows=0 THEN
+        RAISE EXCEPTION 'Já existe um registo finalizado com este identificador, mas não existe a venda correspondente.' USING ERRCODE='23505';
+      END IF;
+    END IF;
   END IF;
 
   RETURN jsonb_build_object(
