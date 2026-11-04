@@ -1,7 +1,7 @@
 'use strict';
-/* KANAWA SOFT ERP v1.1.0 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
+/* KANAWA SOFT ERP v1.2.0 — app.js unificado (perfil, AGT, firma, gaveta, impressora, líquido, produção, logística, ecommerce, RH, projetos, ativos, frota, OS, tickets, contratos, docs, auditoria, e-learning, CRM, marketing, integrações, dispositivos). */
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const IS_DESKTOP = !!(window.kanawaNative && window.kanawaNative.isDesktop);
 let API_ONLINE = false;
 let setupStep = 1;
@@ -2091,9 +2091,9 @@ async function marcarTodasLidas() { const all = await DB.getAll('notificacoes');
 
 /* ====== EXCLUIR ITEM GENÉRICO ====== */
 async function excluirItem(store, id, modulo) {
-  if (!confirm('Excluir registro?')) return;
-  await deleteData(store, id);
-  toast('Excluído', 'info');
+  if (!confirm('Excluir registro permanentemente? A eliminação será sincronizada com a base de dados central.')) return;
+  try { await deleteData(store, id); toast('Registo eliminado da base central e deste dispositivo.', 'success'); }
+  catch (error) { toast(error.message || 'Eliminação pendente de confirmação no servidor.', 'warning'); }
   pdvCache.ts = 0;
   openModule(modulo || currentModule);
 }
@@ -2987,7 +2987,7 @@ async function seedDemo() {
   await DB.add('categorias', { nome: 'Eletrônicos', descricao: 'Dispositivos' });
   await DB.add('categorias', { nome: 'Acessórios', descricao: 'Acessórios diversos' });
   await DB.add('funcionarios', { nome: 'Ana Costa', cargo: 'Vendedora', salario: 120000 });
-  await DB.add('notificacoes', { titulo: '🎉 Bem-vindo', mensagem: 'Kanawa Soft ERP v1.1.0 Cloud ligado à base central!', tipo: 'success', data: now(), lida: false });
+  await DB.add('notificacoes', { titulo: '🎉 Bem-vindo', mensagem: 'Kanawa Soft ERP v1.2.0 Cloud ligado à base central!', tipo: 'success', data: now(), lida: false });
 }
 
 /* ====== INIT ====== */
