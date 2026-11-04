@@ -37,3 +37,11 @@ test('browser source contains no Supabase service-role credential', () => {
   assert.doesNotMatch(cloud, /service_role|SUPABASE_SERVICE_ROLE_KEY/i);
   assert.doesNotMatch(app, /service_role|SUPABASE_SERVICE_ROLE_KEY/i);
 });
+
+test('administrator can open a per-module permission editor for non-admin members', () => {
+  assert.match(app, /async function editarPermissoesUsuario\(userId\)/);
+  assert.match(app, /data-access-module=/);
+  assert.match(app, /async function guardarPermissoesUsuario\(userId\)/);
+  assert.match(app, /TEAM_RESERVED_MODULES/);
+  assert.match(app, /updateTeamMemberAccess/);
+});
