@@ -691,6 +691,11 @@ async function openModule(id) {
   };
   try {
     c.innerHTML = R[id] ? await R[id]() : '<div class="card"><h3>Módulo ' + id + '</h3></div>';
+    if (id === 'frota-gps' && window.KanawaMaps) {
+      const gpsRecords = await getData('gpsTracking');
+      window.KanawaMaps.mountMap('kanawaFleetMap', gpsRecords);
+      if (kanawaGpsWatchActive) { const status = $('kanawaGpsStatus'); if (status) status.textContent = 'GPS ativo neste dispositivo.'; }
+    }
     if (id === 'config') aplicarPreferenciasConfigNaTela();
     c.insertAdjacentHTML('afterbegin', barraRelatorioModulo(id));
     c.scrollTop = 0;
@@ -3221,22 +3226,171 @@ async function novaRotaFrota() {
     openModule('frota-rotas');
   } catch (error) { toast(error.message, 'warning'); }
 }
+let kanawaGpsWatchActive = false;
+let kanawaGpsRecordId = null;
+let kanawaGpsSaving = false;
+let kanawaGpsLastSavedAt = 0;
+let kanawaGpsLastPoint = null;
+
 async function renderFrotaGPS() {
   const g = await getData('gpsTracking') || [];
-  return header('Localizações de Frota', g.length + ' registos — telemetria em tempo real não configurada', 'var(--warning)',
-    '<button class="btn btn-success" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Adicionar</button>', 'fa-satellite') +
-    '<div class="card"><div class="alert alert-warning">Este ecrã apresenta apenas coordenadas registadas manualmente. Não existe ligação a rastreadores GPS nem atualização em tempo real.</div></div>' +
-    '<div class="card">' + table(['Veículo', 'Latitude', 'Longitude', 'Origem', 'Última Atualização'],
-      g.map(x => ['<strong>' + esc(x.veiculo) + '</strong>', esc(x.lat || '-'), esc(x.lng || '-'), esc(x.location_source === 'manual' && x.coordinates_valid === true ? 'Manual (registada)' : 'Não verificada'), fmtDT(x.ultimaAtualizacao)])) + '</div>';
+  const valid = g.filter(x => x.coordinates_valid === true && Number.isFinite(Number(x.lat)) && Number.isFinite(Number(x.lng)));
+  const active = valid.filter(x => x.status === 'active');
+  const latest = valid.slice().sort((a, b) => new Date(b.ultimaAtualizacao || 0) - new Date(a.ultimaAtualizacao || 0))[0];
+  const rows = valid.slice().sort((a, b) => new Date(b.ultimaAtualizacao || 0) - new Date(a.ultimaAtualizacao || 0)).map(x => [
+    '<strong>' + esc(x.veiculo || x.deviceLabel || 'Dispositivo') + '</strong>',
+    Number(x.lat).toFixed(6), Number(x.lng).toFixed(6),
+    badge(x.status === 'active' ? 'Ativo' : 'Parado', x.status === 'active' ? 'success' : 'secondary'),
+    esc(x.location_source === 'gps' ? 'GPS do dispositivo' : 'Manual'),
+    fmtDT(x.ultimaAtualizacao),
+    '<button class="btn btn-sm btn-info" onclick="centrarMapaGPS(' + Number(x.lat) + ',' + Number(x.lng) + ')"><i class="fas fa-crosshairs"></i></button>'
+  ]);
+  return header('Mapas e Rastreamento GPS', valid.length + ' posições válidas · ' + active.length + ' dispositivos ativos', 'var(--info)',
+    '<button class="btn btn-success" onclick="iniciarRastreamentoGPS()"><i class="fas fa-location-arrow"></i> Iniciar GPS</button> <button class="btn btn-warning" onclick="pararRastreamentoGPS()"><i class="fas fa-stop"></i> Parar</button>', 'fa-map-marked-alt') +
+    '<div class="metric-grid"><div class="metric-card"><div class="label">Dispositivos ativos</div><div class="value">' + active.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Posições registadas</div><div class="value">' + valid.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Última atualização</div><div class="value" style="font-size:1rem">' + (latest ? esc(fmtDT(latest.ultimaAtualizacao)) : 'Sem dados') + '</div></div></div>' +
+    '<div class="card"><div class="alert alert-info" style="display:block">O GPS só inicia depois de clicar em “Iniciar GPS” e autorizar a localização. O rastreamento depende de HTTPS, permissão do dispositivo, ligação à Internet e de a aplicação permanecer ativa. Não substitui um rastreador GPS veicular dedicado.</div>' +
+    '<div id="kanawaFleetMap" class="kanawa-map-canvas" role="region" aria-label="Mapa de localização da frota"></div>' +
+    '<div id="kanawaGpsStatus" style="margin-top:10px;color:var(--text-muted)">GPS desligado neste dispositivo.</div></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-route"></i> Calcular rota e distância</h3></div>' +
+    '<div class="form-grid"><div class="form-group"><label>Origem (Angola)</label><input id="mapRouteOrigin" placeholder="Ex.: Kilamba, Luanda"></div>' +
+    '<div class="form-group"><label>Destino (Angola)</label><input id="mapRouteDestination" placeholder="Ex.: Talatona, Luanda"></div></div>' +
+    '<button class="btn btn-primary" onclick="calcularRotaMapa()"><i class="fas fa-route"></i> Calcular rota</button> <span id="mapRouteResult" style="margin-left:8px;color:var(--text-muted)"></span>' +
+    '<p style="font-size:.78rem;color:var(--text-muted);margin-top:10px">Mapas: OpenStreetMap · Endereços: Nominatim · Rotas: OSRM. Serviços públicos comunitários, sem chave privada; sujeitos a limites e sem SLA comercial.</p></div>' +
+    '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-satellite"></i> Histórico de posições</h3><button class="btn btn-secondary btn-sm" onclick="adicionarGPS()"><i class="fas fa-plus"></i> Registo manual</button></div>' +
+    table(['Dispositivo / Veículo','Latitude','Longitude','Estado','Origem','Atualização','Mapa'], rows) + '</div>';
 }
+
+function centrarMapaGPS(lat, lng) {
+  try {
+    const point = window.KanawaMaps.validateCoordinates(lat, lng);
+    window.KanawaMaps.updateCurrentPosition({ latitude: point.lat, longitude: point.lng }, 'Posição selecionada');
+  } catch (error) { toast(error.message, 'warning'); }
+}
+
+function obterChaveDispositivoGPS() {
+  let key = localStorage.getItem('kanawa_gps_device_key');
+  if (!key) {
+    key = 'gps-' + generateId();
+    localStorage.setItem('kanawa_gps_device_key', key);
+  }
+  return key;
+}
+
+async function persistirPontoGPS(position) {
+  if (kanawaGpsSaving) return;
+  const nowMs = Date.now();
+  const point = window.KanawaMaps.validateCoordinates(position.latitude, position.longitude);
+  const movedKm = kanawaGpsLastPoint ? window.KanawaMaps.distanceBetween(kanawaGpsLastPoint, point) : Infinity;
+  if (kanawaGpsLastSavedAt && nowMs - kanawaGpsLastSavedAt < 20000 && movedKm < 0.05) return;
+  kanawaGpsSaving = true;
+  try {
+    const deviceKey = obterChaveDispositivoGPS();
+    let record = kanawaGpsRecordId ? await DB.get('gpsTracking', kanawaGpsRecordId) : null;
+    if (!record) {
+      const records = await getData('gpsTracking');
+      record = records.find(x => x.trackingKey === deviceKey) || null;
+    }
+    if (!record) record = { trackingKey: deviceKey, deviceLabel: 'Este dispositivo', veiculo: 'Dispositivo móvel' };
+    const trail = Array.isArray(record.trail) ? record.trail.slice(-99) : [];
+    trail.push({ lat: point.lat, lng: point.lng, accuracy: Number(position.accuracy) || null, timestamp: position.timestamp || now() });
+    Object.assign(record, point, {
+      coordinates_valid: true, location_source: 'gps', tracking_mode: 'browser-geolocation',
+      status: 'active', accuracy: Number(position.accuracy) || null,
+      speed: Number.isFinite(position.speed) ? position.speed : null,
+      heading: Number.isFinite(position.heading) ? position.heading : null,
+      ultimaAtualizacao: position.timestamp || now(), trail: trail
+    });
+    const id = await saveData('gpsTracking', record);
+    kanawaGpsRecordId = id;
+    kanawaGpsLastSavedAt = nowMs;
+    kanawaGpsLastPoint = point;
+  } catch (error) {
+    console.warn('Ponto GPS não sincronizado:', error);
+    toast('Posição GPS obtida, mas não foi possível guardá-la: ' + error.message, 'warning');
+  } finally { kanawaGpsSaving = false; }
+}
+
+async function iniciarRastreamentoGPS() {
+  if (!podeFazer('editar', 'frota-gps')) { toast('Sem permissão para iniciar rastreamento.', 'error'); return; }
+  if (!window.KanawaMaps) { toast('Motor de mapas não carregado.', 'error'); return; }
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    toast('O GPS exige uma ligação HTTPS segura.', 'warning'); return;
+  }
+  try {
+    await getData('gpsTracking');
+    const deviceKey = obterChaveDispositivoGPS();
+    const records = await getData('gpsTracking');
+    const existing = records.find(x => x.trackingKey === deviceKey);
+    kanawaGpsRecordId = existing ? existing.id : null;
+    window.KanawaMaps.startWatch(async function (position) {
+      kanawaGpsWatchActive = true;
+      const status = $('kanawaGpsStatus');
+      if (status) status.textContent = 'GPS ativo · precisão aproximada: ' + Math.round(position.accuracy || 0) + ' m · ' + fmtDT(position.timestamp);
+      window.KanawaMaps.updateCurrentPosition(position, 'Este dispositivo · GPS ativo');
+      await persistirPontoGPS(position);
+    }, function (error) {
+      const messages = { 1: 'Permissão de localização recusada.', 2: 'Posição GPS indisponível.', 3: 'Tempo de espera do GPS esgotado.' };
+      toast(messages[error.code] || 'Falha ao obter GPS.', 'warning');
+    });
+    toast('Pedido de localização iniciado. Autorize o acesso GPS no dispositivo.', 'info');
+  } catch (error) { toast(error.message, 'warning'); }
+}
+
+async function pararRastreamentoGPS() {
+  if (!window.KanawaMaps) return;
+  window.KanawaMaps.stopWatch();
+  kanawaGpsWatchActive = false;
+  const status = $('kanawaGpsStatus');
+  if (status) status.textContent = 'GPS desligado neste dispositivo.';
+  if (kanawaGpsRecordId) {
+    try {
+      const record = await DB.get('gpsTracking', kanawaGpsRecordId);
+      if (record) {
+        record.status = 'stopped';
+        record.ultimaAtualizacao = now();
+        await saveData('gpsTracking', record);
+      }
+    } catch (error) { toast('GPS parado; estado final ainda não sincronizado.', 'warning'); }
+  }
+  toast('Rastreamento GPS parado.', 'success');
+}
+
+async function calcularRotaMapa() {
+  const origin = $('mapRouteOrigin'), destination = $('mapRouteDestination');
+  if (!origin || !destination || !origin.value.trim() || !destination.value.trim()) {
+    toast('Informe a origem e o destino.', 'warning'); return;
+  }
+  const result = $('mapRouteResult');
+  if (result) result.textContent = 'A pesquisar endereços e calcular rota…';
+  try {
+    const route = await window.KanawaMaps.calculateRoute(origin.value.trim(), destination.value.trim());
+    window.KanawaMaps.showRoute(route);
+    if (result) result.textContent = route.distanceKm.toFixed(2) + ' km · ' + Math.round(route.durationMinutes) + ' min (estimativa rodoviária)';
+    await saveData('roteirizacao', {
+      origem: origin.value.trim(), destino: destination.value.trim(),
+      origemLat: route.origin.lat, origemLng: route.origin.lng,
+      destinoLat: route.destination.lat, destinoLng: route.destination.lng,
+      distancia: route.distanceKm.toFixed(2) + ' km',
+      duracaoEstimadaMinutos: Math.round(route.durationMinutes),
+      distance_source: 'osrm-openstreetmap', route_status: 'calculated', data: now()
+    });
+    toast('Rota calculada e guardada.', 'success');
+  } catch (error) {
+    if (result) result.textContent = '';
+    toast(error.message || 'Não foi possível calcular a rota.', 'warning');
+  }
+}
+
 async function adicionarGPS() {
   const veiculo = prompt('Placa/identificação do veículo:'); if (!veiculo || !veiculo.trim()) return;
-  const latitude = prompt('Latitude real do equipamento/dispositivo:'); if (latitude === null || latitude.trim() === '') return;
-  const longitude = prompt('Longitude real do equipamento/dispositivo:'); if (longitude === null || longitude.trim() === '') return;
+  const latitude = prompt('Latitude real:'); if (latitude === null || latitude.trim() === '') return;
+  const longitude = prompt('Longitude real:'); if (longitude === null || longitude.trim() === '') return;
   try {
-    const location = KanawaOperations.normalizeCoordinates(latitude, longitude);
-    await saveData('gpsTracking', Object.assign({ veiculo: veiculo.trim(), ultimaAtualizacao: now(), location_source: 'manual', tracking_mode: 'manual' }, location));
-    toast('Localização registada manualmente. Isto não é rastreamento GPS em tempo real.', 'warning');
+    const point = window.KanawaMaps.validateCoordinates(latitude, longitude);
+    await saveData('gpsTracking', Object.assign({ veiculo: veiculo.trim(), ultimaAtualizacao: now(), location_source: 'manual', tracking_mode: 'manual', status: 'stopped', coordinates_valid: true }, point));
+    toast('Posição manual guardada; não representa rastreamento contínuo.', 'warning');
     openModule('frota-gps');
   } catch (error) { toast(error.message, 'warning'); }
 }
