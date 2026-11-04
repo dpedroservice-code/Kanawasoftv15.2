@@ -354,19 +354,28 @@
 
     async listBranches() {
       if (!this.ready || !context || !context.company) return [];
+      const companyId = context.company.id;
       const result = await client.from('ks_company_branches')
-        .select('id,branch_company_id,status,created_at')
-        .eq('parent_company_id', context.company.id)
-        .eq('status', 'active')
+        .select('id,parent_company_id,branch_company_id,status,created_at')
+        .or('parent_company_id.eq.' + companyId + ',branch_company_id.eq.' + companyId)
+        .in('status', ['pending','active'])
         .order('created_at', { ascending: true });
       if (result.error) throw result.error;
       const rows = result.data || [];
       if (!rows.length) return [];
-      const ids = rows.map(function (row) { return row.branch_company_id; });
-      const companies = await client.from('ks_companies').select('id,name,nif').in('id', ids);
+      const relatedIds = rows.map(function (row) {
+        return row.parent_company_id === companyId ? row.branch_company_id : row.parent_company_id;
+      });
+      const companies = await client.from('ks_companies').select('id,name,nif').in('id', relatedIds);
       if (companies.error) throw companies.error;
       const byId = new Map((companies.data || []).map(function (company) { return [company.id, company]; }));
-      return rows.map(function (row) { return Object.assign({}, row, { company: byId.get(row.branch_company_id) || null }); });
+      return rows.map(function (row) {
+        const otherId = row.parent_company_id === companyId ? row.branch_company_id : row.parent_company_id;
+        return Object.assign({}, row, {
+          side: row.parent_company_id === companyId ? 'parent' : 'branch',
+          company: byId.get(otherId) || null
+        });
+      });
     },
 
     async linkBranch(branchCompanyId) {
@@ -379,10 +388,20 @@
       return result.data;
     },
 
-    async unlinkBranch(branchCompanyId) {
+    async acceptBranch(parentCompanyId, branchCompanyId) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_accept_company_branch', {
+        p_parent_company_id: parentCompanyId,
+        p_branch_company_id: branchCompanyId
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async unlinkBranch(parentCompanyId, branchCompanyId) {
       if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
       const result = await client.rpc('ks_unlink_company_branch', {
-        p_parent_company_id: context.company.id,
+        p_parent_company_id: parentCompanyId,
         p_branch_company_id: branchCompanyId
       });
       if (result.error) throw result.error;
