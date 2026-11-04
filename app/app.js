@@ -1063,7 +1063,7 @@ async function renderPDV() {
 
 function pdvIrParaTela(n) {
   if (n >= 2 && (!Array.isArray(pdvState.carrinho) || pdvState.carrinho.length === 0)) { toast('Adicione pelo menos um produto antes de avançar para o carrinho.', 'warning'); return; }
-  $('.pdv-screen').forEach(el => el.classList.remove('active'));
+  $$('.pdv-screen').forEach(el => el.classList.remove('active'));
   const t = $('pdvScreen' + n); if (t) t.classList.add('active');
   $$('.pdv-breadcrumb .step').forEach(el => { const s = parseInt(el.dataset.step); el.classList.toggle('active', s === n); el.classList.toggle('done', s < n); });
   pdvState.screen = n;
