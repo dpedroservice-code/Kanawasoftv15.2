@@ -442,7 +442,9 @@ function mostrarAplicacaoAutenticada(ctx) {
     $('userAvatar').onerror = function () { this.src = 'logo.png'; };
   }
   renderSidebar();
-  openModule('dashboard');
+  const firstAllowedModule = MENU.find(module => podeAcessar(module.id));
+  if (firstAllowedModule) openModule(firstAllowedModule.id);
+  else toast('A sua conta ainda não tem módulos autorizados. Peça ao administrador para configurar as permissões.', 'warning');
   updateNotifBadge();
 }
 
@@ -465,9 +467,9 @@ function getPerms() {
   const role = u.role || u.perfil || 'visualizador';
   if (u.cloudUser && window.KanawaPermissions) {
     const cloudGrants = u.permissions || {};
-    if (Object.keys(cloudGrants).length) return window.KanawaPermissions.fromMembership(role, cloudGrants);
     const roleAliases = { manager: 'gerente', staff: 'operador', cashier: 'caixa', accountant: 'contabilista', viewer: 'visualizador' };
-    return PERMISSOES[roleAliases[role] || role] || PERMISSOES.visualizador;
+    // Cloud memberships are controlled by the administrator. Empty grants fail closed.
+    return window.KanawaPermissions.fromMembership(roleAliases[role] || role, cloudGrants);
   }
   return PERMISSOES[role] || PERMISSOES.visualizador;
 }
@@ -479,7 +481,7 @@ function podeAcessar(m) {
 function podeFazer(a, modulo) {
   const p = getPerms();
   if (window.KanawaPermissions) return window.KanawaPermissions.canDo(p, a, modulo || currentModule);
-  return p.acoes.indexOf(a) !== -1;
+  return p.modulos === '*' || (Array.isArray(p.modulos) && p.modulos.includes(modulo || currentModule)) ? p.acoes.indexOf(a) !== -1 : false;
 }
 
 /* ====== MENU ====== */
@@ -2469,8 +2471,24 @@ async function resetTotal() {
 
 /* ====== SETUP / AUTH ====== */
 function setupNextStep(s) {
-  if (setupStep === 1) { const n = $('setupNome').value.trim(); const nif = $('setupNif').value.trim(); if (!n || !nif) { toast('Preencha nome e NIF', 'warning'); return; } }
-  if (setupStep === 2) { const n = $('setupAdminNome').value.trim(); const e = $('setupAdminEmail').value.trim(); const p = $('setupAdminSenha').value; if (!n || !e || p.length < 6) { toast('Preencha todos os campos', 'warning'); return; } }
+  if (setupStep === 1) {
+    const fields = [$('setupNome'), $('setupNif'), $('setupEmail')];
+    if (!fields[0].value.trim() || !fields[1].value.trim() || fields.some(field => field.value && !field.checkValidity())) {
+      const invalid = fields.find(field => !field.checkValidity());
+      if (invalid) invalid.reportValidity();
+      toast('Confirme o nome, NIF e formato do email da empresa.', 'warning');
+      return;
+    }
+  }
+  if (setupStep === 2) {
+    const fields = [$('setupAdminNome'), $('setupAdminEmail'), $('setupAdminSenha')];
+    const invalid = fields.find(field => !field.checkValidity() || !field.value.trim());
+    if (invalid) {
+      invalid.reportValidity();
+      toast('Preencha o nome, email válido e uma senha com pelo menos 8 caracteres.', 'warning');
+      return;
+    }
+  }
   if (s === 3) { $('setupResumo').innerHTML = '<div><strong>🏢 Empresa:</strong> ' + esc($('setupNome').value) + '</div><div><strong>📋 NIF:</strong> ' + esc($('setupNif').value) + '</div><div><strong>👤 Admin:</strong> ' + esc($('setupAdminNome').value) + '</div>'; }
   const prev = $('setupStep' + setupStep), next = $('setupStep' + s);
   if (prev) prev.style.display = 'none';
