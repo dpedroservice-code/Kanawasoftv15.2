@@ -10,7 +10,7 @@ const cloud = await readFile(new URL('../app/cloud.js', import.meta.url), 'utf8'
 test('company setup requires company identity and validates optional email', () => {
   assert.match(html, /id="setupNome"[^>]*required/);
   assert.match(html, /id="setupNif"[^>]*required/);
-  assert.match(html, /id="setupEmail"[^>]*type="email"/);
+  assert.match(html, /type="email"[^>]*id="setupEmail"/);
   assert.match(app, /fields\.some\(field => field\.value && !field\.checkValidity\(\)\)/);
 });
 
