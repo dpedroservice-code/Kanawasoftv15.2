@@ -29,8 +29,8 @@
       '<div class="form-group"><label>Estabelecimento *</label><input id="agtEstablishmentNumber" value="' + esc((meta && meta.establishment_number) || 'SEDE') + '"></div>' +
       '<div class="form-group"><label>Utilizador Basic Auth AGT *</label><input id="agtUsername" autocomplete="off"></div>' +
       '<div class="form-group"><label>Palavra-passe Basic Auth AGT *</label><input id="agtPassword" type="password" autocomplete="new-password"></div>' +
-      '<div class="form-group full"><label>Chave privada do software (PEM PKCS#8) *</label><textarea id="agtSoftwarePrivateKey" rows="4" placeholder="-----BEGIN PRIVATE KEY-----"></textarea><input type="file" accept=".pem,.key,.txt" onchange="lerChaveAGT(this,\\'agtSoftwarePrivateKey\\')"></div>' +
-      '<div class="form-group full"><label>Chave privada do contribuinte / certificado AGT (PEM PKCS#8) *</label><textarea id="agtTaxpayerPrivateKey" rows="4" placeholder="-----BEGIN PRIVATE KEY-----"></textarea><input type="file" accept=".pem,.key,.txt" onchange="lerChaveAGT(this,\\'agtTaxpayerPrivateKey\\')"></div>' +
+      '<div class="form-group full"><label>Chave privada do software (PEM PKCS#8) *</label><textarea id="agtSoftwarePrivateKey" rows="4" placeholder="-----BEGIN PRIVATE KEY-----"></textarea><input type="file" accept=".pem,.key,.txt" onchange="lerChaveAGT(this,\'agtSoftwarePrivateKey\')"></div>' +
+      '<div class="form-group full"><label>Chave privada do contribuinte / certificado AGT (PEM PKCS#8) *</label><textarea id="agtTaxpayerPrivateKey" rows="4" placeholder="-----BEGIN PRIVATE KEY-----"></textarea><input type="file" accept=".pem,.key,.txt" onchange="lerChaveAGT(this,\'agtTaxpayerPrivateKey\')"></div>' +
       '</div>' +
       '<div class="alert alert-warning" style="margin-top:12px"><strong>Importante:</strong> a AGT exige um número de validação do software e assinaturas JWS RS256. Não invente esse número. A utilização em produção só deve ser ativada depois da certificação do Kanawa Soft e da validação das chaves e séries.</div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">' +
