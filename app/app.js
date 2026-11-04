@@ -1966,7 +1966,7 @@ async function testarAPI() { const ok = await API.checkHealth(); toast(ok ? '✅
 async function limparColecao(s) { if (!confirm('Limpar ' + s + '?')) return; await DB.clear(s); toast('Limpo', 'info'); openModule('config'); }
 async function recarregarDemo() { if (!confirm('Carregar demo?')) return; await seedDemo(); pdvCache.ts = 0; toast('Demo carregado', 'success'); openModule('config'); }
 async function resetTotal() {
-  if (!confirm('⚠️ REPOR TODOS OS DADOS DE NEGÓCIO DA EMPRESA? Produtos, stock, vendas, clientes, registos e formação serão eliminados definitivamente da nuvem e deste dispositivo. A conta, empresa principal, utilizadores, licença e configurações fiscais serão mantidos.')) return;
+  if (!confirm('⚠️ REPOR TODOS OS DADOS DE NEGÓCIO DA EMPRESA? Produtos, stock, vendas, clientes, registos e formação serão eliminados definitivamente da nuvem e deste dispositivo. A conta, empresa principal, utilizadores e licença serão mantidos; chaves de API, pagamentos e credenciais fiscais serão apagados.')) return;
   if (!confirm('ÚLTIMA CONFIRMAÇÃO: exportou um backup e quer mesmo apagar os dados de negócio da empresa em todos os dispositivos?')) return;
   if (!window.KanawaCloud || !KanawaCloud.ready || typeof KanawaCloud.resetCompanyBusinessData !== 'function') { toast('Reposição bloqueada: ligue a conta à base central antes de apagar dados.', 'error'); return; }
   try {
