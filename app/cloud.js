@@ -352,6 +352,43 @@
       return result.data;
     },
 
+    async listBranches() {
+      if (!this.ready || !context || !context.company) return [];
+      const result = await client.from('ks_company_branches')
+        .select('id,branch_company_id,status,created_at')
+        .eq('parent_company_id', context.company.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true });
+      if (result.error) throw result.error;
+      const rows = result.data || [];
+      if (!rows.length) return [];
+      const ids = rows.map(function (row) { return row.branch_company_id; });
+      const companies = await client.from('ks_companies').select('id,name,nif').in('id', ids);
+      if (companies.error) throw companies.error;
+      const byId = new Map((companies.data || []).map(function (company) { return [company.id, company]; }));
+      return rows.map(function (row) { return Object.assign({}, row, { company: byId.get(row.branch_company_id) || null }); });
+    },
+
+    async linkBranch(branchCompanyId) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_link_company_branch', {
+        p_parent_company_id: context.company.id,
+        p_branch_company_id: branchCompanyId
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async unlinkBranch(branchCompanyId) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_unlink_company_branch', {
+        p_parent_company_id: context.company.id,
+        p_branch_company_id: branchCompanyId
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
     async getAgtSettings() {
       if (!this.ready || !context || !context.company) return null;
       const result = await client.from('ks_fiscal_integrations')
