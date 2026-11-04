@@ -382,6 +382,15 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
 .kanawa-map-canvas{width:100%;height:430px;min-height:320px;border:1px solid var(--border);border-radius:12px;z-index:1;background:#e2e8f0}
 @media(max-width:600px){.kanawa-map-canvas{height:360px;min-height:300px}.leaflet-control-zoom a{width:34px!important;height:34px!important;line-height:34px!important}}
 
+/* Team permissions matrix and production hardening. */
+.team-permission-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;max-height:52vh;overflow:auto;padding:2px}
+.team-permission-module{border:1px solid var(--border);border-radius:10px;background:var(--bg-card);overflow:hidden}
+.team-permission-module summary{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 12px;cursor:pointer;list-style:none}
+.team-permission-module summary::-webkit-details-marker{display:none}
+.team-permission-module summary:focus-visible{outline:2px solid var(--primary-light);outline-offset:-2px}
+.team-permission-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:10px 12px;border-top:1px solid var(--border)}
+.team-permission-action{display:flex;align-items:center;gap:5px;font-size:.78rem;white-space:nowrap}
+@media(max-width:600px){.team-permission-list{grid-template-columns:minmax(0,1fr);max-height:56vh}.team-permission-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Production hardening: accessible form states, responsive setup and reduced motion. */
 .form-group input[aria-invalid="true"],.form-group select[aria-invalid="true"],.form-group textarea[aria-invalid="true"]{border-color:var(--danger);box-shadow:0 0 0 3px rgba(220,53,69,.12)}
 .form-group input:focus-visible,.form-group select:focus-visible,.form-group textarea:focus-visible,.btn:focus-visible{outline:2px solid var(--primary-light);outline-offset:2px}
