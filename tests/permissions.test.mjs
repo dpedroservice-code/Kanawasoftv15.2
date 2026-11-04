@@ -9,10 +9,14 @@ test('administrator has full access', () => {
   assert.equal(canAccess(p, 'usuarios'), true);
   assert.equal(canDo(p, 'excluir', 'produtos'), true);
 });
-test('empty cloud permissions fail closed', () => {
-  const p = fromMembership('operador', {});
-  assert.equal(canAccess(p, 'pdv'), false);
-  assert.equal(canDo(p, 'criar', 'pdv'), false);
+test('empty cloud permissions fail closed for every non-profile module', () => {
+  for (const role of ['manager','gerente','operador','caixa','contabilista','visualizador']) {
+    const p = fromMembership(role, {});
+    assert.equal(canAccess(p, 'pdv'), false, role + ' must not receive implicit PDV access');
+    assert.equal(canAccess(p, 'financeiro'), false, role + ' must not receive implicit finance access');
+    assert.equal(canDo(p, 'criar', 'pdv'), false);
+    assert.equal(canAccess(p, 'perfil'), true);
+  }
 });
 test('operator receives only explicit module grants', () => {
   const p = fromMembership('operador', { pdv: ['ver','criar'], produtos: ['ver'], vendas: ['ver','criar'] });
@@ -39,4 +43,11 @@ test('unknown actions are ignored', () => {
   const p = fromMembership('visualizador', { dashboard: ['ver','superuser'] });
   assert.equal(canAccess(p, 'dashboard'), true);
   assert.equal(canDo(p, 'superuser', 'dashboard'), false);
+});
+
+test('manager receives only modules explicitly granted by administrator', () => {
+  const p = fromMembership('manager', { tecnica: ['ver','criar'], pdv: ['ver'] });
+  assert.equal(canAccess(p, 'tecnica'), true);
+  assert.equal(canAccess(p, 'pdv'), true);
+  assert.equal(canAccess(p, 'financeiro'), false);
 });
