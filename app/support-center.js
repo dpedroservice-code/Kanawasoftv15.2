@@ -4,7 +4,7 @@
   const API_URL = 'https://jiehrswweoyesbabrpjf.supabase.co/functions/v1/ks-store-api';
   const SUPABASE_KEY = 'sb_publishable_l9HL3zMMJ5rN7vnXUZPa1g_9ZA1q7PO';
   const STORE_NAMES = ['alunos','aulasFormacao','avaliacoesFormacao','presencasFormacao','modelosCertificado'];
-  if (window.DB && Array.isArray(DB.stores)) {
+  if (typeof DB !== 'undefined' && Array.isArray(DB.stores)) {
     STORE_NAMES.forEach(function (name) { if (!DB.stores.includes(name)) DB.stores.push(name); });
     DB.version = Math.max(Number(DB.version) || 0, 9);
   }
