@@ -193,11 +193,11 @@
   }
   function ksStudentAttendance(id, lessons, attend, courseId) {
     const relevantLessons = (lessons || []).filter(function (l) { return courseId === undefined || String(l.cursoId) === String(courseId); });
-    const entries = (attend || []).filter(function (a) { return String(a.alunoId) === String(id); });
-    if (!entries.length) return { total: 0, rate: 0 };
+    const lessonIds = new Set(relevantLessons.map(function (l) { return String(l.id); }));
+    const entries = (attend || []).filter(function (a) { return String(a.alunoId) === String(id) && lessonIds.has(String(a.aulaId)); });
+    if (!relevantLessons.length) return { total: 0, rate: 0 };
     const present = entries.filter(function (a) { return a.estado === 'presente'; }).length;
-    const total = relevantLessons.length ? relevantLessons.filter(function (l) { return entries.some(function (a) { return String(a.aulaId) === String(l.id); }); }).length : entries.length;
-    return { total: total, rate: total ? present / total * 100 : 0 };
+    return { total: relevantLessons.length, rate: present / relevantLessons.length * 100 };
   }
   async function ksOpenStudent(id) {
     const students = await getData('alunos') || [];
