@@ -180,8 +180,21 @@
         recordId: String(details.recordId),
         deviceKey: String(details.deviceKey),
         deviceLabel: String(details.deviceLabel || 'Dispositivo Android').slice(0, 120),
-        vehicleLabel: String(details.vehicleLabel || 'Dispositivo móvel').slice(0, 120)
+        vehicleLabel: String(details.vehicleLabel || 'Dispositivo móvel').slice(0, 120),
+        trail: Array.isArray(details.trail) ? details.trail.slice(-100) : []
       };
+      if (details.lastPoint && Number.isFinite(Number(details.lastPoint.lat)) &&
+          Number.isFinite(Number(details.lastPoint.lng))) {
+        config.lastPoint = {
+          lat: Number(details.lastPoint.lat), lng: Number(details.lastPoint.lng),
+          accuracy: details.lastPoint.accuracy || null,
+          speed: details.lastPoint.speed || null,
+          heading: details.lastPoint.heading || null,
+          timestamp: String(details.lastPoint.timestamp || new Date().toISOString())
+        };
+      }
+      return config;
+      //
     },
 
     async signOut() {
