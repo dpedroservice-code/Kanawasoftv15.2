@@ -62,11 +62,16 @@
           throw error;
         }
       }
-      if (!cloud.ready) { await queue(opts); return id; }
+
+      if (!cloud.ready) {
+        await queue(opts);
+        return id;
+      }
 
       if (store === 'vendas' && record.status === 'finalizada' && !opts.skipSaleFinalize) {
-        try { await cloud.upsertRecord(store, record, { deferMirror: true }); }
-        catch (error) {
+        try {
+          await cloud.upsertRecord(store, record, { deferMirror: true });
+        } catch (error) {
           if (previous) await DB.put(store, previous); else await DB.del(store, id);
           throw error;
         }
@@ -87,6 +92,7 @@
           throw error;
         }
       }
+
       await queue(opts);
       return id;
     } finally {
