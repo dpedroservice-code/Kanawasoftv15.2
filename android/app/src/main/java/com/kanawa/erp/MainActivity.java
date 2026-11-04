@@ -77,7 +77,8 @@ public final class MainActivity extends Activity {
         WebViewCompat.addWebMessageListener(webView, "KanawaNative",
                 Collections.singleton(origin),
                 (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
-                    if (!isMainFrame || sourceOrigin == null || !origin.equals(sourceOrigin.toString())) return;
+                    if (!isMainFrame || sourceOrigin == null || !"https".equalsIgnoreCase(sourceOrigin.getScheme()) ||
+                            !host.equalsIgnoreCase(sourceOrigin.getHost())) return;
                     String requestId = "";
                     try {
                         JSONObject request = new JSONObject(message.getData());
