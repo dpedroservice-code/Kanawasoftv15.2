@@ -182,7 +182,7 @@ BEGIN
       RAISE EXCEPTION 'Não foi possível recuperar a venda já registada.' USING ERRCODE='40001';
     END IF;
     IF (v_existing.idempotency_hash IS NOT NULL AND v_existing.idempotency_hash<>v_hash)
-       OR (v_existing.idempotency_hash IS NULL AND v_existing.source_payload IS DISTINCT FROM v_source_payload) THEN
+       OR (v_existing.idempotency_hash IS NULL AND (v_existing.source_payload-'record_payload') IS DISTINCT FROM v_source_payload) THEN
       RAISE EXCEPTION 'Este identificador de venda já foi utilizado com dados diferentes. A operação foi bloqueada.' USING ERRCODE='23505';
     END IF;
 
