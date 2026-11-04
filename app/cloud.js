@@ -173,7 +173,7 @@
 
     async signOut() {
       if (!client) return;
-      try { if (window.KanawaAndroid && window.KanawaAndroid.stopTracking) window.KanawaAndroid.stopTracking(); } catch (e) { }
+      try { if (window.KanawaAndroid && window.KanawaAndroid.stopTracking) await window.KanawaAndroid.stopTracking(); } catch (e) { }
       const result = await client.auth.signOut();
       if (result.error) throw result.error;
       context = null;
