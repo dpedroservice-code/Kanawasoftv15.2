@@ -53,9 +53,9 @@
         : 'Associação activa';
       let action = '';
       if (branch.status === 'pending' && branch.side === 'branch') {
-        action = '<button class="btn btn-sm btn-success" onclick="aceitarFilial(\\'' + esc(branch.parent_company_id) + '\\',\\'' + esc(branch.branch_company_id) + '\\')"><i class="fas fa-check"></i> Aceitar pedido</button>';
+        action = '<button class="btn btn-sm btn-success" onclick="aceitarFilial(\'' + esc(branch.parent_company_id) + '\',\'' + esc(branch.branch_company_id) + '\')"><i class="fas fa-check"></i> Aceitar pedido</button>';
       } else {
-        action = '<button class="btn btn-sm btn-danger" onclick="desassociarFilial(\\'' + esc(branch.parent_company_id) + '\\',\\'' + esc(branch.branch_company_id) + '\\')"><i class="fas fa-unlink"></i> Remover</button>';
+        action = '<button class="btn btn-sm btn-danger" onclick="desassociarFilial(\'' + esc(branch.parent_company_id) + '\',\'' + esc(branch.branch_company_id) + '\')"><i class="fas fa-unlink"></i> Remover</button>';
       }
       const otherCompanyId = branch.side === 'parent' ? branch.branch_company_id : branch.parent_company_id;
       return '<tr><td><strong>' + esc(company.name || 'Empresa associada') + '</strong><br><small>' + esc(company.nif || '') + '</small><br><code>' + esc(otherCompanyId) + '</code></td>' +
