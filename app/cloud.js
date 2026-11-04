@@ -227,7 +227,7 @@
       if (!id || id.length > 120) throw new Error('Identificador de registo inválido para sincronização.');
 
       // Mirror products into the normalized table so stock and plan quotas are enforced centrally.
-      if (store === 'produtos') {
+      if (store === 'produtos' && !(options && options.skipStockSync)) {
         const stock = Math.max(0, Number(item.estoque) || 0);
         const product = {
           external_id: id,
@@ -270,6 +270,7 @@
         });
         if (finalizeSale.error) throw finalizeSale.error;
         saleFinalized = true;
+        if (options && options.deferMirror) return { saleFinalized: true, external_id: id };
       }
 
       const result = await client
@@ -348,6 +349,45 @@
       if (result.error) throw result.error;
       if (!result.data) throw new Error('A empresa não foi atualizada. Verifique a permissão do proprietário.');
       context.company = Object.assign({}, context.company, result.data);
+      return result.data;
+    },
+
+    async getAgtSettings() {
+      if (!this.ready || !context || !context.company) return null;
+      const result = await client.from('ks_fiscal_integrations')
+        .select('environment,tax_registration_number,product_id,product_version,software_validation_number,signature_version,establishment_number,status,last_tested_at,last_test_message')
+        .eq('company_id', context.company.id)
+        .maybeSingle();
+      if (result.error) throw result.error;
+      return result.data || null;
+    },
+
+    async saveAgtConfig(config) {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.rpc('ks_save_agt_config', {
+        p_company_id: context.company.id,
+        p_environment: config.environment,
+        p_tax_registration_number: config.taxRegistrationNumber,
+        p_product_id: config.productId,
+        p_product_version: config.productVersion,
+        p_software_validation_number: config.softwareValidationNumber,
+        p_signature_version: config.signatureVersion,
+        p_establishment_number: config.establishmentNumber,
+        p_username: config.username,
+        p_password: config.password,
+        p_software_private_key_pem: config.softwarePrivateKeyPem,
+        p_taxpayer_private_key_pem: config.taxpayerPrivateKeyPem
+      });
+      if (result.error) throw result.error;
+      return result.data;
+    },
+
+    async testAgtConfig() {
+      if (!this.ready || !context || !context.company) throw new Error('Sessão da empresa não está activa.');
+      const result = await client.functions.invoke('ks-agt-test', {
+        body: { company_id: context.company.id }
+      });
+      if (result.error) throw result.error;
       return result.data;
     },
 
