@@ -24,10 +24,12 @@ CREATE POLICY ks_records_update_by_module ON public.ks_records
 FOR UPDATE TO authenticated
 USING (
   private.ks_has_company_permission(company_id, private.ks_module_for_store(store_key), 'editar')
-  OR (store_key = 'vendas' AND (
-    private.ks_has_company_permission(company_id, 'vendas', 'criar')
-    OR private.ks_has_company_permission(company_id, 'pdv', 'criar')
-  ))
+  OR (store_key = 'vendas'
+    AND coalesce(payload->>'status','') <> 'finalizada'
+    AND (
+      private.ks_has_company_permission(company_id, 'vendas', 'criar')
+      OR private.ks_has_company_permission(company_id, 'pdv', 'criar')
+    ))
 )
 WITH CHECK (
   private.ks_has_company_permission(company_id, private.ks_module_for_store(store_key), 'editar')
