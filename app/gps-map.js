@@ -119,7 +119,7 @@
       ? window.KanawaCloud.context.company.id : 'local';
     const storageKey = 'kanawa_gps_record_' + companyId;
     gpsRecordId = localStorage.getItem(storageKey) || null;
-    if (gpsRecordId && /^\\d+$/.test(gpsRecordId)) gpsRecordId = Number(gpsRecordId);
+    if (gpsRecordId && /^\d+$/.test(gpsRecordId)) gpsRecordId = Number(gpsRecordId);
     mapStatus('A solicitar permissão de localização ao Android…');
     watchId = navigator.geolocation.watchPosition(async function (position) {
       const coords = position.coords;
