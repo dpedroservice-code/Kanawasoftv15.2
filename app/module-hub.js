@@ -2,6 +2,7 @@
   'use strict';
   const originalOpenModule = window.openModule;
   const originalCanAccess = window.podeAcessar;
+  let activeModule = 'dashboard';
   const groups = [
     { id: 'comercial-hub', label: 'Comercial', icon: 'fa-cash-register', description: 'Ponto de venda, vendas e orçamentos.', children: [
       ['pdv','Ponto de Venda','fa-cash-register'],['vendas','Vendas e faturas','fa-receipt'],['orcamentos','Orçamentos','fa-file-invoice']
@@ -88,8 +89,8 @@
       if (visibleChildren(group).length) html += '<button class="sidebar-item" data-id="' + group.id + '" onclick="openModule(\'' + group.id + '\')"><i class="fas ' + group.icon + '"></i><span>' + group.label + '</span></button>';
     });
     sidebar.innerHTML = html;
-    const active = groupForRoute(window.currentModule);
-    const activeId = active ? active.id : window.currentModule;
+    const active = groupForRoute(activeModule);
+    const activeId = active ? active.id : activeModule;
     sidebar.querySelectorAll('.sidebar-item').forEach(function (item) {
       item.classList.toggle('active', item.dataset.id === activeId);
     });
@@ -99,7 +100,7 @@
     if (group) {
       const items = visibleChildren(group);
       if (!items.length) { if (window.toast) window.toast('Sem permissões para este módulo.', 'warning'); return; }
-      window.currentModule = id;
+      activeModule = id;
       const content = document.getElementById('content');
       if (content) { content.innerHTML = renderHub(group); content.scrollTop = 0; }
       document.querySelectorAll('.sidebar-item').forEach(function (item) { item.classList.toggle('active', item.dataset.id === id); });
@@ -108,6 +109,7 @@
     }
     if (typeof originalOpenModule !== 'function') return;
     await originalOpenModule.call(window, id);
+    activeModule = id;
     const parent = groupForRoute(id);
     if (parent) {
       document.querySelectorAll('.sidebar-item').forEach(function (item) { item.classList.toggle('active', item.dataset.id === parent.id); });
