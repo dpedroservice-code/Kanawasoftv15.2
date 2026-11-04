@@ -33,7 +33,7 @@
     if (perms.permissions) {
       if (moduleName === 'perfil') return true;
       const actions = perms.permissions[moduleName] || [];
-      return actions.includes('ver') || actions.includes('criar');
+      return actions.length > 0;
     }
     return Array.isArray(perms.modulos) && perms.modulos.includes(moduleName);
   }
