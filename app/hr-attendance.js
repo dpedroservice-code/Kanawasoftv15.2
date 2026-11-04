@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   function minutes(value) {
-    const match = /^(?:([01]\\d|2[0-3])):([0-5]\\d)$/.exec(String(value || '').trim());
+    const match = /^(?:([01]\d|2[0-3])):([0-5]\d)$/.exec(String(value || '').trim());
     return match ? Number(match[1]) * 60 + Number(match[2]) : null;
   }
   function calculateHours(entry, exit) {
