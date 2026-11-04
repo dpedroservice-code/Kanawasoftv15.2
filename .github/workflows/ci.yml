@@ -2,7 +2,7 @@ name: Kanawa CI
 
 on:
   pull_request:
-    branches: [main, audit/fix-sales-validation, feat/kanawasoft-v15.4-plano-tecnica]
+    branches: [main, audit/fix-sales-validation, feat/kanawasoft-v15.4-plano-tecnica, feat/kanawasoft-v15.4-maps-gps-tracking]
   push:
     branches: [main, feat/kanawasoft-v15.4-plano-tecnica]
   workflow_dispatch:
