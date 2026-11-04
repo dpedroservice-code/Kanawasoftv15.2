@@ -72,6 +72,7 @@ test('API keys are one-time secrets with read-only catalogue scope and revocatio
   assert.match(edge, /catalog:read/);
   assert.match(edge, /sha256\(apiKey\)/);
   assert.match(edge, /revoked_at/);
+  assert.match(edge, /x-api-key/);
   assert.match(edge, /requireAdmin/);
   assert.match(edge, /warning: "Copie esta chave agora/);
   assert.match(support, /action: 'create-key'/);
