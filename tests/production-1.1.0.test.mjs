@@ -17,6 +17,14 @@ test('release metadata is standardized on 1.1.0', () => {
   assert.doesNotMatch(html, /v15\.(?:2|3|4|12)/);
 });
 
+test('tenant switch fails closed and clears stale IndexedDB data and sync queue', () => {
+  const app = read('app/app.js');
+  assert.match(app, /Não foi possível confirmar os dados da empresa na base central/);
+  assert.match(app, /if \(!sameCompany\)/);
+  assert.match(app, /for \(const store of DB_STORES\) await DB\.clear\(store\)/);
+  assert.match(app, /localStorage\.removeItem\('kanawa_license'\)/);
+});
+
 test('all primary modules load the grouped navigation layer', () => {
   const html = read('app/index.html');
   for (const file of ['performance-bridge.js', 'module-hub.js', 'gps-map.js', 'agt-config.js']) {
