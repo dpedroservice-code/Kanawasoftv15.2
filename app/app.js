@@ -176,7 +176,7 @@ async function saveData(store, item, options) {
 async function deleteData(store, id) {
   const relatedEcommerce = store === 'produtos'
     ? (await DB.getAll('ecommerceProdutos')).filter(function (p) {
-        return [p.produtoId,p.produto_id,p.productId,p.product_id,p.produto && p.produto.id].some(function (v) { return String(v || '') === String(id); });
+        return [p.produtoId,p.produto_id,p.productId,p.product_id,p.produto && p.produto.id,p.id].some(function (v) { return String(v || '') === String(id); });
       })
     : [];
   const pending = await DB.getAll('_sync_queue');
