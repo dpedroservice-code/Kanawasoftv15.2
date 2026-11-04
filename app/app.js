@@ -3114,7 +3114,7 @@ async function exportarPedidosEcommerce() {
   const link = document.createElement('a'); link.href=url; link.download=filename + '.csv'; link.click(); URL.revokeObjectURL(url);
   toast(orders.length + ' pedidos exportados para CSV.', 'success');
 }
-const PAYMENT_METHOD_ICONS =const PAYMENT_METHOD_ICONS = {
+const PAYMENT_METHOD_ICONS = {
   dinheiro:'fa-money-bill-wave', cartao:'fa-credit-card', transferencia:'fa-university',
   multicaixa:'fa-mobile-alt', misto:'fa-random', credito:'fa-file-invoice',
   referencia:'fa-barcode', multicaixa_express:'fa-mobile-alt'
