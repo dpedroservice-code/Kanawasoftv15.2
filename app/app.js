@@ -3410,7 +3410,13 @@ async function iniciarRastreamentoGPS() {
         recordId: String(existing.id),
         deviceKey: deviceKey,
         deviceLabel: existing.deviceLabel || 'Dispositivo Android',
-        vehicleLabel: existing.veiculo || 'Dispositivo móvel'
+        vehicleLabel: existing.veiculo || 'Dispositivo móvel',
+        lastPoint: existing.coordinates_valid === true ? {
+          lat: Number(existing.lat), lng: Number(existing.lng),
+          accuracy: existing.accuracy || null, speed: existing.speed || null,
+          heading: existing.heading || null, timestamp: existing.ultimaAtualizacao || now()
+        } : null,
+        trail: Array.isArray(existing.trail) ? existing.trail.slice(-100) : []
       });
       const response = await window.KanawaAndroid.startTracking(config);
       if (!response.accepted) throw new Error(response.message || 'O Android não aceitou o pedido de rastreamento.');
