@@ -296,20 +296,21 @@
     async deleteRecord(store, id) {
       if (!this.ready || this.isLocalOnly(store)) return false;
       if (store === 'produtos') {
-        const deactivate = await client.from('ks_products')
-          .update({ is_active: false, updated_at: new Date().toISOString() })
-          .eq('company_id', context.company.id)
-          .eq('external_id', String(id));
-        if (deactivate.error) throw deactivate.error;
+        const result = await client.rpc('ks_delete_company_product', { p_company_id: context.company.id, p_external_id: String(id) });
+        if (result.error) throw result.error;
+        return true;
       }
-      const result = await client
-        .from('ks_records')
-        .delete()
-        .eq('company_id', context.company.id)
-        .eq('store_key', store)
-        .eq('record_id', String(id));
+      const result = await client.from('ks_records').delete()
+        .eq('company_id', context.company.id).eq('store_key', store).eq('record_id', String(id));
       if (result.error) throw result.error;
       return true;
+    },
+
+    async resetCompanyBusinessData() {
+      if (!this.ready) throw new Error('Sessão central não está ativa.');
+      const result = await client.rpc('ks_reset_company_business_data', { p_company_id: context.company.id });
+      if (result.error) throw result.error;
+      return result.data;
     },
 
     async updateCompany(data) {
