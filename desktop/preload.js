@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 /* ============================================================
-   KANAWA SOFT ERP v15.2 — preload.js
+   KANAWA SOFT ERP v1.2.1 — preload.js
    Bridge segura entre Renderer (app.js) e Main (main.js)
    ============================================================ */
 
@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld('kanawaNative', {
   electronVersion: process.versions.electron,
   chromeVersion: process.versions.chrome,
   nodeVersion: process.versions.node,
-  appVersion: '15.3.0',
+  appVersion: '1.2.1',
   isWindows: process.platform === 'win32',
   isMac: process.platform === 'darwin',
   isLinux: process.platform === 'linux',
