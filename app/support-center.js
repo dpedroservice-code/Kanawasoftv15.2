@@ -1,4 +1,4 @@
-/* Kanawa Soft 1.2.1 — apoio, integração de loja, pagamentos e formação */
+/* Kanawa Soft 15.3 — apoio, integração de loja, pagamentos e formação */
 (function () {
   'use strict';
   const API_URL = 'https://jiehrswweoyesbabrpjf.supabase.co/functions/v1/ks-store-api';

@@ -1,4 +1,4 @@
-# Auditoria de prontidão para produção — KanawaSoft v1.2.1
+# Auditoria de prontidão para produção — KanawaSoft v15.3
 
 **Data:** 2026-11-02  
 **Repositório:** `dpedroservice-code/Kanawasoftv15.2`  
@@ -16,7 +16,7 @@
 
 ## Alterações propostas na PR #9
 
-- Alinhamento da versão do pacote, lockfile, interface, servidor e Electron para 1.2.1.
+- Alinhamento da versão do pacote, lockfile, interface, servidor e Electron para 15.3.
 - Remoção das coordenadas fixas de Luanda do registo GPS.
 - Validação de latitude/longitude e identificação dos registos como introduzidos manualmente; coordenadas antigas sem origem comprovada são mostradas como não verificadas.
 - Distâncias de rotas opcionais e identificadas como manuais; sem valor, são explicitamente não calculadas.
@@ -33,7 +33,7 @@
 6. **E-commerce:** pedidos são registados como pendentes; não há cobrança online nem ciclo completo de cancelamento/devolução/reconciliação.
 7. **Auth:** ativar leaked-password protection nas definições do Supabase.
 8. **RLS:** rever avisos de políticas permissivas e testar isolamento multiempresa com contas reais por perfil.
-9. **Impressão:** testar impressora física A4/térmica e gerar/instalar pacote Electron 1.2.1.
+9. **Impressão:** testar impressora física A4/térmica e gerar/instalar pacote Electron 15.3.
 10. **Fiscalidade:** validar regras fiscais e eventual certificação AGT separadamente; não declarar certificação sem confirmação oficial.
 
 ## Publicação

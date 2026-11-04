@@ -9,7 +9,7 @@
 function registerRoutes(app) {
   app.get('/api/health', (_req, res) => res.json({
     status: 'ok',
-    version: '1.2.1',
+    version: '15.3.0',
     primaryStorage: 'supabase-postgresql',
     legacySqliteApi: 'disabled',
     timestamp: new Date().toISOString()

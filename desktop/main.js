@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 /* ============================================================
-   KANAWA SOFT ERP v1.2.1 — main.js COMPLETO (REVISTO)
+   KANAWA SOFT ERP v15.3 — main.js COMPLETO (REVISTO)
    Menu · Janela · Servidor Embutido · Impressoras · Gaveta
    Notificações · Backup · Dialogs · Auto-Update
    ============================================================ */
@@ -244,7 +244,7 @@ function bootstrap() {
               dialog.showMessageBox({
                 type: 'info',
                 title: 'Kanawa Soft ERP',
-                message: 'Kanawa Soft ERP v1.2.1',
+                message: 'Kanawa Soft ERP v15.3',
                 detail:
                   'Sistema de Gestão Empresarial\n' +
                   'Certificado AGT — Angola\n\n' +

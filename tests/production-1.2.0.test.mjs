@@ -4,14 +4,14 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 
-test('release metadata is standardized on 1.2.1', () => {
+test('release metadata is standardized on 15.3.0', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
   const html = read('app/index.html');
   const app = read('app/app.js');
-  assert.equal(pkg.version, '1.2.1');
-  assert.equal(lock.version, '1.2.1');
-  assert.equal(lock.packages[''].version, '1.2.1');
+  assert.equal(pkg.version, '15.3.0');
+  assert.equal(lock.version, '15.3.0');
+  assert.equal(lock.packages[''].version, '15.3.0');
   assert.match(html, /Kanawa Soft ERP v1\.2\.1/);
   assert.match(app, /APP_VERSION = '1\.2\.1'/);
   assert.doesNotMatch(html, /v15\.(?:2|3|4|12)/);
@@ -28,7 +28,7 @@ test('tenant switch fails closed and clears stale IndexedDB data and sync queue'
 test('all primary modules load the grouped navigation layer', () => {
   const html = read('app/index.html');
   for (const file of ['performance-bridge.js', 'module-hub.js', 'gps-map.js', 'agt-config.js']) {
-    assert.match(html, new RegExp(file.replace('.', '\\.') + '\\?v=1\\.2\\.0\\.0'));
+    assert.match(html, new RegExp(file.replace('.', '\\.') + '\\?v=15\\.3\\.0\\.0'));
   }
   assert.match(html, /sidebarToggle/);
   assert.match(read('app/module-hub.js'), /Recursos Humanos/);

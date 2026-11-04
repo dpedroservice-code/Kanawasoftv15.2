@@ -5,7 +5,7 @@ const { initDB } = require('./database');
 const { registerRoutes } = require('./routes');
 
 /* ============================================================
-   KANAWA SOFT ERP v1.2.1 — server.js
+   KANAWA SOFT ERP v15.3 — server.js
    Express · SQLite local shell · Supabase Cloud · Static · SPA fallback
    Helmet/rateLimit/morgan (opcionais) · Graceful shutdown
    Contrato: startServer({ dataDir, port }) → { port, server }
@@ -21,7 +21,7 @@ try { rateLimit = require('express-rate-limit'); } catch (e) { console.warn('[Ka
 let morgan = null;
 try { morgan = require('morgan'); } catch (e) { /* usa fallback manual */ }
 
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '15.3.0';
 
 let httpServer = null;
 let dbInstance = null;
