@@ -1852,14 +1852,14 @@ async function renderFinanceiro() {
   const recRows = rec.slice().reverse().map(item => [
     esc(item.cliente || '-'),esc(item.descricao || '-'),'<strong>' + fmt(item.valor) + '</strong>',fmtD(item.vencimento),renderStatus(item),
     (canApprove && !['pago','paga','cancelado','cancelada'].includes(String(item.status||'').toLowerCase())
-      ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + Number(item.id) + ',\\'receber\\')"><i class="fas fa-check"></i> Liquidar</button> ' : '') +
-      (podeFazer('excluir','financeiro') ? '<button class="btn btn-sm btn-danger" onclick="excluirItem(\\'contasReceber\\',' + Number(item.id) + ')"><i class="fas fa-trash"></i></button>' : '')
+      ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + Number(item.id) + ',\'receber\')"><i class="fas fa-check"></i> Liquidar</button> ' : '') +
+      (podeFazer('excluir','financeiro') ? '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'contasReceber\',' + Number(item.id) + ')"><i class="fas fa-trash"></i></button>' : '')
   ]);
   const pagRows = pag.slice().reverse().map(item => [
     esc(item.fornecedor || '-'),esc(item.descricao || '-'),'<strong>' + fmt(item.valor) + '</strong>',fmtD(item.vencimento),renderStatus(item),
     (canApprove && !['pago','paga','cancelado','cancelada'].includes(String(item.status||'').toLowerCase())
-      ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + Number(item.id) + ',\\'pagar\\')"><i class="fas fa-check"></i> Liquidar</button> ' : '') +
-      (podeFazer('excluir','financeiro') ? '<button class="btn btn-sm btn-danger" onclick="excluirItem(\\'contasPagar\\',' + Number(item.id) + ')"><i class="fas fa-trash"></i></button>' : '')
+      ? '<button class="btn btn-sm btn-success" onclick="marcarPago(' + Number(item.id) + ',\'pagar\')"><i class="fas fa-check"></i> Liquidar</button> ' : '') +
+      (podeFazer('excluir','financeiro') ? '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'contasPagar\',' + Number(item.id) + ')"><i class="fas fa-trash"></i></button>' : '')
   ]);
   return header('Financeiro','Contas a receber, pagar e liquidação','var(--success)','', 'fa-coins') +
     '<div class="metric-grid">' +
@@ -1868,10 +1868,10 @@ async function renderFinanceiro() {
     '<div class="metric-card" style="border-left-color:var(--danger)"><div class="label">Contas vencidas</div><div class="value">' + summary.contasVencidas + '</div><div class="sub">Receber e pagar</div></div>' +
     '<div class="metric-card"><div class="label">Saldo pendente</div><div class="value">' + fmt(summary.saldoPendente) + '</div><div class="sub">Sem incluir contas já liquidadas</div></div></div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-hand-holding-heart"></i> Contas a receber</h3>' +
-    (canCreate ? '<button class="btn btn-sm btn-success" onclick="abrirModalConta(\\'receber\\')"><i class="fas fa-plus"></i> Nova</button>' : '') + '</div>' +
+    (canCreate ? '<button class="btn btn-sm btn-success" onclick="abrirModalConta(\'receber\')"><i class="fas fa-plus"></i> Nova</button>' : '') + '</div>' +
     table(['Cliente','Descrição','Valor','Vencimento','Estado','Ações'],recRows) + '</div>' +
     '<div class="card"><div class="card-header"><h3 class="card-title"><i class="fas fa-file-invoice-dollar"></i> Contas a pagar</h3>' +
-    (canCreate ? '<button class="btn btn-sm btn-success" onclick="abrirModalConta(\\'pagar\\')"><i class="fas fa-plus"></i> Nova</button>' : '') + '</div>' +
+    (canCreate ? '<button class="btn btn-sm btn-success" onclick="abrirModalConta(\'pagar\')"><i class="fas fa-plus"></i> Nova</button>' : '') + '</div>' +
     table(['Fornecedor','Descrição','Valor','Vencimento','Estado','Ações'],pagRows) + '</div>';
 }
 function abrirModalConta(tipo) {
@@ -1884,7 +1884,7 @@ function abrirModalConta(tipo) {
     '<div class="form-group"><label>Valor (AOA) *</label><input id="ctValor" type="number" min="0.01" step="0.01" value="0" required></div>' +
     '<div class="form-group"><label>Vencimento *</label><input id="ctVenc" type="date" min="' + new Date().toISOString().slice(0,10) + '" value="' + new Date(Date.now()+30*86400000).toISOString().slice(0,10) + '" required></div>' +
     '<div class="form-group"><label>Referência / documento</label><input id="ctReferencia" maxlength="80"></div></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarConta(\\'' + tipo + '\\')">Guardar conta</button>');
+    '<button class="btn btn-primary btn-block" onclick="salvarConta(\'' + tipo + '\')">Guardar conta</button>');
 }
 async function salvarConta(tipo) {
   if (!podeFazer('criar','financeiro')) return toast('Sem permissão para criar contas financeiras.','error');
@@ -1922,10 +1922,10 @@ async function marcarPago(id,tipo) {
     '<div class="form-group"><label>Forma de pagamento</label><select id="ctMetodoPagamento"><option value="transferencia">Transferência bancária</option><option value="multicaixa">Multicaixa / TPA</option><option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="outro">Outro</option></select></div>' +
     '<div class="form-group"><label>Referência / comprovativo</label><input id="ctPagamentoRef" maxlength="100"></div>' +
     '<p class="alert alert-warning">Confirme primeiro o recebimento no banco, TPA ou caixa. Este registo não executa uma cobrança automática.</p>' +
-    '<button class="btn btn-success btn-block" onclick="confirmarLiquidacao(' + Number(id) + ',\\'' + tipo + '\\')">Confirmar liquidação</button>');
+    '<button class="btn btn-success btn-block" onclick="confirmarLiquidacao(' + Number(id) + ',\'' + tipo + '\')">Confirmar liquidação</button>');
 }
 async function confirmarLiquidacao(id,tipo) {
-  if (!podeFazer('aprovar','financeiro') && !podeFazer('editar','financeiro')) return toast('Sem permissão para liquidar contas.','error');
+  if (!podeFazer('editar','financeiro')) return toast('Sem permissão para liquidar contas.','error');
   const store = tipo === 'receber' ? 'contasReceber' : 'contasPagar';
   const record = await DB.get(store,id);
   if (!record || ['pago','paga','cancelado','cancelada'].includes(String(record.status||'').toLowerCase())) return toast('Estado da conta já foi alterado. Actualize o módulo.','warning');
@@ -1938,7 +1938,7 @@ async function confirmarLiquidacao(id,tipo) {
   closeModal(); openModule('financeiro');
 }
 
-/* ====== FISCAL ====== *//* ====== FISCAL ====== */
+/* ====== FISCAL ====== */
 async function renderFiscal() {
   const vendas = await getData('vendas'); const compras = await getData('compras');
   const tV = vendas.reduce((s, v) => s + (v.total || 0), 0);
