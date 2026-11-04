@@ -41,5 +41,5 @@ test('cashier create permission can only update a draft sales mirror, not a fina
 test('migration advertises idempotency enforcement so clients can reject legacy duplicate responses', () => {
   assert.match(sql, /'idempotency_enforced',true/);
   const cloud = readFileSync(new URL('../app/cloud.js', import.meta.url), 'utf8');
-  assert.match(cloud, /duplicate === true[\\s\\S]*idempotency_enforced !== true/);
+  assert.ok(cloud.includes('duplicate === true') && cloud.includes('idempotency_enforced !== true'));
 });
