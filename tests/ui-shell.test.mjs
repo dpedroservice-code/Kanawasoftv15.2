@@ -67,3 +67,12 @@ test('payment setup exposes bank details and the secure credential vault', async
   assert.match(html, /integration-center\.js\?v=15\.4\.20261104\.3/);
   assert.doesNotMatch(integrations, /localStorage\.setItem|indexedDB\.open/);
 });
+
+test('finance dashboard loads due-state engine and manual settlement details', async () => {
+  const html = await readFile(new URL('../app/index.html', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../app/app.js', import.meta.url), 'utf8');
+  assert.match(html, /finance-engine\.js/);
+  assert.match(app, /KanawaFinance\.summarize/);
+  assert.match(app, /async function confirmarLiquidacao\(id,tipo\)/);
+  assert.match(app, /não executa uma cobrança automática/);
+});
