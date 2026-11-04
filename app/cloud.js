@@ -326,12 +326,33 @@
         }
         const normalized = window.KanawaSales.normalizeSale(Object.assign({}, item, { id: id }));
         normalized.sale.record_payload = Object.assign({}, item, { id: id, status: 'finalizada' });
-        const finalizeSale = await client.rpc('ks_finalize_sale', {
-          p_company_id: context.company.id,
-          p_sale: normalized.sale,
-          p_items: normalized.items
+        const sessionResult = await client.auth.getSession();
+        if (sessionResult.error) throw sessionResult.error;
+        const session = sessionResult.data && sessionResult.data.session;
+        if (!session || !session.access_token) throw new Error('Sessão expirada. Entre novamente para finalizar a venda.');
+        const apiResponse = await fetch('/api/sales/finalize', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + session.access_token,
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          },
+          body: JSON.stringify({
+            company_id: context.company.id,
+            sale: normalized.sale,
+            items: normalized.items
+          })
         });
-        if (finalizeSale.error) throw finalizeSale.error;
+        let apiResult;
+        try { apiResult = await apiResponse.json(); }
+        catch (_error) { apiResult = { error: 'Resposta inválida da API de vendas.' }; }
+        if (!apiResponse.ok) {
+          const apiError = new Error(apiResult.error || 'A API não confirmou a venda.');
+          apiError.code = apiResult.code || 'SALE_API_ERROR';
+          apiError.status = apiResponse.status;
+          throw apiError;
+        }
+        const finalizeSale = { data: apiResult };
         saleFinalized = true;
         saleHistoryAtomic = !!(finalizeSale.data && finalizeSale.data.history_atomic === true);
         // The RPC already persisted the finalized sale record, payment, stock
