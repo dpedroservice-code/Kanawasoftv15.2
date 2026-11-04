@@ -375,6 +375,14 @@
         }
         const finalizeSale = { data: apiResult };
         saleFinalized = true;
+        if (finalizeSale.data && finalizeSale.data.duplicate === true &&
+            finalizeSale.data.idempotency_enforced !== true) {
+          // The shared preview database still has the legacy RPC. Do not let
+          // an unverified duplicate retry overwrite its historical snapshot.
+          const migrationError = new Error('A proteção de repetição ainda não está instalada na base de teste. A repetição foi bloqueada; não altere nem reenvie esta venda até atualizar a base de teste.');
+          migrationError.code = 'IDEMPOTENCY_MIGRATION_REQUIRED';
+          throw migrationError;
+        }
         saleHistoryAtomic = !!(finalizeSale.data && finalizeSale.data.history_atomic === true);
         // The RPC already persisted the finalized sale record, payment, stock
         // decrement, movement ledger and usage event atomically. Do not issue a
