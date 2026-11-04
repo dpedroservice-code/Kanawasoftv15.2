@@ -244,7 +244,7 @@ async function processSyncQueue() {
       sent++;
     } catch (e) {
       console.warn('Fila de sincronização aguardando:', item.entity, e);
-      break;
+      throw e;
     }
   }
   return sent;
