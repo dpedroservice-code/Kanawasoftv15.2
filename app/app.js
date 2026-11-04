@@ -3288,6 +3288,7 @@ async function persistirPontoGPS(position) {
   try {
     const deviceKey = obterChaveDispositivoGPS();
     let record = kanawaGpsRecordId ? await DB.get('gpsTracking', kanawaGpsRecordId) : null;
+    if (record && record.trackingKey !== deviceKey) record = null;
     if (!record) {
       const records = await getData('gpsTracking');
       record = records.find(x => x.trackingKey === deviceKey) || null;
@@ -3324,6 +3325,8 @@ async function iniciarRastreamentoGPS() {
     const records = await getData('gpsTracking');
     const existing = records.find(x => x.trackingKey === deviceKey);
     kanawaGpsRecordId = existing ? existing.id : null;
+    kanawaGpsLastSavedAt = 0;
+    kanawaGpsLastPoint = null;
     window.KanawaMaps.startWatch(async function (position) {
       kanawaGpsWatchActive = true;
       const status = $('kanawaGpsStatus');
@@ -3347,7 +3350,7 @@ async function pararRastreamentoGPS() {
   if (kanawaGpsRecordId) {
     try {
       const record = await DB.get('gpsTracking', kanawaGpsRecordId);
-      if (record) {
+      if (record && record.trackingKey === obterChaveDispositivoGPS()) {
         record.status = 'stopped';
         record.ultimaAtualizacao = now();
         await saveData('gpsTracking', record);
