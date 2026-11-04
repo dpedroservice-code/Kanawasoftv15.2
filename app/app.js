@@ -1843,7 +1843,7 @@ async function renderFinanceiro() {
   const [rec,pag] = await Promise.all([getData('contasReceber'),getData('contasPagar')]);
   const summary = window.KanawaFinance ? KanawaFinance.summarize(rec,pag) : { receberPendente:0,receberVencido:0,receberPago:0,pagarPendente:0,pagarVencido:0,pagarPago:0,saldoPendente:0,contasVencidas:0 };
   const canCreate = podeFazer('criar','financeiro');
-  const canApprove = podeFazer('aprovar','financeiro') || podeFazer('editar','financeiro');
+  const canApprove = podeFazer('editar','financeiro');
   const renderStatus = item => {
     const state = window.KanawaFinance ? KanawaFinance.status(item) : (item.status || 'pendente');
     return badge(state === 'vencido' ? 'Vencido' : state === 'pago' ? 'Pago' : state === 'cancelado' ? 'Cancelado' : 'Pendente',
@@ -1908,7 +1908,7 @@ async function salvarConta(tipo) {
   closeModal(); openModule('financeiro');
 }
 async function marcarPago(id,tipo) {
-  if (!podeFazer('aprovar','financeiro') && !podeFazer('editar','financeiro')) {
+  if (!podeFazer('editar','financeiro')) {
     toast('Sem permissão para liquidar contas.','error'); return;
   }
   const store = tipo === 'receber' ? 'contasReceber' : 'contasPagar';
@@ -1918,9 +1918,10 @@ async function marcarPago(id,tipo) {
     return toast('Esta conta já está liquidada ou cancelada.','warning');
   }
   openModal('Confirmar liquidação',
-    '<p>Confirme a liquidação de <strong>' + esc(record.descricao || (record.cliente || record.fornecedor)) + '</strong> no valor de <strong>' + fmt(record.valor) + '</strong>.</p>' +
+    '<p>Confirme o registo manual de liquidação de <strong>' + esc(record.descricao || (record.cliente || record.fornecedor)) + '</strong> no valor de <strong>' + fmt(record.valor) + '</strong>.</p>' +
     '<div class="form-group"><label>Forma de pagamento</label><select id="ctMetodoPagamento"><option value="transferencia">Transferência bancária</option><option value="multicaixa">Multicaixa / TPA</option><option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="outro">Outro</option></select></div>' +
     '<div class="form-group"><label>Referência / comprovativo</label><input id="ctPagamentoRef" maxlength="100"></div>' +
+    '<p class="alert alert-warning">Confirme primeiro o recebimento no banco, TPA ou caixa. Este registo não executa uma cobrança automática.</p>' +
     '<button class="btn btn-success btn-block" onclick="confirmarLiquidacao(' + Number(id) + ',\\'' + tipo + '\\')">Confirmar liquidação</button>');
 }
 async function confirmarLiquidacao(id,tipo) {
