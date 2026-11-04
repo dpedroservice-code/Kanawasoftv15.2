@@ -26,7 +26,7 @@ jobs:
 
       - name: Deploy pull request preview
         if: ${{ github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' }}
-        run: npx --yes netlify-cli@23.11.0 deploy --dir=app --message "Kanawa Soft PR #${{ github.event.pull_request.number }}" --json
+        run: npx --yes netlify-cli@23.11.0 deploy --dir=app --message "Kanawa Soft preview ${{ github.event.pull_request.number }}" --json
 
       - name: Deploy production after merge to main
         if: ${{ github.event_name == 'push' && env.NETLIFY_AUTH_TOKEN != '' }}
