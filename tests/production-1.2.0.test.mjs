@@ -4,16 +4,16 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 
-test('release metadata is standardized on 1.2.0', () => {
+test('release metadata is standardized on 1.2.1', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
   const html = read('app/index.html');
   const app = read('app/app.js');
-  assert.equal(pkg.version, '1.2.0');
-  assert.equal(lock.version, '1.2.0');
-  assert.equal(lock.packages[''].version, '1.2.0');
-  assert.match(html, /Kanawa Soft ERP v1\.2\.0/);
-  assert.match(app, /APP_VERSION = '1\.2\.0'/);
+  assert.equal(pkg.version, '1.2.1');
+  assert.equal(lock.version, '1.2.1');
+  assert.equal(lock.packages[''].version, '1.2.1');
+  assert.match(html, /Kanawa Soft ERP v1\.2\.1/);
+  assert.match(app, /APP_VERSION = '1\.2\.1'/);
   assert.doesNotMatch(html, /v15\.(?:2|3|4|12)/);
 });
 
