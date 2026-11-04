@@ -2862,7 +2862,29 @@ async function gerarEtiqueta() {
   await saveData('etiquetas', { codigo: 'ETQ' + Math.random().toString(36).substr(2, 6).toUpperCase(), produto, data: now() });
   toast('Etiqueta gerada', 'success'); openModule('logistica-etiquetas');
 }
-function visualizarEtiqueta(id) { toast('Pré-visualização de etiquetas ainda não está ligada a um gerador/serviço de impressão.', 'warning'); }
+async function visualizarEtiqueta(id) {
+  const printWindow = window.open('', '_blank', 'width=640,height=480');
+  if (!printWindow) { toast('Permita janelas pop-up para pré-visualizar a etiqueta.', 'warning'); return; }
+  try {
+    const label = await DB.get('etiquetas', id);
+    if (!label) { printWindow.close(); toast('Etiqueta não encontrada.', 'error'); return; }
+    let barcode = '<div style="font:14px monospace;letter-spacing:2px">' + esc(label.codigo || '') + '</div>';
+    if (typeof window.JsBarcode === 'function' && label.codigo) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      window.JsBarcode(svg,String(label.codigo),{format:'CODE128',width:2,height:54,displayValue:true,margin:4});
+      barcode = svg.outerHTML;
+    }
+    const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
+    printWindow.document.open();
+    printWindow.document.write('<!doctype html><html lang="pt-AO"><head><meta charset="utf-8"><title>Etiqueta ' + esc(label.codigo) + '</title><style>body{font-family:Arial,sans-serif;margin:0;padding:12px;color:#111}.label{width:76mm;min-height:38mm;border:1px solid #bbb;border-radius:4px;padding:8px;text-align:center;box-sizing:border-box}.company{font-size:11px;font-weight:700;color:#1a3a5c}.product{font-size:14px;font-weight:700;margin:7px 0}svg{max-width:100%;height:auto}@media print{body{padding:0}.label{border:0}}</style></head><body><div class="label"><div class="company">' + esc(company.firma || company.nome || 'KANAWA SOFT') + '</div><div class="product">' + esc(label.produto || 'Produto') + '</div>' + barcode + '<small>' + esc(label.data ? fmtD(label.data) : '') + '</small></div></body></html>');
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(),300);
+  } catch (error) {
+    try { printWindow.close(); } catch (_) {}
+    toast(error.message || 'Não foi possível abrir a etiqueta.', 'error');
+  }
+}
 
 function renderLogisticaPicking() {
   return header('Picking', 'Separação de pedidos', 'var(--warning)', '', 'fa-boxes') +
@@ -3058,8 +3080,41 @@ async function atualizarStatusPedidoEcommerce(id) {
     openModule('ecommerce-pedidos');
   } catch (error) { toast(error.message, 'warning'); }
 }
-function exportarPedidosEcommerce() { toast('Exportação de pedidos ainda não está implementada; nenhum ficheiro foi criado.', 'warning'); }
-const PAYMENT_METHOD_ICONS = {
+async function exportarPedidosEcommerce() {
+  const orders = await getData('ecommercePedidos') || [];
+  if (!orders.length) { toast('Não existem pedidos para exportar.', 'warning'); return; }
+  const safeText = value => {
+    const text = String(value == null ? '' : value);
+    return /^[=+@-]/.test(text) ? "'" + text : text;
+  };
+  const rows = orders.map(order => ({
+    Pedido: safeText(order.numero || order.numeroPedido || order.id),
+    Cliente: safeText(order.cliente || order.clienteNome || ''),
+    Email: safeText(order.email || order.clienteEmail || ''),
+    Telefone: safeText(order.telefone || order.clienteTelefone || ''),
+    Estado: safeText(order.status || 'pendente'),
+    Pagamento: safeText(order.pagamento || order.metodoPagamento || ''),
+    Total_AOA: Number(order.total || 0),
+    Data: safeText(order.data || order.created_at || ''),
+    Endereco: safeText(order.endereco || order.morada || ''),
+    Itens: safeText((order.itens || order.carrinho || []).map(item => (item.nome || item.produto || 'Artigo') + ' x ' + (item.quantidade || item.qty || 1)).join('; '))
+  }));
+  const filename = 'kanawa_pedidos_ecommerce_' + new Date().toISOString().slice(0,10);
+  if (typeof XLSX !== 'undefined') {
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book,sheet,'Pedidos');
+    XLSX.writeFile(book,filename + '.xlsx');
+    toast(orders.length + ' pedidos exportados para Excel.', 'success');
+    return;
+  }
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(','),...rows.map(row => headers.map(key => '"' + String(row[key] == null ? '' : row[key]).replace(/"/g,'""') + '"').join(','))].join('\\n');
+  const url = URL.createObjectURL(new Blob(['\\uFEFF' + csv],{type:'text/csv;charset=utf-8'}));
+  const link = document.createElement('a'); link.href=url; link.download=filename + '.csv'; link.click(); URL.revokeObjectURL(url);
+  toast(orders.length + ' pedidos exportados para CSV.', 'success');
+}
+const PAYMENT_METHOD_ICONS =const PAYMENT_METHOD_ICONS = {
   dinheiro:'fa-money-bill-wave', cartao:'fa-credit-card', transferencia:'fa-university',
   multicaixa:'fa-mobile-alt', misto:'fa-random', credito:'fa-file-invoice',
   referencia:'fa-barcode', multicaixa_express:'fa-mobile-alt'
@@ -3186,20 +3241,96 @@ async function renderRHOnboarding() {
 async function novoOnboarding() { const f = prompt('Nome do funcionário:'); if (!f) return; await saveData('onboarding', { funcionario: f, etapa: 'Integração', progresso: 10, status: 'em_andamento', data: now() }); toast('Processo iniciado', 'success'); openRHSection('onboarding'); }
 async function editarOnboarding(id) { const i = await DB.get('onboarding', id); if (!i) return; const p = prompt('Progresso (0-100):', i.progresso); if (p !== null) { i.progresso = parseInt(p) || 0; if (i.progresso >= 100) i.status = 'concluido'; await saveData('onboarding', i); toast('Atualizado', 'success'); openRHSection('onboarding'); } }
 async function renderRHPonto() {
-  const p = await getData('pontoDigital') || [];
-  return header('Controle de Ponto', p.length + ' registros', 'var(--warning)',
-    '<button class="btn btn-success" onclick="registrarPonto()"><i class="fas fa-clock"></i> Registrar Ponto</button>' +
+  const records = await getData('pontoDigital') || [];
+  const summary = window.KanawaAttendance ? KanawaAttendance.summarize(records) : [];
+  const openEntries = summary.reduce((total,row) => total + row.emAberto, 0);
+  const totalHours = summary.reduce((total,row) => total + row.horas, 0);
+  return header('Controle de Ponto', records.length + ' registos', 'var(--warning)',
+    '<button class="btn btn-success" onclick="registrarPonto()"><i class="fas fa-clock"></i> Registar entrada</button>' +
     '<button class="btn btn-info" onclick="relatorioPonto()"><i class="fas fa-file-alt"></i> Relatório</button>', 'fa-clock') +
-    '<div class="card">' + table(['Funcionário', 'Data', 'Entrada', 'Saída', 'Horas', 'Ações'],
-      p.slice(-10).reverse().map(x => { const e = x.entrada ? new Date('1970-01-01T' + x.entrada) : null; const s = x.saida ? new Date('1970-01-01T' + x.saida) : null; const h = e && s ? ((s - e) / (1000 * 60 * 60)).toFixed(1) : '-'; return [esc(x.funcionario || '-'), fmtD(x.data), esc(x.entrada || '-'), esc(x.saida || '-'), h, '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'pontoDigital\',' + x.id + ')"><i class="fas fa-trash"></i></button>']; })) + '</div>';
+    '<div class="metric-grid">' +
+    '<div class="metric-card"><div class="label">Registos</div><div class="value">' + records.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Entradas em aberto</div><div class="value">' + openEntries + '</div></div>' +
+    '<div class="metric-card"><div class="label">Horas apuradas</div><div class="value">' + totalHours.toFixed(2) + ' h</div></div></div>' +
+    '<div class="card">' + table(['Funcionário','Data','Entrada','Saída','Horas','Estado','Ações'],
+      records.slice(-30).reverse().map(record => {
+        const hours = window.KanawaAttendance ? KanawaAttendance.calculateHours(record.entrada,record.saida) : null;
+        const state = record.saida ? badge('Fechado','success') : badge('Em aberto','warning');
+        const close = record.saida ? '' : '<button class="btn btn-sm btn-success" onclick="registarSaidaPonto(' + Number(record.id) + ')"><i class="fas fa-sign-out-alt"></i> Saída</button> ';
+        return [esc(record.funcionario || '-'),fmtD(record.data),esc(record.entrada || '-'),esc(record.saida || '-'),
+          hours === null ? '-' : hours.toFixed(2) + ' h',state,
+          close + '<button class="btn btn-sm btn-danger" onclick="excluirItem(\\'pontoDigital\\',' + Number(record.id) + ')"><i class="fas fa-trash"></i></button>'];
+      })) + '</div>';
 }
 async function registrarPonto() {
-  const f = prompt('Nome do funcionário:'); if (!f) return;
-  const a = new Date();
-  await saveData('pontoDigital', { funcionario: f, data: a.toISOString().split('T')[0], entrada: a.toTimeString().slice(0, 5), saida: '', dataRegistro: now() });
-  toast('Ponto registrado', 'success'); openRHSection('ponto');
+  const name = prompt('Nome do funcionário:');
+  if (!name || !name.trim()) return;
+  const current = new Date();
+  const date = current.toISOString().slice(0,10);
+  const existing = (await getData('pontoDigital') || []).find(record =>
+    String(record.funcionario || '').trim().toLowerCase() === name.trim().toLowerCase() &&
+    record.data === date && !record.saida
+  );
+  if (existing) {
+    toast('Este trabalhador já tem uma entrada em aberto. Registe a saída antes de criar outra entrada.', 'warning');
+    return;
+  }
+  await saveData('pontoDigital', {
+    funcionario:name.trim(), data:date, entrada:current.toTimeString().slice(0,5),
+    saida:'', estado:'aberto', dataRegistro:now()
+  });
+  toast('Entrada registada.', 'success');
+  openRHSection('ponto');
 }
-function relatorioPonto() { toast('Relatório de ponto ainda não foi implementado; nenhum relatório foi gerado.', 'warning'); }
+async function registarSaidaPonto(id) {
+  const record = await DB.get('pontoDigital', id);
+  if (!record) return toast('Registo de ponto não encontrado.', 'error');
+  if (record.saida) return toast('A saída deste registo já foi registada.', 'warning');
+  const current = new Date();
+  record.saida = current.toTimeString().slice(0,5);
+  record.dataSaida = current.toISOString().slice(0,10);
+  record.estado = 'fechado';
+  record.atualizadoEm = now();
+  if (window.KanawaAttendance && KanawaAttendance.calculateHours(record.entrada,record.saida) === null) {
+    return toast('Não foi possível calcular as horas. Verifique a entrada e a saída.', 'error');
+  }
+  await saveData('pontoDigital', record);
+  toast('Saída registada.', 'success');
+  openRHSection('ponto');
+}
+async function relatorioPonto() {
+  const records = await getData('pontoDigital') || [];
+  const summary = window.KanawaAttendance ? KanawaAttendance.summarize(records) : [];
+  const rows = summary.map(row => [
+    '<strong>' + esc(row.funcionario) + '</strong>',row.registos,row.fechados,
+    row.emAberto ? badge(row.emAberto + ' em aberto','warning') : badge('Completo','success'),
+    row.horas.toFixed(2) + ' h'
+  ]);
+  openModal('Relatório de assiduidade',
+    '<div class="metric-grid"><div class="metric-card"><div class="label">Trabalhadores</div><div class="value">' + summary.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Registos</div><div class="value">' + records.length + '</div></div>' +
+    '<div class="metric-card"><div class="label">Horas apuradas</div><div class="value">' + summary.reduce((n,row)=>n+row.horas,0).toFixed(2) + ' h</div></div></div>' +
+    '<div class="card">' + table(['Trabalhador','Registos','Fechados','Estado','Horas totais'],rows) + '</div>' +
+    '<button class="btn btn-success btn-block" onclick="exportarRelatorioPonto()"><i class="fas fa-file-excel"></i> Exportar relatório</button>', true);
+}
+async function exportarRelatorioPonto() {
+  const records = await getData('pontoDigital') || [];
+  const rows = window.KanawaAttendance ? KanawaAttendance.summarize(records) : [];
+  if (typeof XLSX !== 'undefined') {
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book,sheet,'Assiduidade');
+    XLSX.writeFile(book,'kanawa_assiduidade_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    toast('Relatório de assiduidade exportado.', 'success');
+    return;
+  }
+  const headers = ['funcionario','registos','fechados','emAberto','horas'];
+  const csv = [headers.join(','),...rows.map(row => headers.map(key => '"' + String(row[key] == null ? '' : row[key]).replace(/"/g,'""') + '"').join(','))].join('\\n');
+  const url = URL.createObjectURL(new Blob(['\\uFEFF' + csv],{type:'text/csv;charset=utf-8'}));
+  const link = document.createElement('a'); link.href=url; link.download='kanawa_assiduidade.csv'; link.click(); URL.revokeObjectURL(url);
+  toast('Relatório CSV exportado.', 'success');
+}
+
 async function renderRHRescisao() {
   const r = await getData('rescisoes') || [];
   return header('Cálculo de Rescisão', r.length + ' cálculos', 'var(--danger)',
