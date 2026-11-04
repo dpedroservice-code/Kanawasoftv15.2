@@ -271,6 +271,7 @@ public final class GpsTrackingService extends Service implements LocationListene
                     if (saved != null) config = new JSONObject(saved);
                 }
                 if (config == null) {
+                    SecureStore.clear(this);
                     stopForeground(true);
                     stopSelf(startId);
                     return;
@@ -287,10 +288,12 @@ public final class GpsTrackingService extends Service implements LocationListene
             point.put("timestamp", java.time.Instant.now().toString());
             network.execute(() -> {
                 uploadPosition(snapshot, point, "stopped");
+                SecureStore.clear(this);
                 stopForeground(true);
                 stopSelf(startId);
             });
         } catch (Exception error) {
+            SecureStore.clear(this);
             stopForeground(true);
             stopSelf(startId);
         }
