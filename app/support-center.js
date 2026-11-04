@@ -41,6 +41,19 @@
     });
   };
   const formatDate = function (value) { return value ? new Date(value).toLocaleDateString('pt-AO') : '—'; };
+  const uploadPrivateStudentDocument = async function (input, studentId, side) {
+    const file = input && input.files && input.files[0];
+    if (!file) return '';
+    if (!window.KanawaCloud || !KanawaCloud.ready) throw new Error('A ligação segura à nuvem é necessária para guardar documentos do BI.');
+    if (file.size > 3 * 1024 * 1024) throw new Error('Cada documento do BI deve ter no máximo 3 MB.');
+    const allowed = ['image/jpeg','image/png','image/webp','application/pdf'];
+    if (!allowed.includes(file.type)) throw new Error('Formato de documento não permitido. Use JPG, PNG, WEBP ou PDF.');
+    const ext = file.type === 'application/pdf' ? 'pdf' : file.type.split('/')[1];
+    const path = companyId() + '/students/' + String(studentId) + '/bi-' + side + '.' + ext;
+    const result = await KanawaCloud.client.storage.from('kanawa-private-documents').upload(path, file, { upsert: true, contentType: file.type });
+    if (result.error) throw result.error;
+    return result.data.path;
+  };
   const formatNumber = function (value) { return Number(value || 0).toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 
   async function renderIntegracoesApi() {
@@ -214,17 +227,36 @@
     const course = courses.find(function (c) { return String(c.id) === String(cursoId); });
     if (!course) { toast('Selecione um curso existente.', 'warning'); return; }
     const existing = (await getData('alunos') || []).find(function (s) { return String(s.id) === String(id); }) || {};
-    const documents = await Promise.all(['ksStudentBIFront','ksStudentBIBack'].map(function (field) { return fileAsDataUrl(document.getElementById(field)); }));
     const student = { id: id || undefined, nome: nome, bi: bi, classe: classe, cursoId: course.id, curso: course.nome,
       telefone: document.getElementById('ksStudentPhone').value.trim(), email: document.getElementById('ksStudentEmail').value.trim(),
       dataNascimento: document.getElementById('ksStudentBirth').value, morada: document.getElementById('ksStudentAddress').value.trim(),
-      biFrente: documents[0] || existing.biFrente || '', biVerso: documents[1] || existing.biVerso || '',
+      biFrentePath: existing.biFrentePath || '', biVersoPath: existing.biVersoPath || '',
       inscritoEm: existing.inscritoEm || new Date().toISOString(), estado: 'inscrito' };
-    await saveData('alunos', student); closeModal(); toast('Aluno guardado.', 'success'); openModule('elearning-alunos');
+    const savedId = await saveData('alunos', student);
+    const frontPath = await uploadPrivateStudentDocument(document.getElementById('ksStudentBIFront'), savedId, 'frente');
+    const backPath = await uploadPrivateStudentDocument(document.getElementById('ksStudentBIBack'), savedId, 'verso');
+    if (frontPath || backPath) {
+      student.id = savedId; student.biFrentePath = frontPath || student.biFrentePath; student.biVersoPath = backPath || student.biVersoPath;
+      await saveData('alunos', student);
+    }
+    closeModal(); toast('Aluno guardado. Os documentos de identificação foram enviados para armazenamento privado.', 'success'); openModule('elearning-alunos');
+  }
+  async function ksOpenStudentDocument(id, side) {
+    const student = (await getData('alunos') || []).find(function (x) { return String(x.id) === String(id); });
+    const path = student && (side === 'frente' ? student.biFrentePath : student.biVersoPath);
+    if (!path || !window.KanawaCloud || !KanawaCloud.ready) { toast('Documento não disponível.', 'warning'); return; }
+    const result = await KanawaCloud.client.storage.from('kanawa-private-documents').createSignedUrl(path, 180);
+    if (result.error) { toast('Não foi possível abrir o documento: ' + result.error.message, 'error'); return; }
+    window.open(result.data.signedUrl, '_blank', 'noopener');
   }
   async function ksDeleteStudent(id) {
     if (!confirm('Apagar o registo deste aluno? As notas e presenças também serão eliminadas?')) return;
     const [grades, attend] = await Promise.all([getData('avaliacoesFormacao'), getData('presencasFormacao')]);
+    const student = (await getData('alunos') || []).find(function (x) { return String(x.id) === String(id); });
+    if (student && window.KanawaCloud && KanawaCloud.ready) {
+      const paths = [student.biFrentePath, student.biVersoPath].filter(Boolean);
+      if (paths.length) { const removed = await KanawaCloud.client.storage.from('kanawa-private-documents').remove(paths); if (removed.error) { toast('Não foi possível apagar os documentos privados: ' + removed.error.message, 'error'); return; } }
+    }
     for (const g of grades.filter(function (x) { return String(x.alunoId) === String(id); })) await deleteData('avaliacoesFormacao', g.id);
     for (const a of attend.filter(function (x) { return String(x.alunoId) === String(id); })) await deleteData('presencasFormacao', a.id);
     await deleteData('alunos', id); openModule('elearning-alunos');
@@ -292,7 +324,7 @@
       '<div class="card"><p>Escolha e personalize o modelo para cada aluno. O modelo base é offline e não depende de chamadas à Canva ou a outros serviços.</p>' +
       '<div class="card" style="border:2px solid #c99a36;background:#fff;color:#17395b;padding:24px;text-align:center"><div style="font-size:.75rem;letter-spacing:.3em;color:#c99a36">KANAWA SOFT · FORMAÇÃO</div><h2 style="font-family:Georgia,serif;margin:12px 0;color:#17395b">CERTIFICADO DE CONCLUSÃO</h2><p>Certificamos que</p><h2 style="font-family:Georgia,serif;color:#17395b">NOME DO ALUNO</h2><p>concluiu com aproveitamento o curso de</p><h3 style="color:#c99a36">NOME DO CURSO</h3><div style="display:flex;justify-content:space-around;gap:16px;margin-top:38px;flex-wrap:wrap"><span>Assinatura do Proprietário</span><span>Carimbo da Empresa</span><span>Assinatura do Diretor</span></div></div></div>' +
       '<div class="card"><div class="card-header"><h3 class="card-title">Modelos disponíveis</h3><button class="btn btn-success" onclick="ksEditCertificateModel()">Novo modelo</button></div>' + (rows.length ? '<div class="table-wrap"><table><thead><tr><th>Modelo</th><th>Cor</th><th>Estado</th><th>Ações</th></tr></thead><tbody>' + rows.map(function (r) { return '<tr>' + r.map(function (v) { return '<td>' + v + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>' : '<p class="empty">Sem modelos.</p>') +
-      '<p style="margin-top:12px;color:var(--text-muted)">Referência Canva encontrada na conta conectada: <a href="https://www.canva.com/d/fWRQNF_jNFErIrH" target="_blank">Certificado branco e dourado (abrir e editar no Canva)</a>. O Kanawa mantém o modelo HTML independente para uso offline.</p></div>';
+      '<p style="margin-top:12px;color:var(--text-muted)">Referência Canva encontrada na conta conectada: <a href="https://www.canva.com/d/Wy7SEswWPTQR0vB" target="_blank">Certificado branco e dourado (abrir e editar no Canva)</a>. O Kanawa mantém o modelo HTML independente para uso offline.</p></div>';
   }
   async function ksEditCertificateModel(id) {
     const models = await getData('modelosCertificado') || [];
@@ -355,6 +387,6 @@
   window.renderElearningAlunos = renderElearningAlunos;
   window.renderElearningModelos = renderElearningModelos;
   Object.assign(window, { ksCreateStoreApiKey, ksLoadStoreApiKeys, ksRevokeStoreApiKey, ksTestStoreApi, ksSavePaymentIntegration, ksTestPaymentIntegration, ksLoadPaymentIntegrations,
-    ksOpenStudent, ksSaveStudent, ksDeleteStudent, ksCreateLesson, ksSaveLesson, ksRecordGrade, ksSaveGrade, ksRecordAttendance, ksSaveAttendance,
+    ksOpenStudent, ksSaveStudent, ksDeleteStudent, ksOpenStudentDocument, ksCreateLesson, ksSaveLesson, ksRecordGrade, ksSaveGrade, ksRecordAttendance, ksSaveAttendance,
     ksEditCertificateModel, ksSaveCertificateModel, ksIssueCertificate });
 })();
