@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   let map = null;
+  let mapContainer = null;
   let watchId = null;
   let currentMarker = null;
   const vehicleMarkers = new Map();
@@ -83,7 +84,9 @@
     const element = document.getElementById('frotaGpsMap');
     if (!element) return;
     await loadLeaflet();
+    if (map && mapContainer !== element) { map.remove(); map = null; vehicleMarkers.clear(); currentMarker = null; }
     if (!map) {
+      mapContainer = element;
       map = window.L.map(element, { scrollWheelZoom: true }).setView([-11.2, 17.8], 5);
       const satellite = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
@@ -116,6 +119,7 @@
       ? window.KanawaCloud.context.company.id : 'local';
     const storageKey = 'kanawa_gps_record_' + companyId;
     gpsRecordId = localStorage.getItem(storageKey) || null;
+    if (gpsRecordId && /^\\d+$/.test(gpsRecordId)) gpsRecordId = Number(gpsRecordId);
     mapStatus('A solicitar permissão de localização ao Android…');
     watchId = navigator.geolocation.watchPosition(async function (position) {
       const coords = position.coords;
