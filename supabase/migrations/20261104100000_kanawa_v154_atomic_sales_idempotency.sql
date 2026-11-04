@@ -222,7 +222,7 @@ BEGIN
     END IF;
     RETURN jsonb_build_object(
       'ok',true,'duplicate',true,'external_id',v_external_id,
-      'total',v_existing.total,'history_atomic',v_record IS NOT NULL
+      'total',v_existing.total,'history_atomic',v_record IS NOT NULL,'idempotency_enforced',true
     );
   END IF;
 
@@ -307,7 +307,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'ok',true,'duplicate',false,'external_id',v_external_id,
-    'total',v_total,'history_atomic',v_record IS NOT NULL
+    'total',v_total,'history_atomic',v_record IS NOT NULL,'idempotency_enforced',true
   );
 END;
 $function$;
