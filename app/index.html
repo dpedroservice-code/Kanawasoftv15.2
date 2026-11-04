@@ -426,8 +426,8 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
     <div id="setupStep1">
       <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">📋 Dados da Empresa</h3>
       <div class="form-grid">
-        <div class="form-group full"><label>Nome da Empresa *</label><input id="setupNome" placeholder="Ex: Kanawa Soft, LDA"></div>
-        <div class="form-group"><label>NIF *</label><input id="setupNif" placeholder="Ex: 006518595L"></div>
+        <div class="form-group full"><label>Nome da Empresa *</label><input id="setupNome" name="company_name" required autocomplete="organization" placeholder="Ex: Kanawa Soft, LDA"></div>
+        <div class="form-group"><label>NIF *</label><input id="setupNif" name="tax_id" required inputmode="text" autocomplete="off" placeholder="Ex: 006518595L"></div>
         <div class="form-group"><label>Regime Fiscal</label>
           <select id="setupRegime">
             <option value="geral">Regime Geral (IVA 14%)</option>
@@ -436,7 +436,7 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
           </select>
         </div>
         <div class="form-group"><label>Telefone</label><input id="setupTelefone" placeholder="+244 900 000 000"></div>
-        <div class="form-group"><label>Email</label><input type="email" id="setupEmail" placeholder="contato@empresa.com"></div>
+        <div class="form-group"><label>Email</label><input type="email" id="setupEmail" name="company_email" autocomplete="email" placeholder="contato@empresa.com"></div>
         <div class="form-group full"><label>Endereço</label><input id="setupEndereco" placeholder="Luanda, Angola"></div>
         <div class="form-group"><label>Moeda</label>
           <select id="setupMoeda"><option value="AOA">AOA - Kwanza</option><option value="USD">USD - Dólar</option><option value="EUR">EUR - Euro</option></select>
@@ -449,9 +449,9 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
     <div id="setupStep2" style="display:none">
       <h3 style="font-size:1.1rem;margin-bottom:14px;color:var(--primary)">👤 Conta de Administrador</h3>
       <div class="form-grid">
-        <div class="form-group full"><label>Nome Completo *</label><input id="setupAdminNome" value="Administrador"></div>
-        <div class="form-group"><label>Email *</label><input type="email" id="setupAdminEmail" autocomplete="username" placeholder="seu@email.com"></div>
-        <div class="form-group"><label>Senha *</label><input type="password" id="setupAdminSenha" autocomplete="current-password" placeholder="A sua senha" minlength="6"></div>
+        <div class="form-group full"><label>Nome Completo *</label><input id="setupAdminNome" name="admin_name" required autocomplete="name" value="Administrador"></div>
+        <div class="form-group"><label>Email *</label><input type="email" id="setupAdminEmail" name="admin_email" required autocomplete="email" placeholder="seu@email.com"></div>
+        <div class="form-group"><label>Senha *</label><input type="password" id="setupAdminSenha" name="admin_password" autocomplete="new-password" placeholder="Crie uma senha forte" minlength="8" required></div>
         <div class="form-group"><label>Telefone</label><input id="setupAdminTel" placeholder="+244 900 000 000"></div>
         <div class="form-group"><label>Perfil</label>
           <select id="setupAdminPerfil">
@@ -584,11 +584,11 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
 <script defer src="operations-validation.js?v=15.4.20261102.1"></script>
 <script defer src="sales-money.js?v=15.4.20261103.3"></script>
 <script defer src="angola-tax.js?v=15.4.20261103.1"></script>\n<script defer src="stock-engine.js?v=15.4.20261103.1"></script>
-<script defer src="permissions.js?v=15.4.20261102.1"></script>
+<script defer src="permissions.js?v=15.4.20261104.1"></script>
 <script defer src="cloud.js?v=15.4.20261103.2"></script>
 <script defer src="payment-methods.js?v=15.4.20261103.1"></script>
 <script defer src="gps-sync-engine.js?v=15.4.20261104.1"></script>
-<script defer src="app.js?v=15.4.20261104.2"></script>
+<script defer src="app.js?v=15.4.20261104.3"></script>
 <script defer src="technical-pricing.js?v=15.4.20261102.1"></script>
 <script defer src="technical-cloud.js?v=15.4.20261103.1"></script>
 <script defer src="technical-suite.js?v=15.4.20261103.1"></script>
