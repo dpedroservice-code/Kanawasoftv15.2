@@ -100,8 +100,8 @@ function nextGeneratedRecordId() {
   return lastGeneratedRecordId;
 }
 const DB = {
-  name: 'kanawa_erp_v15', version: 8, db: null, stores: DB_STORES,
-  init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); }; req.onsuccess = e => { this.db = e.target.result; res(this.db); }; req.onerror = e => rej(e.target.error); }); },
+  name: 'kanawa_erp_v15', version: 9, db: null, stores: DB_STORES,
+  init() { return new Promise((res, rej) => { const req = indexedDB.open(this.name, this.version); req.onupgradeneeded = e => { const db = e.target.result; DB_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id', autoIncrement: true }); }); const tx = e.target.transaction; if (db.objectStoreNames.contains('_sync_queue')) { const queue = tx.objectStore('_sync_queue'); if (!queue.indexNames.contains('sync_key')) queue.createIndex('sync_key', 'sync_key', { unique: true }); } }; req.onsuccess = e => { this.db = e.target.result; res(this.db); }; req.onerror = e => rej(e.target.error); }); },
   _tx(s, m) { return this.db.transaction(s, m || 'readonly').objectStore(s); },
   add(s, i) { if (s !== '_sync_queue' && i && (i.id === undefined || i.id === null)) i.id = nextGeneratedRecordId(); return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').add(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
   put(s, i) { return new Promise((res, rej) => { const r = this._tx(s, 'readwrite').put(i); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
@@ -147,6 +147,7 @@ async function getData(store) {
 
 async function saveData(store, item, options) {
   const existed = !!item.id;
+  const previousRecord = existed && store === 'vendas' ? await DB.get(store, item.id) : null;
   const id = existed ? (await DB.put(store, item), item.id) : await DB.add(store, item);
   const record = Object.assign({}, item, { id: id });
   if (window.KanawaCloud && store === 'empresas' && KanawaCloud.ready) {
@@ -169,7 +170,10 @@ async function saveData(store, item, options) {
         }
         // A database validation/quota error must not be reported as a completed invoice.
         if (store === 'vendas' && item.status === 'finalizada' && e && e.code) {
-          await DB.del(store, id);
+          // Restore the last local draft/snapshot when the server rejects the
+          // sale. Never leave a rejected sale looking finalized in the POS.
+          if (existed && previousRecord) await DB.put(store, previousRecord);
+          else await DB.del(store, id);
           throw e;
         }
         await queueSync(store, existed ? 'update' : 'create', record, options || {});
@@ -199,8 +203,33 @@ async function deleteData(store, id) {
 
 async function queueSync(entity, action, payload, options) {
   if (window.KanawaCloud && KanawaCloud.isLocalOnly(entity)) return;
-  try { await DB.add('_sync_queue', { entity: entity, action: action, payload: payload, options: options || {}, data: now(), synced: false }); }
-  catch (e) { console.warn('Não foi possível guardar fila de sincronização:', e); }
+  try {
+    const recordId = payload && payload.id !== undefined && payload.id !== null
+      ? String(payload.id) : 'anonymous-' + Date.now().toString(36);
+    const syncKey = String(entity) + ':' + recordId;
+    await new Promise((resolve, reject) => {
+      const tx = DB.db.transaction(['_sync_queue'], 'readwrite');
+      const store = tx.objectStore('_sync_queue');
+      const request = store.index('sync_key').get(syncKey);
+      request.onsuccess = () => {
+        const current = request.result;
+        if (current) {
+          current.action = action;
+          current.payload = payload;
+          current.options = options || {};
+          current.data = now();
+          current.synced = false;
+          store.put(current);
+        } else {
+          store.add({ sync_key: syncKey, entity: entity, action: action, payload: payload, options: options || {}, data: now(), synced: false });
+        }
+      };
+      request.onerror = () => reject(request.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Fila de sincronização interrompida.'));
+    });
+  } catch (e) { console.warn('Não foi possível guardar fila de sincronização:', e); }
 }
 
 async function processSyncQueue() {
