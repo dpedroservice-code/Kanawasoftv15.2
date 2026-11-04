@@ -9,6 +9,7 @@
   let map = null;
   let markerLayer = null;
   let routeLayer = null;
+  let currentMarker = null;
   let watchId = null;
 
   function validateCoordinates(latitude, longitude) {
@@ -47,7 +48,10 @@
   }
 
   async function calculateRoute(origin, destination) {
-    const points = await Promise.all([geocode(origin), geocode(destination)]);
+    const start = await geocode(origin);
+    await new Promise(function (resolve) { root.setTimeout(resolve, 1100); });
+    const end = await geocode(destination);
+    const points = [start, end];
     const url = 'https://router.project-osrm.org/route/v1/driving/' +
       points[0].lng + ',' + points[0].lat + ';' + points[1].lng + ',' + points[1].lat +
       '?overview=full&geometries=geojson&steps=false';
@@ -102,10 +106,15 @@
   function updateCurrentPosition(position, label) {
     if (!map || !root.L) return;
     const point = validateCoordinates(position.latitude, position.longitude);
-    const marker = root.L.circleMarker([point.lat, point.lng], {
-      radius: 9, color: '#ffffff', weight: 2, fillColor: '#16a34a', fillOpacity: 1
-    }).bindPopup(label || 'Este dispositivo');
-    if (markerLayer) markerLayer.addLayer(marker);
+    if (currentMarker && map.hasLayer(currentMarker)) {
+      currentMarker.setLatLng([point.lat, point.lng]);
+      currentMarker.setPopupContent(label || 'Este dispositivo');
+    } else {
+      currentMarker = root.L.circleMarker([point.lat, point.lng], {
+        radius: 9, color: '#ffffff', weight: 2, fillColor: '#16a34a', fillOpacity: 1
+      }).bindPopup(label || 'Este dispositivo');
+      if (markerLayer) markerLayer.addLayer(currentMarker);
+    }
     map.setView([point.lat, point.lng], Math.max(map.getZoom(), 15));
   }
 
