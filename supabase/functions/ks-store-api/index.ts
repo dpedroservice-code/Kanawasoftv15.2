@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
       const apiKey = authorization.replace(/^Bearer\s+/i, "").trim();
       if (!apiKey.startsWith("ks_live_") || apiKey.length < 40) return json(401, { error: "Chave de API inválida." });
       const prefix = apiKey.slice(0, 20);
-      const hash = await sha256(apiKey);
+      const hash = await sha256(apiSecret);
       const { data: key, error: keyError } = await admin.from("ks_store_api_keys")
         .select("id,company_id,scopes,allowed_origins,revoked_at")
         .eq("key_prefix", prefix).eq("secret_hash", hash).maybeSingle();
