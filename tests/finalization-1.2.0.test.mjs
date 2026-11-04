@@ -10,9 +10,9 @@ test('permanent delete removes normalized product, product record, movements and
   const app = read('app/app.js');
   assert.match(migration, /ks_delete_company_product/);
   const wrappers = read('supabase/migrations/20261104110000_kanawa_private_admin_rpc_wrappers.sql');
-  assert.match(wrappers, /public\\.ks_delete_company_product[\\s\\S]*?SECURITY INVOKER/);
-  assert.match(wrappers, /private\\.ks_delete_company_product_internal[\\s\\S]*?SECURITY DEFINER/);
-  assert.match(wrappers, /public\\.ks_reset_company_business_data[\\s\\S]*?SECURITY INVOKER/);
+  assert.ok(wrappers.includes('FUNCTION public.ks_delete_company_product') && wrappers.includes('LANGUAGE sql SECURITY INVOKER'));
+  assert.ok(wrappers.includes('FUNCTION private.ks_delete_company_product_internal') && wrappers.includes('LANGUAGE plpgsql SECURITY DEFINER'));
+  assert.ok(wrappers.includes('FUNCTION public.ks_reset_company_business_data') && wrappers.includes('LANGUAGE sql SECURITY INVOKER'));
   assert.match(migration, /DELETE FROM public\.ks_stock_movements/);
   assert.match(migration, /DELETE FROM public\.ks_sale_items/);
   assert.match(migration, /DELETE FROM public\.ks_products/);
