@@ -34,7 +34,7 @@ test('rejects malformed tenant and sale payloads', async () => {
   assert.equal(result.body.code, 'INVALID_SALE_REQUEST');
 });
 
-test('validates the user session then forwards the same JWT to the transactional RPC', async () => {
+test('forwards the bearer JWT once to the transactional RPC for PostgREST verification', async () => {
   const calls = [];
   const result = await handleFinalizeSale(request, async (url, options) => {
     calls.push({ url, options });
@@ -52,14 +52,11 @@ test('validates the user session then forwards the same JWT to the transactional
   assert.equal(forwarded.p_sale.external_id, 'sale-1');
 });
 
-test('does not call the sales RPC when Supabase rejects the session', async () => {
+test('does not send unauthenticated requests to PostgREST', async () => {
   let calls = 0;
-  const result = await handleFinalizeSale(request, async () => {
-    calls++;
-    return jsonResponse({ message: 'invalid token' }, false, 401);
-  });
+  const result = await handleFinalizeSale({ body: request.body }, async () => { calls++; });
   assert.equal(result.status, 401);
-  assert.equal(calls, 1);
+  assert.equal(calls, 0);
 });
 
 test('maps idempotency payload conflicts to HTTP 409', async () => {
