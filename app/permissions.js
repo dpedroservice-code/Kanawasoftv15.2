@@ -10,7 +10,7 @@
   function fromMembership(role, permissions) {
     if (role === 'admin') return { modulos: '*', acoes: Array.from(allowed), verFinanceiro: true, excluir: true, configurar: true, descontoMax: 100 };
     const grants = {};
-    if (role === 'manager' || role === 'gerente') grants.tecnica = ['ver','criar','editar','aprovar'];
+    // Cloud users receive only grants explicitly saved by the company administrator.
     if (permissions && typeof permissions === 'object' && !Array.isArray(permissions)) {
       Object.keys(permissions).forEach(function (name) {
         const value = permissions[name];
