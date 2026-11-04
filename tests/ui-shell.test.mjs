@@ -54,3 +54,16 @@ test('HR attendance, label preview and ecommerce export are connected to real ac
   assert.match(app, /async function exportarPedidosEcommerce\(\)/);
   assert.match(app, /async function visualizarEtiqueta\(id\)/);
 });
+
+test('payment setup exposes bank details and the secure credential vault', async () => {
+  const html = await readFile(new URL('../app/index.html', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../app/app.js', import.meta.url), 'utf8');
+  const cloud = await readFile(new URL('../app/cloud.js', import.meta.url), 'utf8');
+  const integrations = await readFile(new URL('../app/integration-center.js', import.meta.url), 'utf8');
+  assert.match(app, /data-payment-bank-field/);
+  assert.match(cloud, /ks-save-provider-credential/);
+  assert.match(integrations, /AES-256-GCM/);
+  assert.match(integrations, /ki-secret/);
+  assert.match(html, /integration-center\.js\?v=15\.4\.20261104\.3/);
+  assert.doesNotMatch(integrations, /localStorage\.setItem|indexedDB\.open/);
+});
