@@ -73,7 +73,7 @@ test('API keys are one-time secrets with read-only catalogue scope and revocatio
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
   assert.match(read('supabase/migrations/20261104103000_kanawa_lock_api_tables_to_server.sql'), /USING \(false\)/);
   assert.match(edge, /catalog:read/);
-  assert.match(edge, /sha256\(apiKey\)/);
+  assert.match(edge, /sha256\(apiSecret\)/);
   assert.match(edge, /revoked_at/);
   assert.match(edge, /x-api-key/);
   assert.match(edge, /requireAdmin/);
