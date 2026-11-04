@@ -48,19 +48,27 @@
     try { branches = await KanawaCloud.listBranches(); } catch (error) { console.warn('Filiais:', error); }
     const rows = branches.map(function (branch) {
       const company = branch.company || {};
-      return '<tr><td><strong>' + esc(company.name || 'Empresa filial') + '</strong><br><small>' + esc(company.nif || '') + '</small></td>' +
-        '<td><code>' + esc(branch.branch_company_id) + '</code></td>' +
-        '<td><button class="btn btn-sm btn-danger" onclick="desassociarFilial(\\'' + esc(branch.branch_company_id) + '\\')"><i class="fas fa-unlink"></i> Remover</button></td></tr>';
+      const state = branch.status === 'pending'
+        ? (branch.side === 'branch' ? 'Pedido recebido — aguarda aceitação' : 'Pedido enviado — aguarda a filial')
+        : 'Associação activa';
+      let action = '';
+      if (branch.status === 'pending' && branch.side === 'branch') {
+        action = '<button class="btn btn-sm btn-success" onclick="aceitarFilial(\\'' + esc(branch.parent_company_id) + '\\',\\'' + esc(branch.branch_company_id) + '\\')"><i class="fas fa-check"></i> Aceitar pedido</button>';
+      } else {
+        action = '<button class="btn btn-sm btn-danger" onclick="desassociarFilial(\\'' + esc(branch.parent_company_id) + '\\',\\'' + esc(branch.branch_company_id) + '\\')"><i class="fas fa-unlink"></i> Remover</button>';
+      }
+      return '<tr><td><strong>' + esc(company.name || 'Empresa associada') + '</strong><br><small>' + esc(company.nif || '') + '</small></td>' +
+        '<td>' + esc(state) + '</td><td>' + action + '</td></tr>';
     });
     return '<div class="card" id="kanawaBranchConfig"><div class="card-header"><h3 class="card-title"><i class="fas fa-code-branch"></i> Empresas e filiais</h3>' +
-      '<span class="badge badge-info">' + branches.length + ' filial(is)</span></div>' +
-      '<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px">A empresa-mãe e as filiais associadas podem partilhar os dados permitidos pelas permissões de cada utilizador. Empresas sem associação continuam isoladas.</p>' +
-      '<div class="form-group"><label>ID da empresa principal</label><div style="display:flex;gap:8px"><input readonly value="' + esc(context.company.id) + '"><button class="btn btn-secondary" type="button" onclick="copiarIdEmpresa()"><i class="fas fa-copy"></i> Copiar</button></div></div>' +
-      '<div class="form-group"><label>ID da empresa filial a associar</label><input id="branchCompanyId" placeholder="Cole o UUID da empresa filial"></div>' +
-      '<button class="btn btn-primary" type="button" onclick="associarFilial()"><i class="fas fa-link"></i> Associar filial</button>' +
-      '<div style="overflow-x:auto;margin-top:14px"><table class="data-table"><thead><tr><th>Filial</th><th>ID da empresa</th><th>Acção</th></tr></thead><tbody>' +
-      (rows.length ? rows.join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">Ainda não existem filiais associadas.</td></tr>') +
-      '</tbody></table></div><p style="font-size:.76rem;color:var(--text-muted);margin-top:10px">Para associar, a filial deve primeiro criar a sua empresa e partilhar o UUID com o administrador da empresa principal.</p></div>';
+      '<span class="badge badge-info">' + branches.filter(function (b) { return b.status === 'active'; }).length + ' activa(s)</span></div>' +
+      '<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px">A empresa-mãe e a filial só partilham dados depois de ambas confirmarem a associação. As permissões de cada utilizador continuam a ser aplicadas no servidor.</p>' +
+      '<div class="form-group"><label>ID desta empresa</label><div style="display:flex;gap:8px"><input readonly value="' + esc(context.company.id) + '"><button class="btn btn-secondary" type="button" onclick="copiarIdEmpresa()"><i class="fas fa-copy"></i> Copiar</button></div></div>' +
+      '<div class="form-group"><label>ID da empresa filial a convidar</label><input id="branchCompanyId" placeholder="Cole o UUID da empresa filial"></div>' +
+      '<button class="btn btn-primary" type="button" onclick="associarFilial()"><i class="fas fa-paper-plane"></i> Enviar pedido de associação</button>' +
+      '<div style="overflow-x:auto;margin-top:14px"><table class="data-table"><thead><tr><th>Empresa associada</th><th>Estado</th><th>Acção</th></tr></thead><tbody>' +
+      (rows.length ? rows.join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">Ainda não existem pedidos ou filiais associadas.</td></tr>') +
+      '</tbody></table></div><p style="font-size:.76rem;color:var(--text-muted);margin-top:10px">O administrador da outra empresa deve aceitar o pedido na sua própria conta. Só depois a partilha de dados é activada.</p></div>';
   }
 
   window.renderConfig = async function () {
@@ -84,16 +92,25 @@
     }
     try {
       await KanawaCloud.linkBranch(id);
-      toast('Filial associada. As permissões de acesso entre as duas empresas foram activadas.', 'success');
+      toast('Pedido enviado. A empresa filial precisa de aceitar antes de existir acesso cruzado.', 'success');
       const content = document.getElementById('content');
       if (content) content.innerHTML = await window.renderConfig();
     } catch (error) { toast(error.message || 'Não foi possível associar a filial.', 'error'); }
   };
 
-  window.desassociarFilial = async function (id) {
-    if (!confirm('Remover a associação desta filial? O acesso cruzado entre as empresas será bloqueado.')) return;
+  window.aceitarFilial = async function (parentId, branchId) {
     try {
-      await KanawaCloud.unlinkBranch(id);
+      await KanawaCloud.acceptBranch(parentId, branchId);
+      toast('Pedido aceite. A associação entre as empresas está activa.', 'success');
+      const content = document.getElementById('content');
+      if (content) content.innerHTML = await window.renderConfig();
+    } catch (error) { toast(error.message || 'Não foi possível aceitar o pedido.', 'error'); }
+  };
+
+  window.desassociarFilial = async function (parentId, branchId) {
+    if (!confirm('Remover a associação desta empresa? O acesso cruzado será bloqueado.')) return;
+    try {
+      await KanawaCloud.unlinkBranch(parentId, branchId);
       toast('Associação removida. As empresas voltaram a ficar isoladas.', 'success');
       const content = document.getElementById('content');
       if (content) content.innerHTML = await window.renderConfig();
