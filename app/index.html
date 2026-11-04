@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" href="logo.png">
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="libs/fontawesome.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
 /* ============================================================
    KANAWA SOFT ERP v15.3 CLOUD — CSS UNIFICADO
@@ -378,6 +379,8 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
   .sidebar-group summary:focus-visible,.sidebar-item:focus-visible,.mobile-menu-toggle:focus-visible{outline:3px solid var(--primary-light,#60a5fa);outline-offset:2px}
 }
 
+.kanawa-map-canvas{width:100%;height:430px;min-height:320px;border:1px solid var(--border);border-radius:12px;z-index:1;background:#e2e8f0}
+@media(max-width:600px){.kanawa-map-canvas{height:360px;min-height:300px}.leaflet-control-zoom a{width:34px!important;height:34px!important;line-height:34px!important}}
 </style>
 </head>
 <body>
@@ -576,13 +579,15 @@ button,.btn,.sidebar-item,.topbar-btn{touch-action:manipulation}
 
 <!-- App principal -->
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0"></script>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script defer src="map-tracking.js?v=15.4.20261104.1"></script>
 <script defer src="operations-validation.js?v=15.4.20261102.1"></script>
 <script defer src="sales-money.js?v=15.4.20261103.3"></script>
 <script defer src="angola-tax.js?v=15.4.20261103.1"></script>\n<script defer src="stock-engine.js?v=15.4.20261103.1"></script>
 <script defer src="permissions.js?v=15.4.20261102.1"></script>
 <script defer src="cloud.js?v=15.4.20261103.2"></script>
 <script defer src="payment-methods.js?v=15.4.20261103.1"></script>
-<script defer src="app.js?v=15.4.20261103.6"></script>
+<script defer src="app.js?v=15.4.20261104.1"></script>
 <script defer src="technical-pricing.js?v=15.4.20261102.1"></script>
 <script defer src="technical-cloud.js?v=15.4.20261103.1"></script>
 <script defer src="technical-suite.js?v=15.4.20261103.1"></script>
