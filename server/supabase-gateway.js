@@ -23,20 +23,9 @@ async function handleFinalizeSale(input, fetchImpl) {
   }
 
   const token = match[1];
-  let authResponse;
-  try {
-    authResponse = await fetcher(SUPABASE_URL + '/auth/v1/user', {
-      method: 'GET',
-      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: 'Bearer ' + token }
-    });
-  } catch (_error) {
-    return response(503, { error: 'Não foi possível validar a sessão no serviço de autenticação.', code: 'AUTH_UNAVAILABLE' });
-  }
-  if (!authResponse.ok) return response(401, { error: 'Sessão expirada ou inválida. Entre novamente.', code: 'INVALID_SESSION' });
-
-  let user;
-  try { user = await authResponse.json(); } catch (_error) { user = null; }
-  if (!user || !user.id) return response(401, { error: 'Sessão inválida.', code: 'INVALID_SESSION' });
+  // PostgREST validates the JWT signature and expiry itself. The RPC then
+  // enforces auth.uid(), tenant membership and role permissions. Avoid an
+  // extra Auth round-trip so the POS path stays as short as possible.
 
   let rpcResponse;
   try {
