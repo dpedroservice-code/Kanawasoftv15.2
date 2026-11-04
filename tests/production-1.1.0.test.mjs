@@ -61,9 +61,12 @@ test('branch relationships grant explicit cross-company access through RLS', () 
   assert.match(sql, /private\\.ks_has_company_permission/);
   assert.match(sql, /private\\.ks_has_company_role/);
   assert.match(sql, /ks_link_company_branch/);
+  assert.match(sql, /ks_accept_company_branch/);
   assert.match(sql, /ks_unlink_company_branch/);
+  assert.match(sql, /status='pending'/);
   assert.match(cloud, /async linkBranch/);
-  assert.match(ui, /Associar filial/);
+  assert.match(ui, /Enviar pedido de associação/);
+  assert.match(ui, /Aceitar pedido/);
 });
 
 test('invoice template does not claim AGT software certification', () => {
