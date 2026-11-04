@@ -76,7 +76,7 @@ BEGIN
     FROM (VALUES
       ('dinheiro','Dinheiro',true,10,''),
       ('cartao','Cartão bancário',true,20,''),
-      ('transferencia','Transferência bancária',true,30,''),
+      ('transferencia','Transferência bancária',false,30,''),
       ('multicaixa','Multicaixa (TPA)',true,40,''),
       ('misto','Pagamento misto',true,50,''),
       ('credito','Crédito / a prazo',true,60,''),
