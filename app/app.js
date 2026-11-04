@@ -163,6 +163,10 @@ async function saveData(store, item, options) {
           toast('Venda finalizada no servidor; histórico local em sincronização.', 'warning');
           return id;
         }
+        if (options && options.skipQueueOnFailure) {
+          console.warn('Kanawa cloud write deferred to native tracker:', store, e);
+          return id;
+        }
         // A database validation/quota error must not be reported as a completed invoice.
         if (store === 'vendas' && item.status === 'finalizada' && e && e.code) {
           await DB.del(store, id);
@@ -3385,12 +3389,13 @@ async function iniciarRastreamentoGPS() {
         coordinates_valid: false,
         ultimaAtualizacao: now()
       };
-      existing.id = await saveData('gpsTracking', existing);
+      existing.id = await saveData('gpsTracking', existing, { skipQueueOnFailure: !!window.KanawaAndroid });
     } else {
       existing.status = 'starting';
       existing.location_source = 'gps';
       existing.tracking_mode = window.KanawaAndroid ? 'android-foreground-service' : 'browser-geolocation';
-      await saveData('gpsTracking', existing);
+      if (window.KanawaAndroid) await DB.put('gpsTracking', existing);
+      else await saveData('gpsTracking', existing);
     }
     kanawaGpsRecordId = existing.id;
     kanawaGpsLastSavedAt = 0;
