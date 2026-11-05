@@ -2288,13 +2288,13 @@ async function renderLogisticaRoteirizacao() {
   return header('Roteirização', rotas.length + ' rotas — distâncias manuais ou não calculadas', 'var(--primary)',
     '<button class="btn btn-success" onclick="abrirModalRota()"><i class="fas fa-plus"></i> Nova Rota</button>' +
     '<button class="btn btn-info" onclick="otimizarRotas()"><i class="fas fa-robot"></i> Otimizar</button>', 'fa-route') +
-    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Fonte', 'Veículo', 'Ações'],
-      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || 'Não calculada'), esc(r.route_source || (r.distance_source === 'manual' ? 'Manual' : 'Não calculada')), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
+    '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Tempo estimado', 'Fonte', 'Veículo', 'Ações'],
+      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || 'Não calculada'), esc(r.duration_label || 'Não calculado'), esc(r.route_source || (r.distance_source === 'manual' ? 'Manual' : 'Não calculada')), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
 function abrirModalRota() {
   window.__kanawaPendingRoute = null;
   const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
-  const origin = company.endereco || (company.latitude !== null && company.longitude !== null ? company.latitude + ', ' + company.longitude : '');
+  const origin = company.latitude !== null && company.longitude !== null ? company.latitude + ', ' + company.longitude : (company.endereco || '');
   openModal('Nova Rota e estimativa de viagem',
     '<div class="form-grid"><div class="form-group full"><label>Origem / ponto de partida *</label><input id="rotaOrigem" value="' + esc(origin) + '" placeholder="Endereço ou coordenadas"></div>' +
     '<div class="form-group full"><label>Destino / ponto de chegada *</label><input id="rotaDestino" placeholder="Endereço ou local de entrega"></div>' +
