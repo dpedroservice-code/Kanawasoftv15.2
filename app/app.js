@@ -1238,7 +1238,7 @@ async function renderProdutos() {
   const rows = produtos.map(p => [
     '<div style="width:44px;height:44px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden"><img src="' + imgSrc(p) + '" style="width:100%;height:100%;object-fit:cover" onerror="this.onerror=null;this.src=\'' + PLACEHOLDER + '\'"></div>',
     esc(p.codigo || '-') + '<br><small style="color:var(--text-muted);font-family:monospace">' + esc(p.codigoBarras || '') + '</small>',
-    '<strong>' + esc(p.nome) + '</strong>', esc(p.categoria || '-'), fmt(p.preco),
+    '<strong>' + esc(p.nome) + '</strong>', esc(p.categoria || '-'), fmt(p.precoCompra || 0), fmt(p.preco),
     badge(p.estoque || 0, (p.estoque || 0) > 0 ? 'success' : 'danger'),
     '<button class="btn btn-sm btn-primary" onclick="abrirModalProduto(' + p.id + ')"><i class="fas fa-edit"></i></button> ' +
     '<button class="btn btn-sm btn-info" onclick="imprimirEtiquetaIndividual(' + p.id + ')"><i class="fas fa-tag"></i></button> ' +
@@ -1248,7 +1248,7 @@ async function renderProdutos() {
     '<button class="btn btn-sm" onclick="exportarProdutos()" style="background:rgba(255,255,255,.2);color:#fff"><i class="fas fa-file-export"></i> Exportar</button>' +
     '<button class="btn btn-sm" onclick="imprimirEtiquetasLote()" style="background:rgba(255,255,255,.2);color:#fff"><i class="fas fa-tags"></i> Etiquetas</button>' +
     '<button class="btn btn-success" onclick="abrirModalProduto()"><i class="fas fa-plus"></i> Novo</button>', 'fa-boxes') +
-    '<div class="card">' + table(['Img', 'Código', 'Nome', 'Categoria', 'Preço', 'Estoque', 'Ações'], rows) + '</div>';
+    '<div class="card">' + table(['Img', 'Código', 'Nome', 'Categoria', 'Compra', 'Venda', 'Estoque', 'Ações'], rows) + '</div>';
 }
 async function abrirModalProduto(id) {
   const cats = await getData('categorias');
@@ -2289,9 +2289,10 @@ async function renderLogisticaRoteirizacao() {
     '<button class="btn btn-success" onclick="abrirModalRota()"><i class="fas fa-plus"></i> Nova Rota</button>' +
     '<button class="btn btn-info" onclick="otimizarRotas()"><i class="fas fa-robot"></i> Otimizar</button>', 'fa-route') +
     '<div class="card">' + table(['Origem', 'Destino', 'Distância', 'Fonte', 'Veículo', 'Ações'],
-      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || 'Não calculada'), esc(r.distance_source === 'manual' ? 'Manual' : 'Não calculada'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
+      rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || 'Não calculada'), esc(r.route_source || (r.distance_source === 'manual' ? 'Manual' : 'Não calculada')), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
 function abrirModalRota() {
+  window.__kanawaPendingRoute = null;
   const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const origin = company.endereco || (company.latitude !== null && company.longitude !== null ? company.latitude + ', ' + company.longitude : '');
   openModal('Nova Rota e estimativa de viagem',
