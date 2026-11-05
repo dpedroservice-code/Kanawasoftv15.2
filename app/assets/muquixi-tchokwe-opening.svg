@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" role="img" aria-labelledby="t d">
+<title id="t">Arte inspirada na máscara Tchokwé para o ecrã de abertura Kanawa Soft</title>
+<desc id="d">Ilustração estilizada de uma máscara africana cerimonial, com padrões geométricos e fibras em movimento suave; não representa uma peça ritual específica.</desc>
+<defs>
+ <radialGradient id="bg"><stop stop-color="#315b70"/><stop offset="1" stop-color="#071b2d"/></radialGradient>
+ <linearGradient id="wood" x2="1" y2="1"><stop stop-color="#dca45e"/><stop offset=".48" stop-color="#8e4e2b"/><stop offset="1" stop-color="#3d241c"/></linearGradient>
+ <linearGradient id="fiber" x2="0" y2="1"><stop stop-color="#e9c27b"/><stop offset="1" stop-color="#87502c"/></linearGradient>
+ <filter id="glow"><feGaussianBlur stdDeviation="9"/></filter>
+</defs>
+<rect width="900" height="900" fill="url(#bg)"/>
+<g opacity=".16" stroke="#d9ad69" fill="none" stroke-width="3">
+ <path d="M0 120H900M0 780H900M120 0V900M780 0V900"/>
+ <path d="M0 0L900 900M900 0L0 900"/>
+ <path d="M0 300H900M0 600H900M300 0V900M600 0V900"/>
+</g>
+<g fill="none" stroke="#d5a45c" opacity=".5" stroke-width="3">
+ <circle cx="450" cy="450" r="335"/><circle cx="450" cy="450" r="300" stroke-dasharray="8 16"/>
+</g>
+<g class="aura" opacity=".32" filter="url(#glow)"><ellipse cx="450" cy="455" rx="210" ry="285" fill="#e0a95d"/></g>
+<g class="fibers" stroke="url(#fiber)" stroke-width="8" stroke-linecap="round" fill="none">
+ <path d="M370 190Q320 95 280 35M400 180Q380 80 370 20M430 175Q430 75 445 15M465 175Q500 75 525 22M495 185Q570 95 610 45"/>
+ <path d="M360 590Q310 720 270 850M390 610Q370 745 360 880M420 625Q420 760 420 890M480 625Q500 760 520 890M510 600Q570 735 620 850"/>
+</g>
+<g class="mask">
+ <path d="M450 185C330 185 270 285 285 420L320 610Q450 735 580 610L615 420C630 285 570 185 450 185Z" fill="url(#wood)" stroke="#e6bd79" stroke-width="10"/>
+ <path d="M450 205L450 650M320 330L390 365L450 340L510 365L580 330" fill="none" stroke="#f0c47d" stroke-width="12" opacity=".75"/>
+ <path d="M315 395Q365 340 420 395Q365 440 315 395ZM480 395Q535 340 585 395Q535 440 480 395Z" fill="#1b1a18" stroke="#edc27d" stroke-width="10"/>
+ <ellipse cx="365" cy="395" rx="17" ry="24" fill="#f0c77e"/><ellipse cx="535" cy="395" rx="17" ry="24" fill="#f0c77e"/>
+ <path d="M450 390L410 515L450 550L490 515Z" fill="#43271e" stroke="#e6b46d" stroke-width="9"/>
+ <path d="M390 575Q450 615 510 575" fill="none" stroke="#211714" stroke-width="20" stroke-linecap="round"/>
+ <path d="M365 625L400 665L450 680L500 665L535 625" fill="none" stroke="#e6bd79" stroke-width="10"/>
+ <g fill="#f0c47d"><path d="M450 225l-20 28h40z"/><path d="M450 280l-18 22h36z"/><path d="M450 600l-18 20h36z"/></g>
+ <g fill="none" stroke="#281b16" stroke-width="9"><path d="M300 300l35 25 35-25 35 25 35-25M460 300l35 25 35-25 35 25 35-25"/><path d="M330 480l35 25 35-25 35 25M465 505l35-25 35 25 35-25"/></g>
+</g>
+<g fill="#e7c17d" opacity=".8"><circle cx="245" cy="450" r="7"/><circle cx="655" cy="450" r="7"/><circle cx="450" cy="115" r="7"/><circle cx="450" cy="785" r="7"/></g>
+<style>
+.mask{transform-origin:450px 450px;animation:float 4.8s ease-in-out infinite}
+.fibers{transform-origin:450px 450px;animation:sway 5.5s ease-in-out infinite}
+.aura{animation:breathe 4s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0) rotate(-.5deg)}50%{transform:translateY(-12px) rotate(.5deg)}}
+@keyframes sway{0%,100%{transform:rotate(-1deg)}50%{transform:rotate(1deg)}}
+@keyframes breathe{0%,100%{opacity:.2}50%{opacity:.42}}
+@media(prefers-reduced-motion:reduce){.mask,.fibers,.aura{animation:none}}
+</style>
+</svg>
