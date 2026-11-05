@@ -82,7 +82,7 @@ function gerarAssinatura(v) { const d = (v.numeroFatura || '') + '|' + (v.total 
 
 /* ====== INDEXEDDB ====== */
 const DB_STORES = [
-  'produtos','clientes','fornecedores','vendas','compras','estoque','contasReceber','contasPagar','funcionarios','categorias','projetos','tarefas','ativos','frotas','ordensServico','notificacoes','documentos','mensagens','cursos','alunos','aulasFormacao','avaliacoesFormacao','presencasFormacao','modelosCertificado','leads','campanhas','eventos','devolucoes','faturas','pagamentos','empresas','usuarios','movimentacoesEstoque','promocoes','ecommerce','auditoria','orcamentos','transportadoras','contratos','aprovacoes','sincronizacao','tickets','dispositivos','_sync_queue',
+  'empresaLocalizacao','produtos','clientes','fornecedores','vendas','compras','estoque','contasReceber','contasPagar','funcionarios','categorias','projetos','tarefas','ativos','frotas','ordensServico','notificacoes','documentos','mensagens','cursos','alunos','aulasFormacao','avaliacoesFormacao','presencasFormacao','modelosCertificado','leads','campanhas','eventos','devolucoes','faturas','pagamentos','empresas','usuarios','movimentacoesEstoque','promocoes','ecommerce','auditoria','orcamentos','transportadoras','contratos','aprovacoes','sincronizacao','tickets','dispositivos','_sync_queue',
   'producao','ordensProducao','mrp','boms','custosProducao','controleQualidade','planosProducao','planoContas','budgets','forecasts','conciliacoes','transacoesBancarias','previsoesVendas','tendencias','folhasPagamento','turnos','ferias','vagas','candidatos','desempenhoRH','beneficios','planosCarreira','onboarding','pontoDigital','rescisoes','automacoes','scoreLeads','campanhasMarketing','segmentacoes','cupons','fidelidade','ganttProjetos','timesheets','manutencoes','ordensManutencao','garantias','pecasEstoque','checklistsInspecao','calendarioManutencoes','gpsTracking','abastecimentos','multas','tecnicos','roteirizacao','etiquetas','transferencias','inventarios','lotes','rastreios','recebimentos','ecommerceProdutos','ecommerceCarrinhos','ecommercePedidos','avaliacoes','pagamentosEcommerce','vendasConsignadas','tabelasPrecos','assinaturasDigitais','documentosFiscais','certificacoes','quizzes','mensagensChat','mensagensWhatsApp','eventosCalendar','unidades','servicos','clientesPortal','acessos','politicasSenha','tentativasLogin','sessoes','sms2FA','integracoesAGT','ivas','irts','backups','backupsAgendados','backupsNuvem','audiobooks','ddgHistorico','bingHistorico','dashboardsCustom','modulosPersonalizados','departamentos','frequencias','feriasFuncionarios','pagamentosFuncionarios','motoristas','manutencoesAtivos','depreciacoes','historicoOS','contatosWhatsApp','templatesWhatsApp','carrinhosSalvos','feedbacks','logsSeguranca','seguranca','migracoes','tarefasProjetos','membrosProjetos','atividadesProjetos','gruposUsuarios','config','armazens'
 ];
 let lastGeneratedRecordId = 0;
@@ -1259,7 +1259,8 @@ async function abrirModalProduto(id) {
     '<div class="form-group"><label>📷 Código de Barras</label><div style="display:flex;gap:6px"><input id="pCodigoBarras" value="' + esc(p.codigoBarras || '') + '" style="flex:1"><button class="btn btn-sm btn-info" onclick="abrirScanner(function(prod){document.getElementById(\'pCodigoBarras\').value=prod.codigoBarras})"><i class="fas fa-camera"></i></button></div></div>' +
     '<div class="form-group full"><label>Nome *</label><input id="pNome" value="' + esc(p.nome || '') + '"></div>' +
     '<div class="form-group"><label>Categoria</label><select id="pCategoria"><option value="">Selecione...</option>' + cats.map(c => '<option value="' + esc(c.nome) + '" ' + (p.categoria === c.nome ? 'selected' : '') + '>' + esc(c.nome) + '</option>').join('') + '<option value="Geral" ' + (p.categoria === 'Geral' ? 'selected' : '') + '>Geral</option></select></div>' +
-    '<div class="form-group"><label>Preço (Kz) *</label><input id="pPreco" type="number" step="0.01" value="' + (p.preco || 0) + '"></div>' +
+    '<div class="form-group"><label>Preço de Compra (Kz)</label><input id="pPrecoCompra" type="number" min="0" step="0.01" value="' + (p.precoCompra || 0) + '"></div>' +
+    '<div class="form-group"><label>Preço de Venda (Kz) *</label><input id="pPreco" type="number" min="0" step="0.01" value="' + (p.preco || 0) + '"></div>' +
     '<div class="form-group"><label>Estoque</label><input id="pEstoque" type="number" value="' + (p.estoque || 0) + '"></div>' +
     '<div class="form-group"><label>Estoque Mínimo</label><input id="pEstoqueMin" type="number" value="' + (p.estoqueMin || 10) + '"></div>' +
     '<div class="form-group"><label>Unidade</label><select id="pUnidade">' + ['UN', 'KG', 'L', 'M'].map(u => '<option value="' + u + '" ' + (p.unidade === u ? 'selected' : '') + '>' + u + '</option>').join('') + '</select></div>' +
@@ -1286,7 +1287,7 @@ function removerImagemProduto() { const inp = $('pImagem'); if (inp) inp.value =
 async function salvarProduto(id) {
   const nome = $('pNome').value.trim();
   if (!nome) { toast('Informe o nome', 'warning'); return; }
-  const data = { codigo: $('pCodigo').value, codigoBarras: $('pCodigoBarras').value, nome, categoria: $('pCategoria').value, preco: num($('pPreco').value, 0), estoque: int($('pEstoque').value, 0), estoqueMin: int($('pEstoqueMin').value, 10), unidade: $('pUnidade').value, imagem: $('pImagem').value, descricao: $('pDesc').value };
+  const data = { codigo: $('pCodigo').value, codigoBarras: $('pCodigoBarras').value, nome, categoria: $('pCategoria').value, precoCompra: num($('pPrecoCompra').value, 0), preco: num($('pPreco').value, 0), estoque: int($('pEstoque').value, 0), estoqueMin: int($('pEstoqueMin').value, 10), unidade: $('pUnidade').value, imagem: $('pImagem').value, descricao: $('pDesc').value };
   if (id) data.id = id;
   await saveData('produtos', data);
   pdvCache.ts = 0;
@@ -1890,6 +1891,9 @@ async function renderConfig() {
     '<div class="form-group"><label>Telefone</label><input id="cfgTel" value="' + esc(emp.telefone || '') + '"></div>' +
     '<div class="form-group"><label>Email</label><input id="cfgEmail" value="' + esc(emp.email || '') + '"></div>' +
     '<div class="form-group full"><label>Endereço Completo</label><input id="cfgEnd" value="' + esc(emp.endereco || '') + '"></div>' +
+    '<div class="form-group"><label>Latitude da empresa</label><input id="cfgLatitude" type="number" step="any" value="' + esc(emp.latitude !== undefined ? emp.latitude : '') + '"></div>' +
+    '<div class="form-group"><label>Longitude da empresa</label><input id="cfgLongitude" type="number" step="any" value="' + esc(emp.longitude !== undefined ? emp.longitude : '') + '"></div>' +
+    '<div class="form-group full"><button class="btn btn-info" type="button" onclick="usarGPSLocalizacaoEmpresa()"><i class="fas fa-location-crosshairs"></i> Definir ponto da empresa pela localização GPS</button><small style="display:block;color:var(--text-muted);margin-top:6px">A localização só é captada depois da autorização do utilizador neste dispositivo.</small></div>' +
     '<div class="form-group"><label>Website</label><input id="cfgSite" value="' + esc(emp.website || '') + '"></div>' +
     '<div class="form-group"><label>Banco</label><input id="cfgBanco" value="' + esc(emp.banco || '') + '"></div>' +
     '<div class="form-group full"><label>IBAN</label><input id="cfgIban" value="' + esc(emp.iban || '') + '"></div>' +
@@ -1930,12 +1934,22 @@ async function renderConfig() {
     '<button class="btn btn-info" onclick="exportarBackupCompleto()"><i class="fas fa-download"></i> Backup</button>' +
     '<button class="btn btn-danger" onclick="resetTotal()"><i class="fas fa-bomb"></i> Reset Total</button></div></div>';
 }
+function usarGPSLocalizacaoEmpresa() {
+  if (!navigator.geolocation) { toast('Este dispositivo não disponibiliza GPS/localização.', 'warning'); return; }
+  toast('A solicitar autorização para obter a localização da empresa…', 'info');
+  navigator.geolocation.getCurrentPosition(function (position) {
+    $('cfgLatitude').value = Number(position.coords.latitude).toFixed(7);
+    $('cfgLongitude').value = Number(position.coords.longitude).toFixed(7);
+    toast('Coordenadas captadas. Confirme o endereço e clique em Salvar Empresa.', 'success');
+  }, function (error) { toast(error.code === 1 ? 'Permita a localização nas definições do navegador.' : 'Não foi possível obter a localização GPS.', 'error'); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+}
 async function salvarConfigEmpresa() {
   const empAtual = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
   const logoAtual = empAtual.logo || 'logo.png';
   const logoNovo = localStorage.getItem('kanawa_logo_temp') || logoAtual;
-  const e = { firma: $('cfgFirma').value.trim(), nome: $('cfgNome').value.trim(), nif: $('cfgNif').value.trim(), alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value.trim(), email: $('cfgEmail').value.trim(), endereco: $('cfgEnd').value.trim(), website: $('cfgSite').value.trim(), banco: $('cfgBanco').value, iban: $('cfgIban').value.trim(), logo: logoNovo };
+  const e = { firma: $('cfgFirma').value.trim(), nome: $('cfgNome').value.trim(), nif: $('cfgNif').value.trim(), alvara: $('cfgAlvara').value, regime: $('cfgRegime').value, telefone: $('cfgTel').value.trim(), email: $('cfgEmail').value.trim(), endereco: $('cfgEnd').value.trim(), website: $('cfgSite').value.trim(), banco: $('cfgBanco').value, iban: $('cfgIban').value.trim(), latitude: $('cfgLatitude').value.trim() === '' ? null : num($('cfgLatitude').value), longitude: $('cfgLongitude').value.trim() === '' ? null : num($('cfgLongitude').value), logo: logoNovo };
   if (!e.firma && !e.nome) { toast('Informe a razão social ou o nome comercial.', 'warning'); return; }
+  if ((e.latitude === null) !== (e.longitude === null) || (e.latitude !== null && (e.latitude < -90 || e.latitude > 90 || e.longitude < -180 || e.longitude > 180))) { toast('As coordenadas GPS estão incompletas ou fora dos limites válidos.', 'warning'); return; }
   if (window.KanawaCloud && KanawaCloud.ready) {
     try {
       await KanawaCloud.updateCompany(e);
@@ -1945,6 +1959,7 @@ async function salvarConfigEmpresa() {
     }
   }
   localStorage.setItem('kanawa_empresa', JSON.stringify(e));
+  if (e.latitude !== null && e.longitude !== null) await saveData('empresaLocalizacao', { id: 'principal', nome: e.firma || e.nome, endereco: e.endereco, lat: e.latitude, lng: e.longitude, location_source: 'company_setup', coordinates_valid: true, updated_at: now() });
   const cachedCompany = await DB.get('empresas', 1) || { id: 1 };
   await DB.put('empresas', Object.assign({}, cachedCompany, e, { id: 1 }));
   localStorage.removeItem('kanawa_logo_temp');
@@ -2277,12 +2292,48 @@ async function renderLogisticaRoteirizacao() {
       rotas.map(r => [esc(r.origem || '-'), esc(r.destino || '-'), esc(r.distancia || 'Não calculada'), esc(r.distance_source === 'manual' ? 'Manual' : 'Não calculada'), esc(r.veiculo || '-'), '<button class="btn btn-sm btn-danger" onclick="excluirItem(\'roteirizacao\',' + r.id + ')"><i class="fas fa-trash"></i></button>'])) + '</div>';
 }
 function abrirModalRota() {
-  openModal('Nova Rota',
-    '<div class="form-group"><label>Origem *</label><input id="rotaOrigem"></div>' +
-    '<div class="form-group"><label>Destino *</label><input id="rotaDestino"></div>' +
-    '<div class="form-group"><label>Distância (km, opcional e manual)</label><input id="rotaDistancia" inputmode="decimal" placeholder="Ex: 15,5 — não calcula automaticamente"></div>' +
-    '<div class="form-group"><label>Veículo</label><input id="rotaVeiculo"></div>' +
-    '<button class="btn btn-primary btn-block" onclick="salvarRota()">Salvar</button>');
+  const company = JSON.parse(localStorage.getItem('kanawa_empresa') || '{}');
+  const origin = company.endereco || (company.latitude !== null && company.longitude !== null ? company.latitude + ', ' + company.longitude : '');
+  openModal('Nova Rota e estimativa de viagem',
+    '<div class="form-grid"><div class="form-group full"><label>Origem / ponto de partida *</label><input id="rotaOrigem" value="' + esc(origin) + '" placeholder="Endereço ou coordenadas"></div>' +
+    '<div class="form-group full"><label>Destino / ponto de chegada *</label><input id="rotaDestino" placeholder="Endereço ou local de entrega"></div>' +
+    '<div class="form-group"><label>Meio de transporte</label><select id="rotaModo"><option value="driving">Carro / viatura</option><option value="cycling">Bicicleta</option><option value="walking">A pé</option></select></div>' +
+    '<div class="form-group"><label>Veículo / referência</label><input id="rotaVeiculo" placeholder="Ex.: Viatura 01"></div></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button class="btn btn-info" type="button" onclick="usarGPSComoOrigemRota()"><i class="fas fa-location-crosshairs"></i> Usar GPS como origem</button><button class="btn btn-primary" type="button" onclick="calcularPreviaRota()"><i class="fas fa-route"></i> Calcular distância e tempo</button></div>' +
+    '<div id="rotaResumo" class="card" style="display:none"></div><div id="rotaPreviewMap" style="height:300px;min-height:240px;border-radius:12px;overflow:hidden;background:var(--bg-hover)"></div>' +
+    '<p style="font-size:.78rem;color:var(--text-muted);margin-top:8px">Carro: rota rodoviária OpenStreetMap/OSRM. Bicicleta e a pé: estimativa geográfica com velocidade média, não navegação viária. Sem dados de trânsito em tempo real.</p>' +
+    '<button class="btn btn-success btn-block" style="margin-top:12px" onclick="salvarRota()">Guardar rota calculada</button>');
+}
+async function usarGPSComoOrigemRota() {
+  if (!navigator.geolocation) { toast('Geolocalização não disponível neste dispositivo.', 'warning'); return; }
+  navigator.geolocation.getCurrentPosition(function (position) {
+    const lat = position.coords.latitude, lng = position.coords.longitude;
+    $('rotaOrigem').value = lat.toFixed(6) + ', ' + lng.toFixed(6);
+    $('rotaOrigem').dataset.lat = String(lat); $('rotaOrigem').dataset.lng = String(lng);
+    toast('Origem definida pela localização GPS autorizada.', 'success');
+  }, function () { toast('Autorize a localização no navegador e tente novamente.', 'error'); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+}
+async function calcularPreviaRota() {
+  const origin = $('rotaOrigem').value.trim(), destination = $('rotaDestino').value.trim(), mode = $('rotaModo').value;
+  if (!origin || !destination) { toast('Informe origem e destino.', 'warning'); return; }
+  const summary = $('rotaResumo'); summary.style.display = 'block'; summary.textContent = 'A calcular percurso e estimativa…';
+  try {
+    const route = await window.KanawaRouteEngine.calculate({ origin, destination, mode, originLat: $('rotaOrigem').dataset.lat, originLng: $('rotaOrigem').dataset.lng });
+    window.__kanawaPendingRoute = route;
+    summary.innerHTML = '<strong>' + route.distance_km.toFixed(2) + ' km</strong> · ' + route.duration_label + '<br><small>' + esc(route.source_label) + ' · Velocidade média: ' + route.average_speed_kmh.toFixed(1) + ' km/h</small>';
+    await window.KanawaRouteEngine.renderMap('rotaPreviewMap', route);
+    toast('Percurso calculado. Confirme os pontos antes de guardar.', 'success');
+  } catch (error) { summary.textContent = error.message; toast(error.message || 'Não foi possível calcular a rota.', 'error'); }
+}
+async function salvarRota() {
+  const origem = $('rotaOrigem').value.trim(), destino = $('rotaDestino').value.trim();
+  if (!origem || !destino) { toast('Preencha origem e destino', 'warning'); return; }
+  const route = window.__kanawaPendingRoute;
+  if (!route || route.origin_label !== origem || route.destination_label !== destino || route.mode !== $('rotaModo').value) { toast('Calcule novamente a rota antes de guardar.', 'warning'); return; }
+  try {
+    await saveData('roteirizacao', { origem, destino, veiculo: $('rotaVeiculo').value.trim(), data: now(), mode: route.mode, distance_km: route.distance_km, distancia: route.distance_km.toFixed(2) + ' km', duration_minutes: route.duration_minutes, duration_label: route.duration_label, average_speed_kmh: route.average_speed_kmh, route_source: route.source, route_status: 'calculated', origin_coordinates: route.origin, destination_coordinates: route.destination, geometry: route.geometry });
+    window.__kanawaPendingRoute = null; toast('Rota guardada com distância e duração estimadas.', 'success'); closeModal(); openModule('logistica-roteirizacao');
+  } catch (error) { toast(error.message, 'error'); }
 }
 async function salvarRota() {
   const origem = $('rotaOrigem').value.trim(), destino = $('rotaDestino').value.trim();
