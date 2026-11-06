@@ -2336,16 +2336,6 @@ async function salvarRota() {
     window.__kanawaPendingRoute = null; toast('Rota guardada com distância e duração estimadas.', 'success'); closeModal(); openModule('logistica-roteirizacao');
   } catch (error) { toast(error.message, 'error'); }
 }
-async function salvarRota() {
-  const origem = $('rotaOrigem').value.trim(), destino = $('rotaDestino').value.trim();
-  if (!origem || !destino) { toast('Preencha origem e destino', 'warning'); return; }
-  try {
-    const distance = KanawaOperations.normalizeRouteDistance($('rotaDistancia').value);
-    await saveData('roteirizacao', Object.assign({ origem, destino, veiculo: $('rotaVeiculo').value.trim(), data: now(), route_status: 'pending_calculation' }, distance));
-    toast(distance.distance_source === 'manual' ? 'Rota guardada. A distância foi indicada manualmente e não foi calculada por mapa.' : 'Rota guardada sem distância calculada. Configure um fornecedor de mapas para obter o percurso real.', 'warning');
-    closeModal(); openModule('logistica-roteirizacao');
-  } catch (error) { toast(error.message, 'warning'); }
-}
 function otimizarRotas() { toast('Otimização bloqueada: ainda não existe um motor de rotas ativo nem coordenadas verificadas para as paragens.', 'warning'); }
 
 async function renderLogisticaEtiquetas() {
