@@ -26,26 +26,11 @@ jobs:
           deno-version: v2.x
       - name: Check JavaScript syntax
         run: |
-          node --check app/sales-money.js
-          node --check app/permissions.js
-          node --check app/cloud.js
-          node --check app/payment-methods.js
-          node --check app/hr-attendance.js
-          node --check app/finance-engine.js
-          node --check app/map-tracking.js
-          node --check app/gps-sync-engine.js
-          node --check app/app.js
-          node --check app/technical-pricing.js
-          node --check app/technical-cloud.js
-          node --check app/technical-suite.js
-          node --check app/integration-center.js
-          node --check server/server.js
-          node --check server/routes.js
-          node --check server/supabase-gateway.js
-          node --check netlify/functions/sales-finalize.mjs
-      - name: Check Supabase Edge Function
+          find app server netlify/functions -type f \( -name '*.js' -o -name '*.mjs' \) -print0 |
+            xargs -0 -r -n1 node --check
+      - name: Check Supabase Edge Functions
         run: |
-          deno check supabase/functions/ks-invite-member/index.ts
-          deno check supabase/functions/ks-save-provider-credential/index.ts
+          find supabase/functions -mindepth 2 -maxdepth 2 -name 'index.ts' -print0 |
+            xargs -0 -r -n1 deno check
       - name: Run unit tests
         run: npm test
