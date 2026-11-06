@@ -39,6 +39,7 @@ WITH CHECK (
 -- the finalized mirror. Its body already checks auth.uid(), tenant membership,
 -- and pdv/vendas create permission. Empty search_path plus schema-qualified
 -- references prevent object-shadowing attacks.
+ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) OWNER TO postgres;
 ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SECURITY DEFINER;
 ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SET search_path TO '';
 
