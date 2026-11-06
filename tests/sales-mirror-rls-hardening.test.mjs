@@ -8,10 +8,11 @@ const migration = readFileSync(
 );
 
 function policy(name) {
-  const escaped = name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
-  const match = migration.match(new RegExp('CREATE POLICY ' + escaped + '[\\\\s\\\\S]*?;','i'));
-  assert.ok(match, 'policy ' + name + ' must exist');
-  return match[0];
+  const start = migration.indexOf('CREATE POLICY ' + name);
+  assert.notEqual(start, -1, 'policy ' + name + ' must exist');
+  const end = migration.indexOf(';', start);
+  assert.notEqual(end, -1, 'policy ' + name + ' must terminate');
+  return migration.slice(start, end + 1);
 }
 
 test('direct INSERT cannot create a finalized sales mirror', () => {
