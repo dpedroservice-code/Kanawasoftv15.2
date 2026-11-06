@@ -2,7 +2,6 @@ name: Kanawa CI
 
 on:
   pull_request:
-    branches: [main, audit/fix-sales-validation]
   push:
     branches: [main]
   workflow_dispatch:
@@ -33,6 +32,8 @@ jobs:
           node --check app/performance-bridge.js
           node --check app/module-hub.js
           node --check app/gps-map.js
+          node --check app/i18n.js
+          node --check app/route-engine.js
           node --check app/agt-config.js
       - name: Check Supabase Edge Functions
         run: |
