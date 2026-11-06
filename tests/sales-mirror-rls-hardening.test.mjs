@@ -33,20 +33,31 @@ test('direct UPDATE cannot modify a finalized mirror or promote a draft to final
   assert.equal((sql.match(/'finalizada'/g) || []).length, 2);
 });
 
-test('the atomic RPC is the privileged path and keeps an empty search_path', () => {
-  assert.ok(migration.includes('ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) OWNER TO postgres;'));
-  assert.ok(migration.includes('ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SECURITY DEFINER;'));
-  assert.ok(migration.includes("ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SET search_path TO '';"));
-  assert.ok(migration.includes('REVOKE ALL ON FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) FROM PUBLIC, anon;'));
-  assert.ok(migration.includes('GRANT EXECUTE ON FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) TO authenticated;'));
+test('public finalizer stays SECURITY INVOKER and the narrow helper is private SECURITY DEFINER', () => {
+  assert.ok(migration.includes('ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SECURITY INVOKER;'));
+  assert.ok(migration.includes('CREATE OR REPLACE FUNCTION private.ks_upsert_finalized_sale_mirror('));
+  assert.ok(migration.includes('ALTER FUNCTION private.ks_upsert_finalized_sale_mirror(uuid,text,jsonb) OWNER TO postgres;'));
+  assert.ok(migration.includes('ALTER FUNCTION private.ks_upsert_finalized_sale_mirror(uuid,text,jsonb) SET search_path TO \'\';'));
+  assert.ok(migration.includes('REVOKE ALL ON FUNCTION private.ks_upsert_finalized_sale_mirror(uuid,text,jsonb) FROM PUBLIC, anon;'));
+  assert.ok(migration.includes('GRANT EXECUTE ON FUNCTION private.ks_upsert_finalized_sale_mirror(uuid,text,jsonb) TO authenticated;'));
+  assert.ok(!migration.includes('ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SECURITY DEFINER;'));
 });
 
-test('the RPC retains explicit authentication and company permission checks', () => {
-  const source = readFileSync(
-    new URL('../supabase/migrations/20261104100000_kanawa_v154_atomic_sales_idempotency.sql', import.meta.url),
-    'utf8'
-  );
-  assert.ok(source.includes('IF auth.uid() IS NULL OR NOT ('));
-  assert.ok(source.includes("private.ks_has_company_permission(p_company_id,'pdv','criar')"));
-  assert.ok(source.includes("private.ks_has_company_permission(p_company_id,'vendas','criar')"));
+test('private helper verifies identity, permission, persisted sale totals and persisted items', () => {
+  const start = migration.indexOf('CREATE OR REPLACE FUNCTION private.ks_upsert_finalized_sale_mirror(');
+  const end = migration.indexOf('$function$;', start);
+  assert.ok(start >= 0 && end > start);
+  const helper = migration.slice(start, end);
+  assert.ok(helper.includes('auth.uid() IS NULL'));
+  assert.ok(helper.includes("private.ks_has_company_permission(p_company_id,'pdv','criar')"));
+  assert.ok(helper.includes("private.ks_has_company_permission(p_company_id,'vendas','criar')"));
+  assert.ok(helper.includes("public.ks_sales"));
+  assert.ok(helper.includes("public.ks_sale_items"));
+  assert.ok(helper.includes("IS DISTINCT FROM 'array'"));
+  assert.ok(helper.includes("v_existing IS DISTINCT FROM p_record"));
+});
+
+test('the public transaction delegates both mirror-write paths to the private helper', () => {
+  assert.equal((migration.match(/PERFORM private\.ks_upsert_finalized_sale_mirror\(/g) || []).length, 2);
+  assert.ok(migration.includes('SECURITY INVOKER'));
 });
