@@ -44,7 +44,7 @@ REVOKE ALL ON FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) FROM PUBLIC, 
 GRANT EXECUTE ON FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) TO authenticated;
 
 COMMENT ON FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) IS
-  'Privileged atomic POS finalization. Performs explicit auth/tenant/permission checks and writes sale, payment, stock ledger and finalized mirror in one transaction. Direct authenticated writes of finalized ks_records/vendas are denied by restrictive RLS policies.';
+  'Atomic POS finalization executed as SECURITY INVOKER. Sale, payment, stock and usage writes remain subject to caller RLS. The narrow private mirror helper validates the persisted sale before writing the finalized ks_records mirror.';
 
 -- Narrow privileged helper: only writes the finalized sales mirror.
 -- The public transaction remains SECURITY INVOKER for all financial/stock tables.
@@ -97,7 +97,7 @@ BEGIN
     RAISE EXCEPTION 'O histórico não corresponde aos valores da venda persistida.' USING ERRCODE='23514';
   END IF;
 
-  IF jsonb_typeof(p_record->'itens')<>'array'
+  IF jsonb_typeof(p_record->'itens') IS DISTINCT FROM 'array'
      OR jsonb_array_length(p_record->'itens') <>
        (SELECT count(*) FROM public.ks_sale_items
         WHERE company_id=p_company_id AND sale_external_id=p_external_id)
