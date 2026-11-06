@@ -1,9 +1,10 @@
-'use strict';
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'app', 'route-engine.js'), 'utf8');
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'app', 'route-engine.js'), 'utf8');
 function loadEngine() {
   const sandbox = { window: {}, setTimeout, Promise, Math, Number, String, encodeURIComponent };
   vm.runInNewContext(source, sandbox, { filename: 'route-engine.js' });
