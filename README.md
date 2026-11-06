@@ -1,3 +1,13 @@
+> **Aviso de consolidação — 6 de novembro de 2026**
+>
+> Este repositório está a ser usado exclusivamente como **fonte de comparação e aproveitamento de código** para a consolidação no repositório oficial [KanawaSoft-1.0](https://github.com/dpedroservice-code/KanawaSoft-1.0). Não iniciar aqui uma linha paralela de funcionalidades nem publicar esta branch como produção durante a revisão.
+>
+> A auditoria decorre na branch `audit/consolidacao-kanawasoft-1.0`. O código e o histórico existentes são preservados. As funcionalidades deste repositório só serão transferidas depois de comparação de dependências, dados, permissões e testes. A consolidação central e o estado oficial da revisão estão no [Plano Mestre Único](https://github.com/dpedroservice-code/KanawaSoft-1.0/blob/feat/agt-api-foundation/docs/PLANO-MESTRE-KANAWASOFT-1.0.md).
+>
+> O nome deste repositório ainda não foi alterado; a renomeação administrativa para `KanawaSoft-1.1.0` permanece pendente. A versão declarada no código será normalizada apenas depois da auditoria, para evitar confundir o nome do repositório com a versão real da aplicação.
+>
+> ---
+>
 # Kanawa Soft ERP — versão de produção 1.1.0
 
 Aplicação web Kanawa Soft. A interface publicada é servida a partir da pasta \`app/\`.
