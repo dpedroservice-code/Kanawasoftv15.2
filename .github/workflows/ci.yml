@@ -28,9 +28,9 @@ jobs:
         run: |
           find app server netlify/functions -type f \( -name '*.js' -o -name '*.mjs' \) -print0 |
             xargs -0 -r -n1 node --check
-      - name: Check Supabase Edge Function
+      - name: Check Supabase Edge Functions
         run: |
-          deno check supabase/functions/ks-invite-member/index.ts
-          deno check supabase/functions/ks-save-provider-credential/index.ts
+          find supabase/functions -mindepth 2 -maxdepth 2 -name 'index.ts' -print0 |
+            xargs -0 -r -n1 deno check
       - name: Run unit tests
         run: npm test
