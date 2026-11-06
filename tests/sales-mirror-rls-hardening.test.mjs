@@ -34,6 +34,7 @@ test('direct UPDATE cannot modify a finalized mirror or promote a draft to final
 });
 
 test('the atomic RPC is the privileged path and keeps an empty search_path', () => {
+  assert.ok(migration.includes('ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) OWNER TO postgres;'));
   assert.ok(migration.includes('ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SECURITY DEFINER;'));
   assert.ok(migration.includes("ALTER FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) SET search_path TO '';"));
   assert.ok(migration.includes('REVOKE ALL ON FUNCTION public.ks_finalize_sale(uuid, jsonb, jsonb) FROM PUBLIC, anon;'));
